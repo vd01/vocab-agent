@@ -222,6 +222,14 @@ else
   read_input "DuckDNS 子域名（不含 .duckdns.org）" "${DUCKDNS_DOMAIN:-}" INPUT_DUCKDNS_DOMAIN
   read_input "DuckDNS Token" "${DUCKDNS_TOKEN:-}" INPUT_DUCKDNS_TOKEN
 
+  # 登录密码
+  echo ""
+  info "登录密码（访问网站时需要输入）:"
+  read_secret "设置登录密码" INPUT_AUTH_PASSWORD
+  if [ -z "$INPUT_AUTH_PASSWORD" ]; then
+    warn "未设置密码，网站将无法访问（AUTH_PASSWORD 为必填项）"
+  fi
+
   # 写入 .env.local
   cat > "$ENV_FILE" << EOF
 # 讯飞 MaaS API
@@ -233,6 +241,9 @@ DEVELOPER_MODEL=${INPUT_DEVELOPER_MODEL}
 # DuckDNS
 DUCKDNS_DOMAIN=${INPUT_DUCKDNS_DOMAIN}
 DUCKDNS_TOKEN=${INPUT_DUCKDNS_TOKEN}
+
+# 登录密码
+AUTH_PASSWORD=${INPUT_AUTH_PASSWORD}
 
 # Upstash Vector (optional, for Phase 4 RAG)
 UPSTASH_VECTOR_REST_URL=
@@ -409,8 +420,7 @@ EnvironmentFile=${ENV_FILE}
 
 # 安全限制
 NoNewPrivileges=true
-ProtectSystem=strict
-ReadWritePaths=${PROJECT_DIR}/data ${PROJECT_DIR}/generated ${PROJECT_DIR}/src/components/generated ${PROJECT_DIR}/src/app/api
+ProtectSystem=false
 
 [Install]
 WantedBy=multi-user.target

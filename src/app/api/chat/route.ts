@@ -106,7 +106,6 @@ export async function POST(req: Request) {
       stopWhen: stepCountIs(MAX_STEPS),
       onStepFinish: async (stepResult) => {
         stepCount++;
-        console.log(`[Chat API] Step ${stepCount} finished, model=${stepResult.model?.modelId}, text=${stepResult.text?.slice(0, 50) ?? '(none)'}, toolCalls=${stepResult.toolCalls?.length ?? 0}`);
 
         // Use request.messages from stepResult if available, otherwise fall back to snapshot
         const stepRequestMessages = (stepResult.request?.messages?.length)
@@ -149,11 +148,10 @@ export async function POST(req: Request) {
         debugLogs.push(stepLog);
 
         // Write debug logs to file immediately after each step
-        // (onEnd is unreliable — AI SDK doesn't call it in streamText)
+        // (only effective for teacher — developer uses onEnd fallback below)
         if (debugLogs.length > 0) {
           try {
             setDebugLogs(debugId, debugLogs);
-            console.log(`[Chat API] Debug logs written: ${debugId}, step ${stepCount}, total ${debugLogs.length} steps`);
           } catch (err) {
             console.error('[Chat API] Failed to store debug logs:', err);
           }
@@ -161,8 +159,64 @@ export async function POST(req: Request) {
       },
     });
 
-    // Get the SSE stream response
-    const streamResponse = result.toUIMessageStreamResponse();
+    // Get the SSE stream response — use onEnd to capture steps that
+    // onStepFinish missed (e.g. deepseek-reasoner doesn't trigger onStepFinish)
+    const streamResponse = result.toUIMessageStreamResponse({
+      onEnd: async () => {
+        // If onStepFinish already wrote logs, skip
+        if (debugLogs.length > 0) return;
+
+        try {
+          // result.steps resolves after the stream is fully consumed
+          const steps = await result.steps;
+          for (const step of steps) {
+            const stepRequestMessages = (step.request?.messages?.length)
+              ? serializeMessagesForDebug(step.request.messages)
+              : requestMessagesSnapshot;
+
+            debugLogs.push({
+              step: debugLogs.length + 1,
+              agent: agentType,
+              model: step.model?.modelId ?? 'unknown',
+              request: {
+                instructions: finalInstructions.slice(0, 500) + (finalInstructions.length > 500 ? '...' : ''),
+                messages: stepRequestMessages,
+                tools: Object.keys(config.tools),
+              },
+              response: {
+                text: step.text || undefined,
+                reasoningText: step.reasoningText || undefined,
+                toolCalls: step.toolCalls?.map((tc: any) => ({
+                  toolName: tc.toolName,
+                  args: tc.args,
+                })) || undefined,
+                toolResults: step.toolResults?.map((tr: any) => ({
+                  toolName: tr.toolName,
+                  result: typeof tr.result === 'string'
+                    ? tr.result.slice(0, 300)
+                    : JSON.stringify(tr.result).slice(0, 300),
+                })) || undefined,
+                finishReason: step.finishReason,
+                usage: step.usage
+                  ? {
+                      inputTokens: step.usage.inputTokens,
+                      outputTokens: step.usage.outputTokens,
+                      totalTokens: step.usage.totalTokens,
+                    }
+                  : undefined,
+              },
+            });
+          }
+
+          if (debugLogs.length > 0) {
+            setDebugLogs(debugId, debugLogs);
+            console.log(`[Chat API] Debug logs written via onEnd: ${debugId} (${debugLogs.length} steps)`);
+          }
+        } catch (err) {
+          console.error('[Chat API] Failed to capture debug logs via onEnd:', err);
+        }
+      },
+    });
     const originalBody = streamResponse.body!;
 
     // Wrap the stream: after it ends, if step limit was hit,

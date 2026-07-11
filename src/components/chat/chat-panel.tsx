@@ -4,7 +4,7 @@ import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport, type UIMessage } from 'ai';
 import { MessageList } from './message-list';
 import { ChatInput } from './chat-input';
-import { DebugPanel } from '@/components/debug/debug-panel';
+import { DebugPanel, notifyDebugPanel } from '@/components/debug/debug-panel';
 import { useState, useCallback, useEffect, useRef } from 'react';
 
 // Dynamic re-import to get the latest loadGeneratedComponents after HMR
@@ -80,6 +80,11 @@ function ChatInner({ initialMessages, initialHasMore }: {
       saveTimerRef.current = setTimeout(() => {
         saveMessagesToDb();
       }, 500);
+      // Notify debug panel to fetch logs (now that stream has ended)
+      if (debugIdRef.current) {
+        notifyDebugPanel(debugIdRef.current);
+        debugIdRef.current = null;
+      }
     },
   });
 
@@ -89,7 +94,25 @@ function ChatInner({ initialMessages, initialHasMore }: {
   const prevStatusRef = useRef<string>(status);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const messagesRef = useRef(messages);
+  const debugIdRef = useRef<string | null>(null);
   messagesRef.current = messages;
+
+  // Intercept fetch to capture X-Debug-Id from /api/chat responses
+  useEffect(() => {
+    const originalFetch = window.fetch;
+    window.fetch = async function (...args) {
+      const response = await originalFetch.apply(this, args);
+      const url = typeof args[0] === 'string' ? args[0] : (args[0] as Request)?.url;
+      if (typeof url === 'string' && url.includes('/api/chat')) {
+        const debugId = response.headers.get('X-Debug-Id');
+        if (debugId) {
+          debugIdRef.current = debugId;
+        }
+      }
+      return response;
+    };
+    return () => { window.fetch = originalFetch; };
+  }, []);
 
   // Load generated components on mount
   useEffect(() => {
