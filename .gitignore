@@ -48,7 +48,7 @@ next-env.d.ts
 .omo/
 
 # ECDICT submodule (large dictionary data)
-ECDICT
+#ECDICT
 
 # dev logs
 dev-server.log
