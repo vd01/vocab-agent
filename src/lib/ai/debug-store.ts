@@ -1,21 +1,60 @@
+import { join } from 'path';
+import { tmpdir } from 'os';
+import { readFileSync, writeFileSync, unlinkSync, readdirSync, mkdirSync, existsSync } from 'fs';
+
 /**
- * In-memory store for LLM debug logs.
- * Shared across API routes so /api/chat can write and /api/debug-logs can read.
+ * File-based store for LLM debug logs.
+ * Shared across API routes — avoids Next.js dev mode module re-instantiation issues.
  *
  * Temporary research tool — entries auto-expire after 5 minutes.
  */
 
-export interface DebugLogEntry {
-  logs: any[];
-  createdAt: number;
+const DEBUG_DIR = join(tmpdir(), 'vocab-agent-debug');
+
+function ensureDir(): void {
+  if (!existsSync(DEBUG_DIR)) {
+    mkdirSync(DEBUG_DIR, { recursive: true });
+  }
 }
 
-export const debugStore = new Map<string, DebugLogEntry>();
+function getDebugPath(id: string): string {
+  return join(DEBUG_DIR, `${id}.json`);
+}
 
-// Cleanup expired entries every 60s
-setInterval(() => {
-  const now = Date.now();
-  for (const [key, val] of debugStore) {
-    if (now - val.createdAt > 5 * 60 * 1000) debugStore.delete(key);
+export function setDebugLogs(id: string, logs: any[]): void {
+  ensureDir();
+  const path = getDebugPath(id);
+  writeFileSync(path, JSON.stringify({ id, createdAt: Date.now(), logs }), 'utf-8');
+}
+
+export function getDebugLogs(id: string): { id: string; createdAt: number; logs: any[] } | null {
+  const path = getDebugPath(id);
+  try {
+    const data = readFileSync(path, 'utf-8');
+    const parsed = JSON.parse(data);
+    // Check expiry
+    if (Date.now() - parsed.createdAt > 5 * 60 * 1000) {
+      try { unlinkSync(path); } catch {}
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
   }
-}, 60_000);
+}
+
+// Cleanup expired entries on module load
+try {
+  ensureDir();
+  const files = readdirSync(DEBUG_DIR);
+  const now = Date.now();
+  for (const file of files) {
+    if (!file.endsWith('.json')) continue;
+    try {
+      const data = JSON.parse(readFileSync(join(DEBUG_DIR, file), 'utf-8'));
+      if (now - data.createdAt > 5 * 60 * 1000) {
+        try { unlinkSync(join(DEBUG_DIR, file)); } catch {}
+      }
+    } catch {}
+  }
+} catch {}

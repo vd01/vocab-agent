@@ -87,10 +87,11 @@ export function DebugPanel() {
           pendingDebugIdsRef.current.push(debugId);
           setLoading(true);
 
-          // Poll for logs — the stream may take a while to finish
+          // Poll for logs — start slow (stream is still running), then speed up
           const pollForLogs = async () => {
-            for (let attempt = 0; attempt < 30; attempt++) {
-              await new Promise(r => setTimeout(r, 1000));
+            // Wait 3s initially for the stream to finish
+            await new Promise(r => setTimeout(r, 3000));
+            for (let attempt = 0; attempt < 20; attempt++) {
               try {
                 const res = await originalFetch(`/api/debug-logs?id=${debugId}`);
                 if (res.ok) {
@@ -108,6 +109,9 @@ export function DebugPanel() {
                   }
                 }
               } catch {}
+              // Exponential backoff: 1s, 1s, 2s, 2s, 4s...
+              const delay = attempt < 2 ? 1000 : Math.min(4000, 1000 * Math.pow(1.5, attempt - 2));
+              await new Promise(r => setTimeout(r, delay));
             }
             setLoading(false);
           };

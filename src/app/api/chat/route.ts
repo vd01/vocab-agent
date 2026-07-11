@@ -9,26 +9,11 @@ import { getDeveloperConfig } from '@/lib/ai/developer-agent';
 import { routeAgent } from '@/lib/ai/agent-router';
 import { buildWorldState } from '@/lib/pipeline/world-state';
 import { contextManager } from '@/lib/ai/context-manager';
-import { debugStore } from '@/lib/ai/debug-store';
+import { setDebugLogs } from '@/lib/ai/debug-store';
 
 export const maxDuration = 60;
 
 const MAX_STEPS = 25;
-
-// ── Debug: in-memory log store ────────────────────────────────────────────
-// Temporary research tool — stores LLM interaction logs per request.
-// Entries auto-expire after 5 minutes.
-const debugStore = new Map<string, { logs: any[]; createdAt: number }>();
-
-// Cleanup expired entries every 60s
-setInterval(() => {
-  const now = Date.now();
-  for (const [key, val] of debugStore) {
-    if (now - val.createdAt > 5 * 60 * 1000) debugStore.delete(key);
-  }
-}, 60_000);
-
-export { debugStore };
 
 // ── Helper: serialize model messages for debug display ────────────────────
 function serializeMessagesForDebug(messages: any[]): any[] {
@@ -162,6 +147,17 @@ export async function POST(req: Request) {
         };
         debugLogs.push(stepLog);
       },
+      // onEnd is guaranteed to fire when the stream finishes (even if cancelled)
+      onEnd: async () => {
+        if (debugLogs.length > 0) {
+          try {
+            setDebugLogs(debugId, debugLogs);
+            console.log(`[Chat API] Debug logs stored: ${debugId} (${debugLogs.length} steps)`);
+          } catch (err) {
+            console.error('[Chat API] Failed to store debug logs:', err);
+          }
+        }
+      },
     });
 
     // Get the SSE stream response
@@ -182,7 +178,7 @@ export async function POST(req: Request) {
             controller.enqueue(value);
           }
 
-          // After stream ends, check if we hit the step limit
+          // After stream ends normally, check if we hit the step limit
           if (stepCount >= MAX_STEPS) {
             // Append a text-delta event that AI SDK will render as assistant text
             const warning =
@@ -197,15 +193,12 @@ export async function POST(req: Request) {
               `[Chat API] ⚠ Step limit reached: ${stepCount}/${MAX_STEPS}. Appended warning as text-delta.`,
             );
           }
-
-          // Store debug logs in memory for frontend to fetch
-          if (debugLogs.length > 0) {
-            debugStore.set(debugId, { logs: debugLogs, createdAt: Date.now() });
-          }
         } catch (err) {
-          console.error('[Chat API Stream Error]', err);
+          // Stream was cancelled (e.g. user pressed Stop) — this is expected,
+          // don't try to enqueue anything, just let the controller close.
+          console.log('[Chat API] Stream cancelled by client');
         } finally {
-          controller.close();
+          try { controller.close(); } catch {}
         }
       },
     });
