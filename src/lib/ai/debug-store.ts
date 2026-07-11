@@ -12,8 +12,12 @@ import { readFileSync, writeFileSync, unlinkSync, readdirSync, mkdirSync, exists
 const DEBUG_DIR = join(tmpdir(), 'vocab-agent-debug');
 
 function ensureDir(): void {
-  if (!existsSync(DEBUG_DIR)) {
-    mkdirSync(DEBUG_DIR, { recursive: true });
+  try {
+    if (!existsSync(DEBUG_DIR)) {
+      mkdirSync(DEBUG_DIR, { recursive: true });
+    }
+  } catch {
+    // Debug logs are non-critical; silently ignore directory creation failures
   }
 }
 
@@ -22,9 +26,13 @@ function getDebugPath(id: string): string {
 }
 
 export function setDebugLogs(id: string, logs: any[]): void {
-  ensureDir();
-  const path = getDebugPath(id);
-  writeFileSync(path, JSON.stringify({ id, createdAt: Date.now(), logs }), 'utf-8');
+  try {
+    ensureDir();
+    const path = getDebugPath(id);
+    writeFileSync(path, JSON.stringify({ id, createdAt: Date.now(), logs }), 'utf-8');
+  } catch {
+    // Non-critical; ignore write failures
+  }
 }
 
 export function getDebugLogs(id: string): { id: string; createdAt: number; logs: any[] } | null {

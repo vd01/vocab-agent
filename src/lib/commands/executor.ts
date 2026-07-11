@@ -3,9 +3,9 @@
  * Built-in commands are registered here; dynamic commands are loaded from DB.
  */
 
-import { db } from '@/lib/db';
+import { db, client } from '@/lib/db';
 import { dynamicCommands } from '@/lib/db/schema';
-import { eq } from 'drizzle-orm';
+import { eq, and, or, not, gt, gte, lt, lte, inArray, like, sql, desc, asc, count } from 'drizzle-orm';
 
 // ── Types ────────────────────────────────────────────────────────────────
 
@@ -95,7 +95,9 @@ async function executeDynamicCommand(
     // Provide a restricted sandbox with whitelisted APIs
     const sandbox = {
       db,
+      client,
       tables: DB_TABLES,
+      dql: { eq, and, or, not, gt, gte, lt, lte, inArray, like, sql, desc, asc, count },
       fsrs: {
         getDueWords: (await import('@/lib/fsrs/scheduler')).getDueWords,
         processReview: (await import('@/lib/fsrs/scheduler')).processReview,
@@ -109,13 +111,13 @@ async function executeDynamicCommand(
     };
 
     // Execute the tool_code in a sandboxed function
-    // Inject db, tables (words/reviews/etc), fsrs, args, console
+    // Inject db, client, tables, dql (operators), fsrs, args, console
     const fn = new Function(
-      'db', 'tables', 'fsrs', 'args', 'console',
+      'db', 'client', 'tables', 'dql', 'fsrs', 'args', 'console',
       `"use strict"; return (${cmd.toolCode})(args)`,
     );
 
-    const result = await fn(sandbox.db, sandbox.tables, sandbox.fsrs, sandbox.args, sandbox.console);
+    const result = await fn(sandbox.db, sandbox.client, sandbox.tables, sandbox.dql, sandbox.fsrs, sandbox.args, sandbox.console);
     return result ?? { type: 'dynamic-result', message: '命令执行完成' };
   } catch (err) {
     console.error('[Dynamic Command Error]', err);
