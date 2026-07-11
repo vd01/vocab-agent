@@ -1,0 +1,135 @@
+'use client';
+
+import { useState, useEffect, useRef } from 'react';
+import { Card, CardContent } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+
+interface WordCardProps {
+  wordId: string;
+  word: string;
+  phonetic: string | null;
+  definition: string;
+  examples: string | null;
+  /** Controlled flip state — when provided, card uses this instead of internal state */
+  flipped?: boolean;
+  /** Callback when card is clicked/tapped */
+  onFlip?: () => void;
+}
+
+export function WordCard({ wordId, word, phonetic, definition, examples, flipped: controlledFlipped, onFlip }: WordCardProps) {
+  const [internalFlipped, setInternalFlipped] = useState(false);
+  const cardRef = useRef<HTMLDivElement>(null);
+
+  const isFlipped = controlledFlipped !== undefined ? controlledFlipped : internalFlipped;
+  const handleFlip = onFlip !== undefined
+    ? onFlip
+    : () => setInternalFlipped(f => !f);
+
+  // Space key to flip — only for uncontrolled (standalone) cards
+  useEffect(() => {
+    if (controlledFlipped !== undefined) return;
+
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === ' ' && cardRef.current && document.activeElement && cardRef.current.contains(document.activeElement)) {
+        e.preventDefault();
+        setInternalFlipped(f => !f);
+      }
+    }
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [controlledFlipped]);
+
+  let parsedExamples: string[] = [];
+  try {
+    parsedExamples = examples ? JSON.parse(examples) : [];
+  } catch {
+    parsedExamples = examples ? [examples] : [];
+  }
+
+  let parsedDefinition = definition;
+  try {
+    const parsed = JSON.parse(definition);
+    if (typeof parsed === 'object') {
+      parsedDefinition = JSON.stringify(parsed, null, 2);
+    }
+  } catch {
+    // definition is already a string
+  }
+
+  return (
+    <div
+      ref={cardRef}
+      tabIndex={0}
+      className="cursor-pointer select-none focus:outline-none"
+      onClick={handleFlip}
+      style={{ perspective: '600px' }}
+    >
+      {/*
+        Grid stacking: both faces occupy the same grid cell.
+        The container height = max(front height, back height).
+        This prevents height jump on flip.
+      */}
+      <div
+        className="grid transition-transform duration-300 max-h-[300px]"
+        style={{
+          transformStyle: 'preserve-3d',
+          transform: isFlipped ? 'rotateY(180deg)' : 'rotateY(0deg)',
+        }}
+      >
+        {/* Front face */}
+        <Card
+          className="row-start-1 col-start-1 transition-shadow duration-300 hover:shadow-md"
+          style={{ backfaceVisibility: 'hidden' }}
+        >
+          <CardContent className="p-4">
+            <div className="text-center py-4">
+              <h3 className="text-2xl font-bold text-foreground">{word}</h3>
+              {phonetic && (
+                <p className="text-sm text-muted-foreground mt-1">{phonetic}</p>
+              )}
+              <p className="text-xs text-muted-foreground mt-4">
+                点击或按空格键翻转查看释义
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Back face — same grid cell, rotated 180deg so it shows when container flips */}
+        <Card
+          className="row-start-1 col-start-1 transition-shadow duration-300 hover:shadow-md overflow-hidden"
+          style={{
+            backfaceVisibility: 'hidden',
+            transform: 'rotateY(180deg)',
+          }}
+        >
+          <CardContent className="p-4 overflow-y-auto max-h-[300px] scrollbar-thin">
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <h3 className="text-lg font-bold text-foreground">{word}</h3>
+                {phonetic && (
+                  <Badge variant="secondary" className="text-xs">{phonetic}</Badge>
+                )}
+              </div>
+              <div className="text-sm text-foreground leading-relaxed whitespace-pre-wrap break-words">
+                {parsedDefinition}
+              </div>
+              {parsedExamples.length > 0 && (
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground font-medium">例句:</p>
+                  {parsedExamples.map((ex, i) => (
+                    <p key={i} className="text-xs text-muted-foreground italic pl-2 border-l-2 border-muted whitespace-pre-wrap break-words">
+                      {ex}
+                    </p>
+                  ))}
+                </div>
+              )}
+              <p className="text-xs text-muted-foreground">
+                点击或按空格键翻转回正面
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
+}
