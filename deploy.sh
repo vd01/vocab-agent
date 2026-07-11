@@ -122,9 +122,10 @@ ok "操作系统: $PRETTY_NAME"
 info "更新软件包列表..."
 apt-get update -qq
 
-# 安装基础工具
-info "安装基础工具 (curl, git, ca-certificates)..."
-apt-get install -y -qq curl git ca-certificates gnupg lsb-release 2>/dev/null
+# 安装基础工具 + 构建工具链（Tailwind v4 / lightningcss 原生模块需要）
+info "安装基础工具和构建依赖..."
+apt-get install -y -qq curl git ca-certificates gnupg lsb-release \
+  build-essential python3 pkg-config libssl-dev 2>/dev/null
 
 # Node.js
 if command_exists node; then
