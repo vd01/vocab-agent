@@ -106,6 +106,7 @@ export async function POST(req: Request) {
       stopWhen: stepCountIs(MAX_STEPS),
       onStepFinish: async (stepResult) => {
         stepCount++;
+        console.log(`[Chat API] Step ${stepCount} finished, model=${stepResult.model?.modelId}, text=${stepResult.text?.slice(0, 50) ?? '(none)'}, toolCalls=${stepResult.toolCalls?.length ?? 0}`);
 
         // Use request.messages from stepResult if available, otherwise fall back to snapshot
         const stepRequestMessages = (stepResult.request?.messages?.length)
@@ -146,13 +147,13 @@ export async function POST(req: Request) {
           },
         };
         debugLogs.push(stepLog);
-      },
-      // onEnd is guaranteed to fire when the stream finishes (even if cancelled)
-      onEnd: async () => {
+
+        // Write debug logs to file immediately after each step
+        // (onEnd is unreliable — AI SDK doesn't call it in streamText)
         if (debugLogs.length > 0) {
           try {
             setDebugLogs(debugId, debugLogs);
-            console.log(`[Chat API] Debug logs stored: ${debugId} (${debugLogs.length} steps)`);
+            console.log(`[Chat API] Debug logs written: ${debugId}, step ${stepCount}, total ${debugLogs.length} steps`);
           } catch (err) {
             console.error('[Chat API] Failed to store debug logs:', err);
           }
@@ -165,22 +166,22 @@ export async function POST(req: Request) {
     const originalBody = streamResponse.body!;
 
     // Wrap the stream: after it ends, if step limit was hit,
-    // append a custom SSE event so the frontend knows
+    // append a custom SSE event so the frontend knows.
+    // Also handle abort gracefully — the original stream may throw
+    // or may send an abort chunk before closing.
     const transformedBody = new ReadableStream({
       async start(controller) {
         const reader = originalBody.getReader();
 
         try {
-          // Pass through all original chunks
           while (true) {
             const { done, value } = await reader.read();
             if (done) break;
             controller.enqueue(value);
           }
 
-          // After stream ends normally, check if we hit the step limit
+          // Stream ended normally — check if we hit the step limit
           if (stepCount >= MAX_STEPS) {
-            // Append a text-delta event that AI SDK will render as assistant text
             const warning =
               '\n\n---\n⚠ **任务因步数限制中断** — 已执行 ' +
               stepCount +
@@ -193,11 +194,16 @@ export async function POST(req: Request) {
               `[Chat API] ⚠ Step limit reached: ${stepCount}/${MAX_STEPS}. Appended warning as text-delta.`,
             );
           }
-        } catch (err) {
-          // Stream was cancelled (e.g. user pressed Stop) — this is expected,
-          // don't try to enqueue anything, just let the controller close.
-          console.log('[Chat API] Stream cancelled by client');
+        } catch (err: any) {
+          // Stream was cancelled (user pressed Stop) or errored.
+          // The original stream may have already sent an abort chunk before
+          // this error, so the frontend should already know about the abort.
+          // Just close our controller cleanly.
+          if (err?.name !== 'AbortError') {
+            console.error('[Chat API Stream Error]', err);
+          }
         } finally {
+          // Always close the controller so the client knows the stream is done
           try { controller.close(); } catch {}
         }
       },

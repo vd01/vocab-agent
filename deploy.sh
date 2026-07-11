@@ -29,6 +29,7 @@ fail()  { echo -e "${RED}[FAIL]${NC} $*"; exit 1; }
 PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SERVICE_NAME="vocab-agent"
 SERVICE_PORT=3088
+EXTERNAL_PORT=31588
 CADDYFILE="/etc/caddy/Caddyfile"
 SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
 ENV_FILE="${PROJECT_DIR}/.env.local"
@@ -327,7 +328,12 @@ fi
 # 写入 Caddyfile
 info "配置 Caddyfile..."
 cat > "$CADDYFILE" << EOF
-${DUCKDNS_DOMAIN}.duckdns.org {
+{
+    # 80 端口用于 ACME HTTP-01 证书验证（必须）
+    # 31588 端口对外提供 HTTPS 服务
+}
+
+${DUCKDNS_DOMAIN}.duckdns.org:${EXTERNAL_PORT} {
     reverse_proxy localhost:${SERVICE_PORT}
 
     # 压缩
@@ -354,10 +360,9 @@ caddy validate --config "$CADDYFILE" --adapter caddyfile 2>&1 | tail -3
 ok "Caddyfile 语法验证通过"
 
 # 检查端口占用
-if ss -tlnp | grep -q ":80 " && ! ss -tlnp | grep -q "caddy"; then
-  warn "80 端口被其他程序占用，Caddy 可能无法获取 HTTPS 证书"
-  warn "占用程序: $(ss -tlnp | grep ':80 ' | head -1)"
-  warn "请停止占用 80 端口的程序后重新运行: systemctl restart caddy"
+if ss -tlnp | grep -q ":${EXTERNAL_PORT} " && ! ss -tlnp | grep -q "caddy"; then
+  warn "${EXTERNAL_PORT} 端口被其他程序占用"
+  warn "占用程序: $(ss -tlnp | grep ':${EXTERNAL_PORT} ' | head -1)"
 fi
 
 # 启动 Caddy
@@ -457,17 +462,17 @@ fi
 
 # 检查 HTTPS
 info "检查 HTTPS 访问..."
-HTTPS_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "https://${FULL_DOMAIN}" --max-time 15 2>/dev/null || echo "000")
+HTTPS_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "https://${FULL_DOMAIN}:${EXTERNAL_PORT}" --max-time 15 2>/dev/null || echo "000")
 if [ "$HTTPS_STATUS" != "000" ]; then
   ok "HTTPS 访问成功: HTTP ${HTTPS_STATUS}"
 else
   warn "HTTPS 暂时不可用（证书申请可能需要 1-2 分钟）"
-  warn "请稍后手动检查: curl -I https://${FULL_DOMAIN}"
+  warn "请稍后手动检查: curl -I https://${FULL_DOMAIN}:${EXTERNAL_PORT}"
 fi
 
 # 检查证书
 info "检查 SSL 证书..."
-CERT_INFO=$(echo | openssl s_client -servername "$FULL_DOMAIN" -connect "$FULL_DOMAIN:443" 2>/dev/null | openssl x509 -noout -subject -dates 2>/dev/null || echo "")
+CERT_INFO=$(echo | openssl s_client -servername "$FULL_DOMAIN" -connect "${FULL_DOMAIN}:${EXTERNAL_PORT}" 2>/dev/null | openssl x509 -noout -subject -dates 2>/dev/null || echo "")
 if [ -n "$CERT_INFO" ]; then
   ok "SSL 证书信息:"
   echo "$CERT_INFO" | sed 's/^/  /'
@@ -484,7 +489,7 @@ echo -e "${GREEN}╔════════════════════
 echo -e "${GREEN}║  部署完成!                                                  ║${NC}"
 echo -e "${GREEN}╚══════════════════════════════════════════════════════════════╝${NC}"
 echo ""
-echo -e "  访问地址: ${CYAN}https://${FULL_DOMAIN}${NC}"
+echo -e "  访问地址: ${CYAN}https://${FULL_DOMAIN}:${EXTERNAL_PORT}${NC}"
 echo ""
 echo -e "  ${YELLOW}常用命令:${NC}"
 echo "    查看服务状态:  systemctl status ${SERVICE_NAME}"
@@ -498,4 +503,5 @@ echo "    1. 首次访问可能需要 1-2 分钟等待 HTTPS 证书签发"
 echo "    2. 如果浏览器提示不安全，请等待 1 分钟后刷新"
 echo "    3. VPS IP 变化时运行: bash deploy-duckdns-update.sh"
 echo "    4. 建议设置 cron 定时更新 DuckDNS: bash deploy-duckdns-update.sh --install-cron"
+echo "    5. 80 端口用于 HTTPS 证书自动验证，请勿关闭"
 echo ""
