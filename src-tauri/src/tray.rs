@@ -7,6 +7,7 @@ use tauri::{
 };
 
 static LAST_TOGGLE: AtomicBool = AtomicBool::new(false);
+const SETUP_HTML: &str = include_str!("../../desktop-dist/index.html");
 
 pub fn setup_tray<R: Runtime>(app: &App<R>) -> Result<(), Box<dyn std::error::Error>> {
     let show_item = MenuItem::with_id(app, "show", "显示/隐藏", true, None::<&str>)?;
@@ -47,8 +48,13 @@ pub fn setup_tray<R: Runtime>(app: &App<R>) -> Result<(), Box<dyn std::error::Er
             }
             "settings" => {
                 if let Some(win) = app_handle.get_webview_window("main") {
-                    crate::store::SET_SETUP_MODE.store(true, Ordering::SeqCst);
-                    let _ = win.navigate("https://tauri.localhost/index.html".parse().unwrap());
+                    let cfg = app_handle.state::<crate::store::AppStore>().get();
+                    let url_val = cfg.server_url.replace('\\', "\\\\").replace('\'', "\\'");
+                    let html_json = serde_json::to_string(SETUP_HTML).unwrap_or_default();
+                    let _ = win.eval(&format!(
+                        "document.open(); document.write(JSON.parse({})); document.close(); if(document.getElementById('urlInput')){{ document.getElementById('urlInput').value = '{}'; }}",
+                        html_json, url_val
+                    ));
                     let _ = win.show();
                     let _ = win.set_focus();
                 }
