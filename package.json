@@ -16,8 +16,8 @@
     "test:e2e": "vitest run --config vitest.e2e.config.ts",
     "electron:compile": "tsc -p electron/tsconfig.json",
     "electron:dev": "npm run electron:compile && cross-env ELECTRON_DEV=1 electron dist-electron/main.js",
-    "electron:preview": "npm run build && npm run electron:compile && electron dist-electron/main.js",
-    "electron:build": "npm run build && npm run electron:compile && electron-builder --win"
+    "electron:preview": "npm run build && npm run electron:compile && cross-env ELECTRON_PREVIEW=1 electron dist-electron/main.js",
+    "electron:build": "npm run build && npm run electron:compile && npx electron-builder --win"
   },
   "dependencies": {
     "@ai-sdk/deepseek": "^3.0.6",
@@ -53,7 +53,6 @@
     "cross-env": "^10.1.0",
     "electron": "^43.1.0",
     "electron-builder": "^26.15.3",
-    "electron-store": "^11.0.2",
     "eslint": "^9",
     "eslint-config-next": "^15.5.20",
     "tailwindcss": "^4",

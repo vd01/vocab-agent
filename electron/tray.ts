@@ -7,6 +7,15 @@ import { stopServer } from './server';
 let tray: Tray | null = null;
 
 function createTrayIcon(): Electron.NativeImage {
+  const iconPath = path.resolve(__dirname, '..', 'public', 'icon.png');
+  try {
+    const icon = nativeImage.createFromPath(iconPath);
+    if (!icon.isEmpty()) {
+      return icon.resize({ width: 16, height: 16 });
+    }
+  } catch {
+    // fallback to generated icon
+  }
   const size = 16;
   const canvas = Buffer.alloc(size * size * 4);
   for (let y = 0; y < size; y++) {

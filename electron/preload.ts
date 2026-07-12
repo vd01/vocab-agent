@@ -8,11 +8,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
   saveRemotePassword: (password: string) => ipcRenderer.invoke('remote:save-password', password),
   clearRemotePassword: () => ipcRenderer.invoke('remote:clear-password'),
   registerShortcut: (shortcut: string) => ipcRenderer.invoke('shortcut:register', shortcut),
+  restartServer: () => ipcRenderer.invoke('env:restart-server'),
   onServerStatus: (callback: (status: string) => void) => {
     ipcRenderer.on('server:status', (_e, status) => callback(status));
   },
   onNotificationClick: (callback: () => void) => {
     ipcRenderer.on('notification:click', () => callback());
+  },
+  onModeSwitchError: (callback: (msg: string) => void) => {
+    ipcRenderer.on('mode:switch-error', (_e, msg) => callback(msg));
   },
   isElectron: true,
 });

@@ -1,51 +1,99 @@
-import { app, BrowserWindow, ipcMain, dialog } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, net } from 'electron';
 import { createMainWindow, showMainWindow, toggleMainWindow, destroyMainWindow } from './windows';
-import { startServer, stopServer } from './server';
+import { startServer, stopServer, forceKillServer, killStaleServer } from './server';
 import { createTray, rebuildTrayMenu } from './tray';
 import { registerGlobalShortcut, unregisterGlobalShortcut, updateShortcut } from './shortcut';
 import { startReminder, stopReminder } from './notification';
 import { autoLogin, performRemoteLogin } from './auto-login';
 import { getConfig, setConfig, setRemotePassword, clearRemotePassword, decryptRemotePassword } from './store';
+import path from 'path';
 
 const isDev = process.env.ELECTRON_DEV === '1';
+const isPreview = process.env.ELECTRON_PREVIEW === '1';
 
 let currentUrl: string | null = null;
+let isQuitting = false;
 
-app.requestSingleInstanceLock();
-app.on('second-instance', () => {
-  showMainWindow();
-});
+const gotLock = app.requestSingleInstanceLock();
+if (!gotLock) {
+  forceKillServer();
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    showMainWindow();
+  });
+}
 
 app.on('window-all-closed', () => {
-  // prevent default — we manage close behavior in windows.ts
 });
 
+process.on('SIGINT', () => {
+  if (isQuitting) return;
+  isQuitting = true;
+  forceKillServer();
+  app.quit();
+  process.exit(0);
+});
+
+process.on('SIGTERM', () => {
+  if (isQuitting) return;
+  isQuitting = true;
+  forceKillServer();
+  app.quit();
+  process.exit(0);
+});
+
+async function checkRemoteAvailable(url: string, timeout = 10000): Promise<boolean> {
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeout);
+    const res = await fetch(url, { method: 'GET', signal: controller.signal });
+    clearTimeout(timer);
+    return res.ok || res.status === 302 || res.status === 307;
+  } catch {
+    return false;
+  }
+}
+
+function getErrorPageUrl(remoteUrl: string): string {
+  return `file://${path.join(__dirname, 'error-page.html').replace(/\\/g, '/')}?url=${encodeURIComponent(remoteUrl)}`;
+}
+
 app.whenReady().then(async () => {
+  killStaleServer();
+
   const config = getConfig();
 
-  if (config.mode === 'local') {
+  if (config.mode === 'remote' && !config.remote.url) {
+    console.warn('[Main] Remote mode with empty URL, falling back to local mode');
+    setConfig({ mode: 'local' });
+  }
+
+  const effectiveConfig = getConfig();
+
+  if (effectiveConfig.mode === 'local') {
     try {
-      const port = await startServer(isDev);
+      const port = await startServer(isDev, isPreview);
       currentUrl = `http://localhost:${port}`;
     } catch (err) {
-      dialog.showErrorBox('启动失败', `本地服务启动失败: ${err}`);
+      dialog.showErrorBox('启动失败', `本地服务启动失败: ${err}\n\n请确认已安装 Node.js 20+`);
       app.quit();
       return;
     }
   } else {
-    if (!config.remote.url) {
-      dialog.showErrorBox('配置错误', '云端模式未设置远程地址，请切换到本地模式或设置远程 URL');
-      app.quit();
-      return;
-    }
-    currentUrl = config.remote.url.replace(/\/$/, '');
+    currentUrl = effectiveConfig.remote.url.replace(/\/$/, '');
   }
 
   const win = createMainWindow(currentUrl);
 
-  if (config.mode === 'remote') {
-    await autoLogin(win);
-    win.loadURL(currentUrl);
+  if (effectiveConfig.mode === 'remote') {
+    const available = await checkRemoteAvailable(currentUrl);
+    if (!available) {
+      win.loadURL(getErrorPageUrl(currentUrl));
+    } else {
+      await autoLogin(win);
+      win.loadURL(currentUrl);
+    }
   }
 
   createTray();
@@ -55,14 +103,16 @@ app.whenReady().then(async () => {
   setupIpcHandlers();
 });
 
-app.on('before-quit', async () => {
+app.on('before-quit', () => {
+  if (isQuitting) return;
+  isQuitting = true;
   unregisterGlobalShortcut();
   stopReminder();
-  await stopServer();
+  forceKillServer();
 });
 
 app.on('will-quit', () => {
-  unregisterGlobalShortcut();
+  forceKillServer();
 });
 
 function setupIpcHandlers(): void {
@@ -84,28 +134,40 @@ function setupIpcHandlers(): void {
     const config = getConfig();
     if (config.mode === mode) return;
 
-    setConfig({ mode });
-
     const win = BrowserWindow.getAllWindows()[0];
     if (!win) return;
 
-    if (mode === 'local') {
+    if (mode === 'remote') {
+      if (!config.remote.url) {
+        win.webContents.send('mode:switch-error', '请先设置云端地址');
+        return;
+      }
+      const url = config.remote.url.replace(/\/$/, '');
+      const available = await checkRemoteAvailable(url);
+      if (!available) {
+        setConfig({ mode: 'remote' });
+        currentUrl = url;
+        win.loadURL(getErrorPageUrl(url));
+        rebuildTrayMenu();
+        return;
+      }
+      await stopServer();
+      setConfig({ mode: 'remote' });
+      currentUrl = url;
+      await autoLogin(win);
+      win.loadURL(currentUrl);
+    } else {
       try {
-        const port = await startServer(isDev);
+        const port = await startServer(isDev, isPreview);
+        setConfig({ mode: 'local' });
         currentUrl = `http://localhost:${port}`;
+        win.loadURL(currentUrl);
       } catch (err) {
         win.webContents.send('server:status', 'error');
         return;
       }
-    } else {
-      await stopServer();
-      const newConfig = getConfig();
-      if (!newConfig.remote.url) return;
-      currentUrl = newConfig.remote.url.replace(/\/$/, '');
-      await autoLogin(win);
     }
 
-    win.loadURL(currentUrl);
     rebuildTrayMenu();
   });
 
@@ -123,5 +185,19 @@ function setupIpcHandlers(): void {
 
   ipcMain.handle('shortcut:register', (_e, shortcut: string) => {
     return updateShortcut(shortcut);
+  });
+
+  ipcMain.handle('env:restart-server', async () => {
+    if (getConfig().mode !== 'local') return;
+    const win = BrowserWindow.getAllWindows()[0];
+    if (!win) return;
+    try {
+      await stopServer();
+      const port = await startServer(isDev, isPreview);
+      currentUrl = `http://localhost:${port}`;
+      win.loadURL(currentUrl);
+    } catch (err) {
+      win.webContents.send('server:status', 'error');
+    }
   });
 }

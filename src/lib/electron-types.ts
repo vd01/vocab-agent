@@ -1,3 +1,11 @@
+export interface EnvConfig {
+  openaiApiKey: string;
+  openaiBaseUrl: string;
+  teacherModel: string;
+  developerModel: string;
+  authPassword: string;
+}
+
 export interface ElectronAPI {
   getConfig: () => Promise<AppConfig>;
   setConfig: (config: Partial<AppConfig>) => Promise<AppConfig>;
@@ -6,8 +14,10 @@ export interface ElectronAPI {
   saveRemotePassword: (password: string) => Promise<void>;
   clearRemotePassword: () => Promise<void>;
   registerShortcut: (shortcut: string) => Promise<boolean>;
+  restartServer: () => Promise<void>;
   onServerStatus: (callback: (status: string) => void) => void;
   onNotificationClick: (callback: () => void) => void;
+  onModeSwitchError: (callback: (msg: string) => void) => void;
   isElectron: boolean;
 }
 
@@ -17,6 +27,7 @@ export interface AppConfig {
   remote: { url: string; encryptedPassword?: string };
   window: { shortcut: string; closeToTray: boolean };
   notification: { reviewReminder: boolean; reminderInterval: number };
+  env: EnvConfig;
 }
 
 declare global {

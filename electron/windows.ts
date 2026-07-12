@@ -1,7 +1,16 @@
-import { BrowserWindow, shell } from 'electron';
+import { BrowserWindow, shell, nativeImage, Menu } from 'electron';
 import path from 'path';
 
 let mainWindow: BrowserWindow | null = null;
+
+function getAppIcon() {
+  const iconPath = path.resolve(__dirname, '..', 'public', 'icon.png');
+  try {
+    const icon = nativeImage.createFromPath(iconPath);
+    if (!icon.isEmpty()) return icon;
+  } catch {}
+  return undefined;
+}
 
 export function createMainWindow(url: string): BrowserWindow {
   mainWindow = new BrowserWindow({
@@ -10,6 +19,7 @@ export function createMainWindow(url: string): BrowserWindow {
     minWidth: 800,
     minHeight: 600,
     show: false,
+    icon: getAppIcon(),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -18,6 +28,8 @@ export function createMainWindow(url: string): BrowserWindow {
   });
 
   mainWindow.loadURL(url);
+
+  Menu.setApplicationMenu(null);
 
   mainWindow.once('ready-to-show', () => {
     mainWindow?.show();
