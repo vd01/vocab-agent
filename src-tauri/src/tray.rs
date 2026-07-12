@@ -7,7 +7,6 @@ use tauri::{
 };
 
 static LAST_TOGGLE: AtomicBool = AtomicBool::new(false);
-const SETUP_HTML: &str = include_str!("../../desktop-dist/index.html");
 
 pub fn setup_tray<R: Runtime>(app: &App<R>) -> Result<(), Box<dyn std::error::Error>> {
     let show_item = MenuItem::with_id(app, "show", "显示/隐藏", true, None::<&str>)?;
@@ -49,12 +48,11 @@ pub fn setup_tray<R: Runtime>(app: &App<R>) -> Result<(), Box<dyn std::error::Er
             "settings" => {
                 if let Some(win) = app_handle.get_webview_window("main") {
                     let cfg = app_handle.state::<crate::store::AppStore>().get();
-                    let url_val = cfg.server_url.replace('\\', "\\\\").replace('\'', "\\'");
-                    let html_json = serde_json::to_string(SETUP_HTML).unwrap_or_default();
-                    let _ = win.eval(&format!(
-                        "document.open(); document.write(JSON.parse({})); document.close(); if(document.getElementById('urlInput')){{ document.getElementById('urlInput').value = '{}'; }}",
-                        html_json, url_val
-                    ));
+                    if !cfg.server_url.is_empty() {
+                        let base = cfg.server_url.trim_end_matches('/');
+                        let _ = win.eval("if(!window.electronAPI){window.electronAPI={isElectron:true,getConfig:()=>window.__tauri_config_get__(),setConfig:(p)=>window.__tauri_config_set__(p),saveRemotePassword:(pw)=>window.__tauri_password_save__(pw),clearRemotePassword:()=>window.__tauri_password_clear__(),registerShortcut:()=>Promise.resolve(true),onServerStatus:()=>{},onNotificationClick:()=>{},onModeSwitchError:()=>{},switchMode:()=>Promise.resolve(),restartServer:()=>Promise.resolve()};window.__tauri_config_get__=async()=>{const{invoke}=window.__TAURI_INTERNALS__;const c=await invoke('config_get');return{mode:'remote',local:{port:3088},remote:{url:c.server_url,encryptedPassword:c.has_password?'x':undefined},window:{shortcut:c.shortcut,closeToTray:c.close_to_tray},notification:{reviewReminder:c.review_reminder,reminderInterval:c.reminder_interval},env:{openaiApiKey:'',openaiBaseUrl:'',teacherModel:'',developerModel:'',authPassword:''}};};window.__tauri_config_set__=async(p)=>{const{invoke}=window.__TAURI_INTERNALS__;const r=await invoke('config_set',{partial:{server_url:p.remote?.url??'',shortcut:p.window?.shortcut??'',close_to_tray:p.window?.closeToTray??true,review_reminder:p.notification?.reviewReminder??true,reminder_interval:p.notification?.reminderInterval??30}});const c=await invoke('config_get');return{mode:'remote',local:{port:3088},remote:{url:c.server_url,encryptedPassword:c.has_password?'x':undefined},window:{shortcut:c.shortcut,closeToTray:c.close_to_tray},notification:{reviewReminder:c.review_reminder,reminderInterval:c.reminder_interval},env:{openaiApiKey:'',openaiBaseUrl:'',teacherModel:'',developerModel:'',authPassword:''}};};window.__tauri_password_save__=async(pw)=>{const{invoke}=window.__TAURI_INTERNALS__;await invoke('password_save',{password:pw});};window.__tauri_password_clear__=async()=>{const{invoke}=window.__TAURI_INTERNALS__;await invoke('password_clear');};}");
+                        let _ = win.eval(&format!("window.location.href = '{}/settings'", base));
+                    }
                     let _ = win.show();
                     let _ = win.set_focus();
                 }

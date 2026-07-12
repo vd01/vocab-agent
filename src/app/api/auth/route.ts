@@ -30,8 +30,16 @@ export async function POST(req: NextRequest) {
     const expectedPassword = process.env.AUTH_PASSWORD;
 
     if (!expectedPassword) {
-      console.error('[Auth] AUTH_PASSWORD 环境变量未设置，拒绝所有登录');
-      return NextResponse.json({ error: '服务配置错误' }, { status: 500 });
+      const token = await generateToken(password || 'no-password');
+      const response = NextResponse.json({ success: true });
+      response.cookies.set(COOKIE_NAME, token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        maxAge: COOKIE_MAX_AGE,
+        path: '/',
+      });
+      return response;
     }
 
     if (password !== expectedPassword) {

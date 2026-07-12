@@ -18,11 +18,11 @@ async function generateToken(password: string): Promise<string> {
  * 验证请求中的认证 cookie
  */
 async function isAuthenticated(req: NextRequest): Promise<boolean> {
+  const password = process.env.AUTH_PASSWORD;
+  if (!password) return true;
+
   const token = req.cookies.get(COOKIE_NAME)?.value;
   if (!token) return false;
-
-  const password = process.env.AUTH_PASSWORD;
-  if (!password) return false;
 
   return token === await generateToken(password);
 }
