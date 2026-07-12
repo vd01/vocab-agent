@@ -54,7 +54,7 @@ pub fn setup_tray<R: Runtime>(app: &App<R>) -> Result<(), Box<dyn std::error::Er
                 if let Some(win) = app_handle.get_webview_window("main") {
                     let html_b64 = setup_html_b64();
                     let _ = win.eval(&format!(
-                        "(function(){{var h=atob('{}');document.open();document.write(h);document.close();}})();",
+                        "(function(){{var b=atob('{}');var u=new Uint8Array(b.length);for(var i=0;i<b.length;i++)u[i]=b.charCodeAt(i);var h=new TextDecoder('utf-8').decode(u);document.open();document.write(h);document.close();}})();",
                         html_b64
                     ));
                     let _ = win.show();
