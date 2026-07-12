@@ -20,6 +20,7 @@ export const fsrsReviewTool = tool({
         phonetic: w.phonetic,
         definition: w.definition,
         examples: w.examples,
+        pinned: w.pinned,
       })),
     };
   },

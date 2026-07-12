@@ -75,11 +75,13 @@ import { reviewHandler } from './handlers/review';
 import { addHandler } from './handlers/add';
 import { statsHandler } from './handlers/stats';
 import { rateHandler } from './handlers/rate';
+import { pinHandler } from './handlers/pin';
 
 registerBuiltin(reviewHandler);
 registerBuiltin(addHandler);
 registerBuiltin(statsHandler);
 registerBuiltin(rateHandler);
+registerBuiltin(pinHandler);
 
 // ── Dynamic command sandbox ──────────────────────────────────────────────
 

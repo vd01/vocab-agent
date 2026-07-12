@@ -140,6 +140,17 @@ async function migrate() {
     CREATE INDEX IF NOT EXISTS idx_pinned_words_side ON pinned_words(side);
   `);
 
+  // Add archived_at column to existing pinned_words table
+  try {
+    const cols = await client.execute(`PRAGMA table_info(pinned_words)`);
+    const hasArchivedAt = cols.rows.some((r: any) => r.name === 'archived_at');
+    if (!hasArchivedAt) {
+      await client.execute(`ALTER TABLE pinned_words ADD COLUMN archived_at INTEGER`);
+    }
+  } catch {
+    // Table might not exist yet, that's fine
+  }
+
   console.log('Migrations complete!');
   process.exit(0);
 }

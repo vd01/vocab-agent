@@ -80,6 +80,7 @@ export const pinnedWords = sqliteTable('pinned_words', {
   side: text('side').notNull(),                   // "left" | "right" — 放在哪一侧
   richContent: text('rich_content'),              // JSON — AI 生成的丰富内容
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+  archivedAt: integer('archived_at', { mode: 'timestamp' }),  // 归档时间，null=未归档
 });
 
 // Developer Agent 经验教训

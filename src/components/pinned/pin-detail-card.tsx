@@ -3,12 +3,16 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
   DialogDescription,
+  DialogFooter,
+  DialogClose,
 } from '@/components/ui/dialog';
 
 interface RichContent {
@@ -28,15 +32,28 @@ interface PinDetailCardProps {
     word: string;
     phonetic: string | null;
     definition: string | null;
+    createdAt: string;
+    archivedAt: string | null;
   };
   onUnpin: (pinId: string) => void;
+  onArchive?: (pinId: string) => void;
+  onUnarchive?: (pinId: string) => void;
+  isArchived?: boolean;
 }
 
-export function PinDetailCard({ pin, onUnpin }: PinDetailCardProps) {
+function formatTimestamp(ts: string | number | null): string {
+  if (!ts) return '';
+  const d = new Date(typeof ts === 'number' ? ts * 1000 : ts);
+  if (isNaN(d.getTime())) return '';
+  return d.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' }) + ' ' + d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+}
+
+export function PinDetailCard({ pin, onUnpin, onArchive, onUnarchive, isArchived = false }: PinDetailCardProps) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [richContent, setRichContent] = useState<RichContent | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [confirmUnpinOpen, setConfirmUnpinOpen] = useState(false);
 
   const fetchDetail = useCallback(async () => {
     if (richContent) return;
@@ -46,6 +63,9 @@ export function PinDetailCard({ pin, onUnpin }: PinDetailCardProps) {
       const res = await fetch(`/api/pins/${pin.id}/detail`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
+      if (data.cached) {
+        setLoading(false);
+      }
       setRichContent(data.richContent);
     } catch (err) {
       setError(err instanceof Error ? err.message : '加载失败');
@@ -57,6 +77,12 @@ export function PinDetailCard({ pin, onUnpin }: PinDetailCardProps) {
   useEffect(() => {
     if (dialogOpen) fetchDetail();
   }, [dialogOpen, fetchDetail]);
+
+  const handleUnpin = useCallback(() => {
+    setConfirmUnpinOpen(false);
+    setDialogOpen(false);
+    onUnpin(pin.id);
+  }, [pin.id, onUnpin]);
 
   let parsedDefinition: string | null = null;
   if (pin.definition) {
@@ -73,7 +99,7 @@ export function PinDetailCard({ pin, onUnpin }: PinDetailCardProps) {
 
   return (
     <>
-      <Card className="group relative">
+      <Card className={cn('group relative', isArchived && 'opacity-60')}>
         <CardContent className="p-3">
           <div
             className="cursor-pointer"
@@ -94,16 +120,63 @@ export function PinDetailCard({ pin, onUnpin }: PinDetailCardProps) {
                     {parsedDefinition}
                   </p>
                 )}
+                {isArchived && (
+                  <div className="mt-1 space-y-0.5">
+                    {pin.createdAt && (
+                      <p className="text-[10px] text-muted-foreground/70">置顶: {formatTimestamp(pin.createdAt)}</p>
+                    )}
+                    {pin.archivedAt && (
+                      <p className="text-[10px] text-muted-foreground/70">归档: {formatTimestamp(pin.archivedAt)}</p>
+                    )}
+                  </div>
+                )}
               </div>
-              <button
-                onClick={(e) => { e.stopPropagation(); onUnpin(pin.id); }}
-                className="opacity-0 group-hover:opacity-100 transition-opacity shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                title="取消置顶"
-              >
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-                </svg>
-              </button>
+              <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                {isArchived ? (
+                  <>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); onUnarchive?.(pin.id); }}
+                      className="w-5 h-5 rounded-full flex items-center justify-center text-muted-foreground hover:text-green-600 hover:bg-green-500/10"
+                      title="恢复置顶"
+                    >
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+                        <path d="M3 3v5h5" />
+                      </svg>
+                    </button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setConfirmUnpinOpen(true); }}
+                      className="w-5 h-5 rounded-full flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                      title="删除"
+                    >
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                      </svg>
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); onArchive?.(pin.id); }}
+                      className="w-5 h-5 rounded-full flex items-center justify-center text-muted-foreground hover:text-amber-600 hover:bg-amber-500/10"
+                      title="归档"
+                    >
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M21 8v13H3V8" /><path d="M1 3h22v5H1z" /><path d="M10 12h4" />
+                      </svg>
+                    </button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setConfirmUnpinOpen(true); }}
+                      className="w-5 h-5 rounded-full flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                      title="取消置顶"
+                    >
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                      </svg>
+                    </button>
+                  </>
+                )}
+              </div>
             </div>
           </div>
         </CardContent>
@@ -188,6 +261,31 @@ export function PinDetailCard({ pin, onUnpin }: PinDetailCardProps) {
               )}
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={confirmUnpinOpen} onOpenChange={setConfirmUnpinOpen}>
+        <DialogContent showCloseButton={false}>
+          <DialogHeader>
+            <DialogTitle>{isArchived ? '删除归档' : '取消置顶'}</DialogTitle>
+            <DialogDescription>
+              {isArchived
+                ? `确定要删除归档的「${pin.word}」吗？此操作不可恢复。`
+                : `确定要取消置顶「${pin.word}」吗？`}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <DialogClose render={<Button variant="outline" size="sm" />}>
+              取消
+            </DialogClose>
+            <Button
+              size="sm"
+              variant="destructive"
+              onClick={handleUnpin}
+            >
+              {isArchived ? '确认删除' : '确认取消置顶'}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </>

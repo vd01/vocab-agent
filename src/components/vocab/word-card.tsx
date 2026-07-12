@@ -10,17 +10,14 @@ interface WordCardProps {
   phonetic: string | null;
   definition: string;
   examples: string | null;
-  /** Controlled flip state — when provided, card uses this instead of internal state */
   flipped?: boolean;
-  /** Callback when card is clicked/tapped */
   onFlip?: () => void;
-  /** Fixed height for the card (e.g. "280px") — content scrolls if overflow */
   fixedHeight?: string;
-  /** Fixed width for the card (e.g. "400px") */
   fixedWidth?: string;
+  topRightSlot?: React.ReactNode;
 }
 
-export function WordCard({ wordId, word, phonetic, definition, examples, flipped: controlledFlipped, onFlip, fixedHeight, fixedWidth }: WordCardProps) {
+export function WordCard({ wordId, word, phonetic, definition, examples, flipped: controlledFlipped, onFlip, fixedHeight, fixedWidth, topRightSlot }: WordCardProps) {
   const [internalFlipped, setInternalFlipped] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
 
@@ -64,10 +61,15 @@ export function WordCard({ wordId, word, phonetic, definition, examples, flipped
     <div
       ref={cardRef}
       tabIndex={0}
-      className="cursor-pointer select-none focus:outline-none"
+      className="cursor-pointer select-none focus:outline-none relative"
       onClick={handleFlip}
       style={{ perspective: '600px', ...(fixedWidth ? { width: fixedWidth } : {}) }}
     >
+      {topRightSlot && (
+        <div className="absolute top-2 right-2 z-10" onClick={(e) => e.stopPropagation()}>
+          {topRightSlot}
+        </div>
+      )}
       {/*
         Grid stacking: both faces occupy the same grid cell.
         When fixedHeight is set, both faces use that exact height.

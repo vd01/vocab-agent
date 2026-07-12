@@ -15,6 +15,7 @@ interface Pin {
   position: number;
   side: 'left' | 'right';
   createdAt: string;
+  archivedAt: string | null;
 }
 
 interface PinnedSidebarProps {
@@ -24,16 +25,27 @@ interface PinnedSidebarProps {
 
 export function PinnedSidebar({ side, refreshKey = 0 }: PinnedSidebarProps) {
   const [pins, setPins] = useState<Pin[]>([]);
+  const [archivedPins, setArchivedPins] = useState<Pin[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showArchived, setShowArchived] = useState(false);
 
   const fetchPins = useCallback(async () => {
     try {
-      const res = await fetch('/api/pins');
-      if (!res.ok) return;
-      const data = await res.json();
-      const sidePins = (data.pins || []).filter((p: Pin) => p.side === side);
-      sidePins.sort((a: Pin, b: Pin) => a.position - b.position);
-      setPins(sidePins);
+      const [activeRes, archivedRes] = await Promise.all([
+        fetch('/api/pins?archived=false'),
+        fetch('/api/pins?archived=true'),
+      ]);
+      if (activeRes.ok) {
+        const data = await activeRes.json();
+        const sidePins = (data.pins || []).filter((p: Pin) => p.side === side);
+        sidePins.sort((a: Pin, b: Pin) => a.position - b.position);
+        setPins(sidePins);
+      }
+      if (archivedRes.ok) {
+        const data = await archivedRes.json();
+        const sideArchived = (data.pins || []).filter((p: Pin) => p.side === side);
+        setArchivedPins(sideArchived);
+      }
     } catch {
       // silently fail
     } finally {
@@ -50,12 +62,48 @@ export function PinnedSidebar({ side, refreshKey = 0 }: PinnedSidebarProps) {
       const res = await fetch(`/api/pins?id=${pinId}`, { method: 'DELETE' });
       if (res.ok) {
         setPins(prev => prev.filter(p => p.id !== pinId));
+        setArchivedPins(prev => prev.filter(p => p.id !== pinId));
         notifyPinChange();
       }
     } catch {
       // silently fail
     }
   }, []);
+
+  const handleArchive = useCallback(async (pinId: string) => {
+    try {
+      const res = await fetch('/api/pins', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: pinId, action: 'archive' }),
+      });
+      if (res.ok) {
+        await fetchPins();
+        notifyPinChange();
+      }
+    } catch {
+      // silently fail
+    }
+  }, [fetchPins]);
+
+  const handleUnarchive = useCallback(async (pinId: string) => {
+    try {
+      const res = await fetch('/api/pins', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: pinId, action: 'unarchive' }),
+      });
+      if (res.ok) {
+        await fetchPins();
+        notifyPinChange();
+      } else {
+        const data = await res.json();
+        alert(data.error || '恢复失败');
+      }
+    } catch {
+      // silently fail
+    }
+  }, [fetchPins]);
 
   return (
     <div className={cn('hidden xl:flex w-[220px] shrink-0 flex-col border-border', side === 'left' ? 'border-r' : 'border-l')}>
@@ -69,7 +117,7 @@ export function PinnedSidebar({ side, refreshKey = 0 }: PinnedSidebarProps) {
       </div>
       <ScrollArea className="flex-1">
         <div className="p-2 space-y-2">
-          {pins.length === 0 && (
+          {pins.length === 0 && !showArchived && (
             <div className="text-xs text-muted-foreground text-center py-8 leading-relaxed">
               暂无置顶单词
               <br />
@@ -81,8 +129,46 @@ export function PinnedSidebar({ side, refreshKey = 0 }: PinnedSidebarProps) {
               key={pin.id}
               pin={pin}
               onUnpin={handleUnpin}
+              onArchive={handleArchive}
             />
           ))}
+
+          {archivedPins.length > 0 && (
+            <div className="pt-2">
+              <button
+                onClick={() => setShowArchived(s => !s)}
+                className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors w-full"
+              >
+                <svg
+                  width="10"
+                  height="10"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className={cn('transition-transform', showArchived && 'rotate-90')}
+                >
+                  <path d="M9 18l6-6-6-6" />
+                </svg>
+                已归档 ({archivedPins.length})
+              </button>
+              {showArchived && (
+                <div className="mt-2 space-y-2">
+                  {archivedPins.map(pin => (
+                    <PinDetailCard
+                      key={pin.id}
+                      pin={pin}
+                      onUnpin={handleUnpin}
+                      onUnarchive={handleUnarchive}
+                      isArchived
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </ScrollArea>
     </div>

@@ -123,6 +123,7 @@ export function MessageList({ messages, isLoading, hasMore, loadingMore, onLoadM
             <div className="flex flex-wrap gap-2 justify-center text-sm">
               <span className="px-4 py-2 bg-muted rounded-xl text-foreground/80 hover:bg-muted/80 transition-colors cursor-default">/review 复习</span>
               <span className="px-4 py-2 bg-muted rounded-xl text-foreground/80 hover:bg-muted/80 transition-colors cursor-default">/add 添加单词</span>
+              <span className="px-4 py-2 bg-muted rounded-xl text-foreground/80 hover:bg-muted/80 transition-colors cursor-default">/pin 置顶单词</span>
               <span className="px-4 py-2 bg-muted rounded-xl text-foreground/80 hover:bg-muted/80 transition-colors cursor-default">/stats 统计</span>
             </div>
           </div>

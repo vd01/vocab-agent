@@ -436,11 +436,8 @@ function renderToolOutput(key: number, toolName: string, output: any, isLastRevi
   if (output.type === 'added') {
     return (
       <div key={key} className="mt-2 space-y-2">
-        <div className="flex items-center justify-between">
-          <div className="text-xs text-green-600">
-            {output.message}
-          </div>
-          <PinButton wordId={output.wordId} word={output.word} />
+        <div className="text-xs text-green-600">
+          {output.message}
         </div>
         <WordCard
           wordId={output.wordId}
@@ -448,6 +445,7 @@ function renderToolOutput(key: number, toolName: string, output: any, isLastRevi
           phonetic={output.phonetic}
           definition={output.definition}
           examples={output.examples ? (typeof output.examples === 'string' ? output.examples : JSON.stringify(output.examples)) : null}
+          topRightSlot={<PinButton wordId={output.wordId} word={output.word} />}
         />
       </div>
     );
@@ -464,15 +462,13 @@ function renderToolOutput(key: number, toolName: string, output: any, isLastRevi
   if (output.type === 'found') {
     return (
       <div key={key} className="mt-2">
-        <div className="flex justify-end mb-1">
-          <PinButton wordId={output.wordId} word={output.word} />
-        </div>
         <WordCard
           wordId={output.wordId}
           word={output.word}
           phonetic={output.phonetic}
           definition={output.definition}
           examples={output.examples}
+          topRightSlot={<PinButton wordId={output.wordId} word={output.word} />}
         />
       </div>
     );
@@ -583,12 +579,24 @@ function renderToolOutput(key: number, toolName: string, output: any, isLastRevi
 
   if (output.type === 'pinned') {
     return (
-      <div key={key} className="mt-2 text-xs text-primary flex items-center gap-1.5">
-        <PinChangeNotifier />
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none">
-          <path d="M16 12V4h1V2H7v2h1v8l-2 2v2h5.2v6h1.6v-6H18v-2l-2-2z" />
-        </svg>
-        {output.message}
+      <div key={key} className="mt-2 space-y-2">
+        <div className="text-xs text-primary flex items-center gap-1.5">
+          <PinChangeNotifier />
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+            <path d="M16 12V4h1V2H7v2h1v8l-2 2v2h5.2v6h1.6v-6H18v-2l-2-2z" />
+          </svg>
+          {output.message}
+        </div>
+        {output.wordId && output.definition && (
+          <WordCard
+            wordId={output.wordId}
+            word={output.word}
+            phonetic={output.phonetic || null}
+            definition={output.definition}
+            examples={null}
+            topRightSlot={<PinButton wordId={output.wordId} word={output.word} />}
+          />
+        )}
       </div>
     );
   }
@@ -605,6 +613,14 @@ function renderToolOutput(key: number, toolName: string, output: any, isLastRevi
     return (
       <div key={key} className="mt-2 text-xs text-muted-foreground">
         <PinChangeNotifier />
+        {output.message}
+      </div>
+    );
+  }
+
+  if (output.type === 'pin-full') {
+    return (
+      <div key={key} className="mt-2 text-xs text-yellow-600">
         {output.message}
       </div>
     );

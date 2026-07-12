@@ -30,6 +30,7 @@ export const reviewHandler: CommandHandler = {
         phonetic: w.phonetic,
         definition: w.definition,
         examples: w.examples,
+        pinned: w.pinned,
       })),
     };
   },

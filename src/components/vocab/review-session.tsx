@@ -3,7 +3,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { WordCard } from '@/components/vocab/word-card';
 import { FsrsButtons } from '@/components/vocab/fsrs-buttons';
-import { PinButton } from '@/components/pinned/pin-button';
+import { PinButton, PinButtonRef } from '@/components/pinned/pin-button';
 
 interface ReviewWord {
   wordId: string;
@@ -11,6 +11,7 @@ interface ReviewWord {
   phonetic: string | null;
   definition: string;
   examples: string | null;
+  pinned: boolean;
 }
 
 interface RateResult {
@@ -41,6 +42,8 @@ export function ReviewSession({ words }: ReviewSessionProps) {
   const [phase, setPhase] = useState<'reviewing' | 'completed'>('reviewing');
   const [rating, setRating] = useState<number | null>(null);
   const [flipped, setFlipped] = useState(false);
+  const [flipDone, setFlipDone] = useState(false);
+  const pinButtonRef = useRef<PinButtonRef>(null);
 
   // Each instance gets a unique id; only the latest one handles keys
   // Use mountedRef to ensure ++activeSessionId runs exactly once per instance
@@ -56,12 +59,23 @@ export function ReviewSession({ words }: ReviewSessionProps) {
   ratingRef.current = rating;
   const flippedRef = useRef(flipped);
   flippedRef.current = flipped;
+  const flipDoneRef = useRef(flipDone);
+  flipDoneRef.current = flipDone;
   const currentIndexRef = useRef(currentIndex);
   currentIndexRef.current = currentIndex;
   const phaseRef = useRef(phase);
   phaseRef.current = phase;
   const wordsRef = useRef(words);
   wordsRef.current = words;
+
+  useEffect(() => {
+    if (flipped) {
+      const timer = setTimeout(() => setFlipDone(true), 300);
+      return () => clearTimeout(timer);
+    } else {
+      setFlipDone(false);
+    }
+  }, [flipped]);
 
   const handleRate = useCallback(async (wordId: string, ratingValue: number) => {
     // Note: caller is responsible for preventing double-rate (via ratingRef sync)
@@ -145,6 +159,14 @@ export function ReviewSession({ words }: ReviewSessionProps) {
           }
         }
       }
+
+      // T → toggle pin (only after card is flipped and animation done)
+      if (e.key.toLowerCase() === 't') {
+        e.preventDefault();
+        if (flipDoneRef.current && ratingRef.current === null) {
+          pinButtonRef.current?.toggle();
+        }
+      }
     }
 
     window.addEventListener('keydown', handleKeyDown);
@@ -185,7 +207,7 @@ export function ReviewSession({ words }: ReviewSessionProps) {
 
   return (
     <div className="space-y-2">
-      <div className="flex items-center justify-between text-xs text-muted-foreground">
+      <div className="flex items-center justify-between text-xs text-muted-foreground h-4">
         <span>{currentIndex + 1} / {words.length}</span>
         {rating && (
           <span className={
@@ -213,32 +235,33 @@ export function ReviewSession({ words }: ReviewSessionProps) {
           fixedHeight="280px"
           fixedWidth="400px"
         />
-        {flipped && (
-          <div className="absolute top-2 right-2 z-10">
-            <PinButton wordId={currentWord.wordId} word={currentWord.word} />
-          </div>
-        )}
+        <div className={`absolute top-2 right-2 z-10 transition-opacity duration-200 ${flipDone ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}>
+          <PinButton ref={pinButtonRef} key={currentWord.wordId} wordId={currentWord.wordId} word={currentWord.word} initialPinned={currentWord.pinned} />
+        </div>
       </div>
       <FsrsButtons
         wordId={currentWord.wordId}
         onRate={(wordId, ratingValue) => {
-          if (ratingRef.current !== null) return; // prevent double-rate from button clicks
-          ratingRef.current = ratingValue; // Sync ref immediately
+          if (ratingRef.current !== null) return;
+          ratingRef.current = ratingValue;
           setRating(ratingValue);
           handleRate(wordId, ratingValue);
         }}
         pendingRating={rating}
+        disabled={!flipped}
       />
-      {!flipped && (
-        <p className="text-xs text-muted-foreground text-center">
-          按空格键翻转卡片，翻转后按 A/S/D/F 评分
-        </p>
-      )}
-      {flipped && rating === null && (
-        <p className="text-xs text-muted-foreground text-center">
-          按 A(Again) S(Hard) D(Good) F(Easy) 评分
-        </p>
-      )}
+      <div className="h-4">
+        {!flipped && (
+          <p className="text-xs text-muted-foreground text-center">
+            按空格键翻转卡片，翻转后按 A/S/D/F 评分
+          </p>
+        )}
+        {flipped && rating === null && (
+          <p className="text-xs text-muted-foreground text-center">
+            按 A/S/D/F 评分，T 置顶
+          </p>
+        )}
+      </div>
     </div>
   );
 }

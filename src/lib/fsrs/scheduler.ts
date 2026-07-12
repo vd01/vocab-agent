@@ -10,7 +10,7 @@ import {
   type Grade,
 } from 'ts-fsrs';
 import { db, client } from '@/lib/db';
-import { reviews, words } from '@/lib/db/schema';
+import { reviews, words, pinnedWords } from '@/lib/db/schema';
 import { eq, and, lte, desc, sql, gt } from 'drizzle-orm';
 import { v4 as uuid } from 'uuid';
 
@@ -40,6 +40,7 @@ export interface DueWord {
   phonetic: string | null;
   definition: string;
   examples: string | null;
+  pinned: boolean;
   card: Card;
 }
 
@@ -70,7 +71,8 @@ export async function getDueWords(limit = 20): Promise<DueWord[]> {
         r.id, r.word_id, r.state, r.due, r.stability, r.difficulty,
         r.elapsed_days, r.scheduled_days, r.reps, r.lapses,
         w.id as w_id, w.word as w_word, w.phonetic as w_phonetic,
-        w.definition as w_definition, w.examples as w_examples
+        w.definition as w_definition, w.examples as w_examples,
+        CASE WHEN pw.id IS NOT NULL THEN 1 ELSE 0 END as w_pinned
       FROM reviews r
       INNER JOIN (
         SELECT word_id, max(reviewed_at) as max_reviewed_at
@@ -78,6 +80,7 @@ export async function getDueWords(limit = 20): Promise<DueWord[]> {
         GROUP BY word_id
       ) latest ON r.word_id = latest.word_id AND r.reviewed_at = latest.max_reviewed_at
       INNER JOIN words w ON r.word_id = w.id
+      LEFT JOIN pinned_words pw ON pw.word_id = w.id
       WHERE r.due <= ?
         AND (r.rating = 0 OR r.reviewed_at < ?)
       GROUP BY r.word_id
@@ -93,6 +96,7 @@ export async function getDueWords(limit = 20): Promise<DueWord[]> {
     phonetic: row.w_phonetic as string | null,
     definition: row.w_definition as string,
     examples: row.w_examples as string | null,
+    pinned: Number(row.w_pinned) === 1,
     card: {
       due: fromUnixSec(Number(row.due)),
       stability: Number(row.stability),
