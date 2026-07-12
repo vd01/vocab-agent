@@ -26,7 +26,7 @@ pub fn setup_tray<R: Runtime>(app: &App<R>) -> Result<(), Box<dyn std::error::Er
         .item(&quit_item)
         .build()?;
 
-    let icon = Image::from_bytes(include_bytes!("../icons/icon.ico"))?;
+    let icon = Image::from_bytes(include_bytes!("../icons/32x32.png"))?;
 
     let _tray = TrayIconBuilder::new()
         .icon(icon)
@@ -44,13 +44,7 @@ pub fn setup_tray<R: Runtime>(app: &App<R>) -> Result<(), Box<dyn std::error::Er
             }
             "settings" => {
                 if let Some(win) = app_handle.get_webview_window("main") {
-                    let cfg = app_handle.state::<crate::store::AppStore>().get();
-                    if cfg.server_url.is_empty() {
-                        let _ = win.eval("window.location.reload()");
-                    } else {
-                        let base = cfg.server_url.trim_end_matches('/');
-                        let _ = win.eval(&format!("window.location.href = '{}/settings'", base));
-                    }
+                    let _ = win.eval("window.location.href = '/'");
                     let _ = win.show();
                     let _ = win.set_focus();
                 }
