@@ -54,12 +54,11 @@ async function connect() {
   status.textContent = '正在检测服务端...';
 
   try {
-    const res = await fetch(url, { method: 'GET', signal: AbortSignal.timeout(10000) });
-    if (!res.ok && res.status !== 302 && res.status !== 307) {
-      throw new Error('HTTP ' + res.status);
-    }
+    const { invoke } = window.__TAURI_INTERNALS__;
+    const ok = await invoke('check_server', { url: url });
+    if (!ok) throw new Error('服务端返回异常状态');
   } catch (e) {
-    err.textContent = '无法连接到服务端: ' + e.message;
+    err.textContent = '无法连接到服务端: ' + (e.message || e);
     btn.disabled = false;
     status.textContent = '';
     return;

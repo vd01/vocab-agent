@@ -71,3 +71,15 @@ pub async fn auto_login(store: State<'_, AppStore>) -> Result<bool, String> {
 
     Ok(true)
 }
+
+#[tauri::command]
+pub async fn check_server(url: String) -> Result<bool, String> {
+    let url = url.trim_end_matches('/');
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .no_proxy()
+        .build()
+        .map_err(|e| e.to_string())?;
+    let res = client.get(url).send().await.map_err(|e| e.to_string())?;
+    Ok(res.status().is_success() || res.status() == reqwest::StatusCode::FOUND || res.status() == reqwest::StatusCode::TEMPORARY_REDIRECT)
+}

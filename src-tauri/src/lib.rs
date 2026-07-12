@@ -150,6 +150,7 @@ pub fn run() {
             commands::config::password_save,
             commands::config::password_clear,
             commands::config::auto_login,
+            commands::config::check_server,
             commands::notification::reminder_start,
             commands::notification::reminder_stop,
         ])
