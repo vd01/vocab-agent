@@ -2,6 +2,7 @@
   "name": "vocab-agent",
   "version": "0.1.0",
   "private": true,
+  "main": "dist-electron/main.js",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -12,7 +13,11 @@
     "import-ecdict": "npx tsx src/lib/dictionary/import-ecdict.ts",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "vitest run --config vitest.e2e.config.ts"
+    "test:e2e": "vitest run --config vitest.e2e.config.ts",
+    "electron:compile": "tsc -p electron/tsconfig.json",
+    "electron:dev": "npm run electron:compile && cross-env ELECTRON_DEV=1 electron dist-electron/main.js",
+    "electron:preview": "npm run build && npm run electron:compile && electron dist-electron/main.js",
+    "electron:build": "npm run build && npm run electron:compile && electron-builder --win"
   },
   "dependencies": {
     "@ai-sdk/deepseek": "^3.0.6",
@@ -29,6 +34,8 @@
     "next": "^15.5.20",
     "react": "19.2.4",
     "react-dom": "19.2.4",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
     "shadcn": "^4.13.0",
     "tailwind-merge": "^3.6.0",
     "ts-fsrs": "^5.4.1",
@@ -43,6 +50,10 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@types/uuid": "^11.0.0",
+    "cross-env": "^10.1.0",
+    "electron": "^43.1.0",
+    "electron-builder": "^26.15.3",
+    "electron-store": "^11.0.2",
     "eslint": "^9",
     "eslint-config-next": "^15.5.20",
     "tailwindcss": "^4",

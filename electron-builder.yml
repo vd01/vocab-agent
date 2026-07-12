@@ -1,0 +1,24 @@
+appId: com.vocab-agent.desktop
+productName: Vocab Agent
+directories:
+  output: dist-electron
+files:
+  - .next/**/*
+  - node_modules/**/*
+  - public/**/*
+  - data/**/*
+  - package.json
+  - next-env.d.ts
+  - dist-electron/**/*
+asar: true
+asarUnpack:
+  - node_modules/@libsql/client/**/*
+  - node_modules/.prisma/**/*
+win:
+  target: nsis
+  icon: public/icon.png
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true

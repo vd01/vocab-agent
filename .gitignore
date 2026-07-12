@@ -56,3 +56,6 @@ dev-server.log
 # Windows scripts (local only)
 restart.bat
 stop.bat
+
+# Electron build output
+/dist-electron/
