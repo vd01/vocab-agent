@@ -14,9 +14,13 @@ interface WordCardProps {
   flipped?: boolean;
   /** Callback when card is clicked/tapped */
   onFlip?: () => void;
+  /** Fixed height for the card (e.g. "280px") — content scrolls if overflow */
+  fixedHeight?: string;
+  /** Fixed width for the card (e.g. "400px") */
+  fixedWidth?: string;
 }
 
-export function WordCard({ wordId, word, phonetic, definition, examples, flipped: controlledFlipped, onFlip }: WordCardProps) {
+export function WordCard({ wordId, word, phonetic, definition, examples, flipped: controlledFlipped, onFlip, fixedHeight, fixedWidth }: WordCardProps) {
   const [internalFlipped, setInternalFlipped] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
 
@@ -62,26 +66,27 @@ export function WordCard({ wordId, word, phonetic, definition, examples, flipped
       tabIndex={0}
       className="cursor-pointer select-none focus:outline-none"
       onClick={handleFlip}
-      style={{ perspective: '600px' }}
+      style={{ perspective: '600px', ...(fixedWidth ? { width: fixedWidth } : {}) }}
     >
       {/*
         Grid stacking: both faces occupy the same grid cell.
-        The container height = max(front height, back height).
-        This prevents height jump on flip.
+        When fixedHeight is set, both faces use that exact height.
+        Otherwise, container height = max(front height, back height).
       */}
       <div
-        className="grid transition-transform duration-300 max-h-[300px]"
+        className="grid transition-transform duration-300"
         style={{
           transformStyle: 'preserve-3d',
           transform: isFlipped ? 'rotateY(180deg)' : 'rotateY(0deg)',
+          ...(fixedHeight ? { height: fixedHeight } : { maxHeight: '300px' }),
         }}
       >
         {/* Front face */}
         <Card
           className="row-start-1 col-start-1 transition-shadow duration-300 hover:shadow-md"
-          style={{ backfaceVisibility: 'hidden' }}
+          style={{ backfaceVisibility: 'hidden', ...(fixedHeight ? { height: fixedHeight } : {}) }}
         >
-          <CardContent className="p-4">
+          <CardContent className="p-4 h-full flex items-center justify-center">
             <div className="text-center py-4">
               <h3 className="text-2xl font-bold text-foreground">{word}</h3>
               {phonetic && (
@@ -96,13 +101,14 @@ export function WordCard({ wordId, word, phonetic, definition, examples, flipped
 
         {/* Back face — same grid cell, rotated 180deg so it shows when container flips */}
         <Card
-          className="row-start-1 col-start-1 transition-shadow duration-300 hover:shadow-md overflow-hidden"
+          className="row-start-1 col-start-1 transition-shadow duration-300 hover-hidden"
           style={{
             backfaceVisibility: 'hidden',
             transform: 'rotateY(180deg)',
+            ...(fixedHeight ? { height: fixedHeight } : {}),
           }}
         >
-          <CardContent className="p-4 overflow-y-auto max-h-[300px] scrollbar-thin">
+          <CardContent className="p-4 overflow-y-auto scrollbar-thin" style={fixedHeight ? { height: fixedHeight } : { maxHeight: '300px' }}>
             <div className="space-y-3">
               <div className="flex items-center gap-2">
                 <h3 className="text-lg font-bold text-foreground">{word}</h3>

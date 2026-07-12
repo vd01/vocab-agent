@@ -40,12 +40,10 @@ export const componentRegistry = new ComponentRegistryClass();
  * DO NOT EDIT MANUALLY — changes will be overwritten.
  */
 
-import FuzzyWords from '@/components/generated/fuzzy-words';
 import RandomLetter from '@/components/generated/random-letter';
 import RandomWords from '@/components/generated/random-words';
 
 export function loadGeneratedComponents() {
-  componentRegistry.register('fuzzy-words', FuzzyWords as unknown as React.ComponentType<Record<string, unknown>>);
   componentRegistry.register('random-letter', RandomLetter as unknown as React.ComponentType<Record<string, unknown>>);
   componentRegistry.register('random-words', RandomWords as unknown as React.ComponentType<Record<string, unknown>>);
 }

@@ -154,12 +154,9 @@ function ChatInner({ initialMessages, initialHasMore }: {
     setLoadingMore(true);
 
     try {
-      // Use the oldest message's createdAt as cursor
+      // Use the oldest message's seq as cursor
       const oldest = messages[0];
-      const createdAt = (oldest as any)?.createdAt;
-      const cursor = createdAt
-        ? new Date(createdAt).getTime()
-        : Date.now();
+      const cursor = (oldest as any)?.seq;
 
       const res = await fetch(`/api/messages?cursor=${cursor}&limit=20`);
       const data = await res.json();

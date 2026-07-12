@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { chatMessages } from '@/lib/db/schema';
-import { desc, lt, inArray } from 'drizzle-orm';
+import { desc, lt, inArray, sql } from 'drizzle-orm';
 
 const PAGE_SIZE = 20;
 
@@ -22,14 +22,14 @@ export async function GET(req: NextRequest) {
     const limit = Math.min(Math.max(parseInt(limitStr || '20', 10), 1), 50);
 
     // Query: newest first, before cursor if provided
-    const cursorDate = cursorStr ? new Date(parseInt(cursorStr, 10)) : null;
-    const cursorValid = cursorDate && !isNaN(cursorDate.getTime());
+    const cursorSeq = cursorStr ? parseInt(cursorStr, 10) : null;
+    const cursorValid = cursorSeq !== null && !isNaN(cursorSeq);
 
     const rows = await db
       .select()
       .from(chatMessages)
-      .where(cursorValid ? lt(chatMessages.createdAt, cursorDate!) : undefined)
-      .orderBy(desc(chatMessages.createdAt))
+      .where(cursorValid ? lt(chatMessages.seq, cursorSeq!) : undefined)
+      .orderBy(desc(chatMessages.seq))
       .limit(limit + 1); // +1 to detect hasMore
     const hasMore = rows.length > limit;
     const data = hasMore ? rows.slice(0, limit) : rows;
@@ -60,9 +60,9 @@ export async function GET(req: NextRequest) {
       };
     });
 
-    // nextCursor = oldest message's createdAt
+    // nextCursor = oldest message's seq
     const nextCursor = data.length > 0
-      ? new Date(data[data.length - 1].createdAt).getTime()
+      ? data[data.length - 1].seq
       : null;
 
     return NextResponse.json({ messages, hasMore, nextCursor });
@@ -107,6 +107,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ saved: 0, skipped: ids.length });
     }
 
+    // Get current max seq
+    const maxSeqRow = await db
+      .select({ maxSeq: sql<number>`COALESCE(MAX(${chatMessages.seq}), 0)` })
+      .from(chatMessages);
+    let nextSeq = (maxSeqRow[0]?.maxSeq ?? 0) + 1;
+
     // Convert UIMessage → DB row
     const rows = newMessages.map(msg => {
       // Serialize parts array to JSON string
@@ -120,6 +126,7 @@ export async function POST(req: NextRequest) {
         role: msg.role,
         parts,
         agentType: null,
+        seq: nextSeq++,
         createdAt: msg.createdAt ? new Date(msg.createdAt) : new Date(),
       };
     });

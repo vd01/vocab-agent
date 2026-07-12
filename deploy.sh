@@ -412,7 +412,7 @@ After=network.target
 Type=simple
 User=${ACTUAL_USER}
 WorkingDirectory=${PROJECT_DIR}
-ExecStart=$(which node) node_modules/.bin/next start -p ${SERVICE_PORT}
+ExecStart=$(which node) node_modules/.bin/node --max-old-space-size=768 node_modules/.bin/next dev -p ${SERVICE_PORT}
 Restart=always
 RestartSec=10
 Environment=NODE_ENV=production
@@ -420,7 +420,8 @@ EnvironmentFile=${ENV_FILE}
 
 # 安全限制
 NoNewPrivileges=true
-ProtectSystem=false
+ProtectSystem=strict
+ReadWritePaths={PROJECT_DIR}/.next {PROJECT_DIR}/data {PROJECT_DIR}/generated {PROJECT_DIR}/components/generated {PROJECT_DIR}/src/components/generative 
 
 [Install]
 WantedBy=multi-user.target

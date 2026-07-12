@@ -3,6 +3,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { WordCard } from '@/components/vocab/word-card';
 import { FsrsButtons } from '@/components/vocab/fsrs-buttons';
+import { PinButton } from '@/components/pinned/pin-button';
 
 interface ReviewWord {
   wordId: string;
@@ -197,18 +198,27 @@ export function ReviewSession({ words }: ReviewSessionProps) {
           </span>
         )}
       </div>
-      <WordCard
-        key={currentWord.wordId}
-        wordId={currentWord.wordId}
-        word={currentWord.word}
-        phonetic={currentWord.phonetic}
-        definition={currentWord.definition}
-        examples={currentWord.examples}
-        flipped={flipped}
-        onFlip={() => {
-          if (rating === null) setFlipped(f => !f);
-        }}
-      />
+      <div className="relative mx-auto" style={{ width: '400px' }}>
+        <WordCard
+          key={currentWord.wordId}
+          wordId={currentWord.wordId}
+          word={currentWord.word}
+          phonetic={currentWord.phonetic}
+          definition={currentWord.definition}
+          examples={currentWord.examples}
+          flipped={flipped}
+          onFlip={() => {
+            if (rating === null) setFlipped(f => !f);
+          }}
+          fixedHeight="280px"
+          fixedWidth="400px"
+        />
+        {flipped && (
+          <div className="absolute top-2 right-2 z-10">
+            <PinButton wordId={currentWord.wordId} word={currentWord.word} />
+          </div>
+        )}
+      </div>
       <FsrsButtons
         wordId={currentWord.wordId}
         onRate={(wordId, ratingValue) => {

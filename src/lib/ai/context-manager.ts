@@ -3,9 +3,10 @@
  *
  * 策略：
  * 1. Token 预算：为模型输入设定 token 上限，超出时自动截断/摘要
- * 2. 消息窗口：保留最近 N 条完整消息，更早的消息摘要为一条 system 消息
+ * 2. 差异化保留：用户消息始终完整保留，assistant 消息按距离递减保留
  * 3. World State 注入：将 World State 作为 instructions 的一部分注入，而非消息
  * 4. 工具结果截断：过长的工具输出自动截断，保留关键信息
+ * 5. 摘要优先级：用户意图 > 助手结论 > 工具调用记录
  */
 
 import type { ModelMessage } from 'ai';
@@ -21,13 +22,19 @@ export interface ContextManagerConfig {
   maxContextChars: number;
   /** Whether to include reasoning parts in context */
   includeReasoning: boolean;
+  /** Number of recent assistant rounds to keep in full */
+  fullAssistantRounds: number;
+  /** Maximum user topics to include in summary */
+  maxUserTopics: number;
 }
 
 const DEFAULT_CONFIG: ContextManagerConfig = {
   recentWindow: 20,
-  maxToolResultChars: 3000,
+  maxToolResultChars: 2000,
   maxContextChars: 60000,
   includeReasoning: false,
+  fullAssistantRounds: 3,
+  maxUserTopics: 10,
 };
 
 // ── Context Manager ──────────────────────────────────────────────────────
@@ -42,11 +49,12 @@ export class ContextManager {
   /**
    * Trim the message list to fit within the context budget.
    *
-   * Strategy:
-   * 1. Keep the most recent `recentWindow` messages intact
-   * 2. If older messages exist, summarize them into a single system message
-   * 3. Truncate oversized tool results
-   * 4. Optionally strip reasoning parts
+   * Strategy (priority: user messages > recent assistant > old assistant):
+   * 1. Keep all user messages intact (they carry intent)
+   * 2. Keep the most recent `fullAssistantRounds` assistant messages intact
+   * 3. Compress older assistant messages into brief summaries
+   * 4. Truncate oversized tool results
+   * 5. If still over budget, remove oldest messages from front
    */
   trimMessages(messages: ModelMessage[]): {
     messages: ModelMessage[];
@@ -61,81 +69,143 @@ export class ContextManager {
     let summary: string | null = null;
 
     if (originalCount <= this.config.recentWindow) {
-      // No trimming needed — just truncate tool results
       const processed = messages.map(m => this.truncateToolResults(m));
       return { messages: processed, trimmed: false, originalCount, summaryAdded: false, summary: null };
     }
 
-    // Split into "old" and "recent"
-    const splitIndex = originalCount - this.config.recentWindow;
-    const oldMessages = messages.slice(0, splitIndex);
-    const recentMessages = messages.slice(splitIndex);
+    // Identify assistant message indices for round counting
+    const assistantIndices: number[] = [];
+    for (let i = 0; i < messages.length; i++) {
+      if (messages[i].role === 'assistant') assistantIndices.push(i);
+    }
 
-    // Summarize old messages
-    summary = this.summarizeMessages(oldMessages);
-    trimmed = true;
-    summaryAdded = true;
+    // The last `fullAssistantRounds` assistant messages (and everything after them) are "recent"
+    const recentAssistantStart = assistantIndices.length > this.config.fullAssistantRounds
+      ? assistantIndices[assistantIndices.length - this.config.fullAssistantRounds]
+      : 0;
 
-    // Build final message list: recent only (summary goes via instructions, not as system message)
+    // Split: messages before recentAssistantStart are "old", rest are "recent"
+    const splitIndex = Math.min(recentAssistantStart, originalCount - this.config.recentWindow);
+    const oldMessages = messages.slice(0, Math.max(splitIndex, 0));
+    const recentMessages = messages.slice(Math.max(splitIndex, 0));
+
+    // Summarize old messages with differential treatment
+    if (oldMessages.length > 0) {
+      summary = this.summarizeMessages(oldMessages);
+      trimmed = true;
+      summaryAdded = true;
+    }
+
+    // Build final message list
     const result: ModelMessage[] = [];
-
-    // Process recent messages
     for (const msg of recentMessages) {
       result.push(this.truncateToolResults(msg));
     }
 
-    // Final check: if total chars exceed budget, trim from the front of recent
+    // Final check: if total chars exceed budget, trim from the front
+    // But prefer removing assistant messages over user messages
     const totalChars = this.estimateChars(result);
     if (totalChars > this.config.maxContextChars) {
-      // Remove oldest messages from recent until under budget
-      while (result.length > 1 && this.estimateChars(result) > this.config.maxContextChars) {
-        result.splice(0, 1);
-        trimmed = true;
-      }
+      this.trimToBudget(result);
+      trimmed = true;
     }
 
     return { messages: result, trimmed, originalCount, summaryAdded, summary };
   }
 
   /**
-   * Summarize a list of messages into a concise text.
-   * This is a simple extractive summary — no LLM call needed.
+   * Summarize old messages with differential treatment:
+   * - User messages: list all topics (up to maxUserTopics)
+   * - Assistant messages: only brief summary (first sentence + tool names)
    */
   private summarizeMessages(messages: ModelMessage[]): string {
     const lines: string[] = [];
-    let userCount = 0;
-    let assistantCount = 0;
-    const topics: string[] = [];
+    const userTopics: string[] = [];
+    const assistantSummaries: string[] = [];
+    let toolCallCount = 0;
 
     for (const msg of messages) {
       if (msg.role === 'user') {
-        userCount++;
-        // Extract first line of user message as topic
         const content = this.extractTextContent(msg);
         if (content) {
-          const firstLine = content.split('\n')[0].slice(0, 80);
-          topics.push(firstLine);
+          const firstLine = content.split('\n')[0].slice(0, 120);
+          userTopics.push(firstLine);
         }
       } else if (msg.role === 'assistant') {
-        assistantCount++;
+        const text = this.extractTextContent(msg);
+        const tools = this.extractToolNames(msg);
+        toolCallCount += tools.length;
+
+        const firstSentence = text
+          ? text.split(/[。！？\n]/)[0].slice(0, 80)
+          : '';
+        const toolStr = tools.length > 0 ? ` [调用: ${tools.join(',')}]` : '';
+        if (firstSentence || toolStr) {
+          assistantSummaries.push(firstSentence + toolStr);
+        }
+      } else if (msg.role === 'tool') {
+        toolCallCount++;
       }
     }
 
-    lines.push(`用户发送了 ${userCount} 条消息，助手回复了 ${assistantCount} 条。`);
-
-    if (topics.length > 0) {
-      // Show last 5 topics (most recent context)
-      const recentTopics = topics.slice(-5);
-      lines.push(`最近讨论的话题: ${recentTopics.join('; ')}`);
+    // User messages: full topic list (high value)
+    if (userTopics.length > 0) {
+      const topics = userTopics.slice(-this.config.maxUserTopics);
+      lines.push(`用户消息 (${userTopics.length} 条):`);
+      topics.forEach((t, i) => lines.push(`  ${i + 1}. ${t}`));
+      if (userTopics.length > this.config.maxUserTopics) {
+        lines.push(`  ...省略前 ${userTopics.length - this.config.maxUserTopics} 条`);
+      }
     }
 
-    // Mention tool usage
-    const toolMessages = messages.filter(m => m.role === 'tool');
-    if (toolMessages.length > 0) {
-      lines.push(`期间使用了 ${toolMessages.length} 次工具调用。`);
+    // Assistant messages: compressed summary (low value)
+    if (assistantSummaries.length > 0) {
+      lines.push(`助手回复 (${assistantSummaries.length} 条):`);
+      const recentSummaries = assistantSummaries.slice(-5);
+      recentSummaries.forEach(s => lines.push(`  - ${s}`));
+      if (assistantSummaries.length > 5) {
+        lines.push(`  ...省略前 ${assistantSummaries.length - 5} 条`);
+      }
+    }
+
+    if (toolCallCount > 0) {
+      lines.push(`工具调用共 ${toolCallCount} 次。`);
     }
 
     return lines.join('\n');
+  }
+
+  /**
+   * Trim messages to fit budget, preferring to remove assistant messages.
+   */
+  private trimToBudget(result: ModelMessage[]): void {
+    // First pass: remove oldest assistant messages (keep user messages)
+    while (result.length > 1 && this.estimateChars(result) > this.config.maxContextChars) {
+      // Find the oldest assistant message
+      const idx = result.findIndex(m => m.role === 'assistant');
+      if (idx >= 0 && idx < result.length - 2) {
+        // Also remove the associated tool message right after it
+        result.splice(idx, 1);
+        if (result[idx]?.role === 'tool') {
+          result.splice(idx, 1);
+        }
+      } else {
+        // No more assistant messages to remove, fall back to removing from front
+        result.splice(0, 1);
+      }
+    }
+  }
+
+  /**
+   * Extract tool names from an assistant message's tool-call parts.
+   */
+  private extractToolNames(message: ModelMessage): string[] {
+    if (message.role === 'assistant' && Array.isArray(message.content)) {
+      return (message.content as any[])
+        .filter((part: any) => part.type === 'tool-call')
+        .map((part: any) => part.toolName);
+    }
+    return [];
   }
 
   /**
@@ -144,7 +214,6 @@ export class ContextManager {
    */
   private truncateToolResults(message: ModelMessage): ModelMessage {
     if (message.role === 'tool') {
-      // V7: tool content is an array of ToolResultPart
       const content = message.content;
       if (Array.isArray(content)) {
         const truncatedParts = content.map((part: any) => {
@@ -205,9 +274,8 @@ export class ContextManager {
     for (const msg of messages) {
       const text = this.extractTextContent(msg);
       if (text) total += text.length;
-      // Account for tool call overhead
       if (msg.role === 'tool') {
-        total += 200; // overhead for tool result structure
+        total += 200;
       }
       if (msg.role === 'assistant' && Array.isArray(msg.content)) {
         const hasToolCalls = (msg.content as any[]).some(

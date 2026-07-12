@@ -43,6 +43,7 @@ export const chatMessages = sqliteTable('chat_messages', {
   role: text('role').notNull(),              // "user" | "assistant"
   parts: text('parts'),                      // JSON string — AI SDK v7 UIMessagePart[]
   agentType: text('agent_type'),             // "teacher" | "developer"
+  seq: integer('seq').notNull().unique(),    // 自增序列，保证插入顺序
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
 });
 
@@ -66,6 +67,19 @@ export const dynamicExtractors = sqliteTable('dynamic_extractors', {
   outputKey: text('output_key').notNull(),   // Key name in World State
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
   updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+});
+
+// 置顶单词
+export const pinnedWords = sqliteTable('pinned_words', {
+  id: text('id').primaryKey(),
+  wordId: text('word_id').notNull().references(() => words.id),
+  word: text('word').notNull(),
+  phonetic: text('phonetic'),
+  definition: text('definition'),
+  position: integer('position').notNull(),       // 排序位置，越小越靠前
+  side: text('side').notNull(),                   // "left" | "right" — 放在哪一侧
+  richContent: text('rich_content'),              // JSON — AI 生成的丰富内容
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
 });
 
 // Developer Agent 经验教训

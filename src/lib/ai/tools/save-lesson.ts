@@ -52,9 +52,11 @@ export const saveLessonTool = tool({
 });
 
 /**
- * Load all developer lessons from DB, formatted for system prompt injection.
+ * Load developer lessons from DB, formatted for system prompt injection.
+ * Respects a character budget to avoid inflating the prompt.
+ * Prioritizes pitfall > anti-pattern > pattern > tip (most impactful first).
  */
-export async function loadDeveloperLessons(): Promise<string> {
+export async function loadDeveloperLessons(maxChars: number = 3000): Promise<string> {
   try {
     const lessons = await db
       .select()
@@ -63,19 +65,11 @@ export async function loadDeveloperLessons(): Promise<string> {
 
     if (lessons.length === 0) return '';
 
-    const grouped: Record<string, typeof lessons> = {
-      pattern: [],
-      'anti-pattern': [],
-      tip: [],
-      pitfall: [],
-    };
-
-    for (const l of lessons) {
-      const cat = l.category as keyof typeof grouped;
-      if (grouped[cat]) grouped[cat].push(l);
-    }
-
-    const sections: string[] = [];
+    // Sort by priority: pitfall and anti-pattern are most important for agent behavior
+    const priorityOrder: Record<string, number> = { pitfall: 0, 'anti-pattern': 1, pattern: 2, tip: 3 };
+    const sorted = [...lessons].sort((a, b) =>
+      (priorityOrder[a.category] ?? 9) - (priorityOrder[b.category] ?? 9)
+    );
 
     const categoryLabels: Record<string, string> = {
       pattern: '✅ 成功模式',
@@ -84,6 +78,29 @@ export async function loadDeveloperLessons(): Promise<string> {
       pitfall: '⚠️ 常见陷阱',
     };
 
+    // Group by category, respecting budget
+    const grouped: Record<string, Array<{ title: string; content: string; context: string | null }>> = {
+      pitfall: [],
+      'anti-pattern': [],
+      pattern: [],
+      tip: [],
+    };
+
+    let totalChars = 0;
+    let includedCount = 0;
+
+    for (const l of sorted) {
+      const entry = `- **${l.title}**${l.context ? `（${l.context}）` : ''}: ${l.content}`;
+      if (totalChars + entry.length > maxChars) break;
+      const cat = l.category as keyof typeof grouped;
+      if (grouped[cat]) {
+        grouped[cat].push({ title: l.title, content: l.content, context: l.context });
+      }
+      totalChars += entry.length;
+      includedCount++;
+    }
+
+    const sections: string[] = [];
     for (const [cat, items] of Object.entries(grouped)) {
       if (items.length === 0) continue;
       sections.push(`### ${categoryLabels[cat] ?? cat}`);
@@ -91,6 +108,10 @@ export async function loadDeveloperLessons(): Promise<string> {
         const ctx = item.context ? `（${item.context}）` : '';
         sections.push(`- **${item.title}**${ctx}: ${item.content}`);
       }
+    }
+
+    if (includedCount < lessons.length) {
+      sections.push(`\n[...还有 ${lessons.length - includedCount} 条经验，因篇幅限制已省略。可用 list-lessons 工具查看全部。]`);
     }
 
     return sections.join('\n');

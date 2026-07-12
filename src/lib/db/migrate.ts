@@ -66,9 +66,26 @@ async function migrate() {
       role TEXT NOT NULL,
       parts TEXT,
       agent_type TEXT,
+      seq INTEGER NOT NULL UNIQUE,
       created_at INTEGER NOT NULL
     );
   `);
+
+  // Add seq column to existing chat_messages table
+  try {
+    const cols = await client.execute(`PRAGMA table_info(chat_messages)`);
+    const hasSeq = cols.rows.some((r: any) => r.name === 'seq');
+    if (!hasSeq) {
+      await client.execute(`ALTER TABLE chat_messages ADD COLUMN seq INTEGER`);
+      // Assign seq values based on rowid order for existing rows
+      await client.execute(`UPDATE chat_messages SET seq = rowid WHERE seq IS NULL`);
+      // Make seq NOT NULL UNIQUE after backfill
+      // SQLite doesn't support ALTER COLUMN, so we recreate if needed
+      // For now, the app code will handle seq assignment
+    }
+  } catch {
+    // Table might not exist yet, that's fine
+  }
 
   await client.execute(`
     CREATE TABLE IF NOT EXISTS dynamic_commands (
@@ -103,6 +120,24 @@ async function migrate() {
       context TEXT,
       created_at INTEGER NOT NULL
     );
+  `);
+
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS pinned_words (
+      id TEXT PRIMARY KEY,
+      word_id TEXT NOT NULL REFERENCES words(id),
+      word TEXT NOT NULL,
+      phonetic TEXT,
+      definition TEXT,
+      position INTEGER NOT NULL,
+      side TEXT NOT NULL,
+      rich_content TEXT,
+      created_at INTEGER NOT NULL
+    );
+  `);
+
+  await client.execute(`
+    CREATE INDEX IF NOT EXISTS idx_pinned_words_side ON pinned_words(side);
   `);
 
   console.log('Migrations complete!');

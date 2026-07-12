@@ -1,14 +1,18 @@
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
-export default function RandomWordsPanel(props) {
+interface RandomWordsPanelProps {
+  words: Array<{ id: string; word: string; phonetic?: string; definition: string; examples: string }>;
+}
+
+export default function RandomWordsPanel(props: RandomWordsPanelProps) {
   const words = props.words || [];
 
   return (
     <div className="space-y-3">
       <h3 className="text-lg font-semibold text-center">🎲 随机3词</h3>
       {words.map((w) => {
-        let examples = [];
+        let examples: string[] = [];
         try { examples = JSON.parse(w.examples); } catch(e) { examples = []; }
         return (
           <Card key={w.id} className="bg-white/5 border-white/10">

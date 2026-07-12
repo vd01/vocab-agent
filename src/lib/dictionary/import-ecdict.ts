@@ -11,11 +11,27 @@ import { createClient } from '@libsql/client';
 import fs from 'fs';
 import path from 'path';
 import readline from 'readline';
+import { Buffer } from 'buffer';
 
 const CSV_PATH = path.join(process.cwd(), 'ECDICT', 'ecdict.csv');
 const DB_PATH = path.join(process.cwd(), 'data', 'ecdict.db');
 
 const BATCH_SIZE = 2000;
+
+function detectCsvEncoding(filePath: string): BufferEncoding {
+  const head = fs.readFileSync(filePath, { flag: 'r' }).slice(0, 4096);
+  const asUtf8 = head.toString('utf-8');
+  if (asUtf8.includes('\ufffd')) {
+    try {
+      const asGbk = new TextDecoder('gbk', { fatal: true }).decode(head);
+      if (asGbk && !asGbk.includes('\ufffd')) {
+        console.log('Detected GBK encoding for CSV file');
+        return 'gbk' as BufferEncoding;
+      }
+    } catch {}
+  }
+  return 'utf-8';
+}
 
 interface CsvRow {
   word: string;
@@ -108,7 +124,8 @@ async function importEcdict() {
   `);
 
   console.log('Reading CSV file...');
-  const fileStream = fs.createReadStream(CSV_PATH, { encoding: 'utf-8' });
+  const encoding = detectCsvEncoding(CSV_PATH);
+  const fileStream = fs.createReadStream(CSV_PATH, { encoding });
   const rl = readline.createInterface({ input: fileStream, crlfDelay: Infinity });
 
   let totalRows = 0;

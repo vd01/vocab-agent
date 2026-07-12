@@ -1,11 +1,15 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { type UIMessage } from 'ai';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { WordCard } from '@/components/vocab/word-card';
 import { ReviewSession } from '@/components/vocab/review-session';
 import { DynamicRenderer } from '@/components/generative/dynamic-renderer';
 import { componentRegistry } from '@/components/generative/component-registry';
+import { PinButton } from '@/components/pinned/pin-button';
+import { notifyPinChange } from '@/components/pinned/pin-events';
 
 interface MessageItemProps {
   message: UIMessage;
@@ -94,11 +98,7 @@ export function MessageItem({ message, isLastAssistant, isStreaming, isLastRevie
           if (part.type === 'text') {
             return isUser
               ? <UserTextBubble key={i} text={part.text} />
-              : (
-                <div key={i} className="whitespace-pre-wrap text-sm leading-relaxed text-foreground break-words">
-                  {part.text}
-                </div>
-              );
+              : <AssistantTextBubble key={i} text={part.text} />;
           }
 
           // Reasoning part (single, non-merged)
@@ -187,6 +187,8 @@ const DEV_TOOL_LABELS: Record<string, { icon: string; label: string }> = {
   'create-command':     { icon: '!', label: '创建命令' },
   'db-query':   { icon: 'D', label: '查询数据库' },
   'save-lesson': { icon: 'S', label: '保存经验' },
+  'list-lessons': { icon: '📋', label: '列出经验' },
+  'merge-lessons': { icon: '🔗', label: '合并经验' },
   'test-command': { icon: '?', label: '测试命令' },
 };
 
@@ -259,6 +261,32 @@ function DevToolOutput({ toolName, output }: { toolName: string; output: any; ke
           </pre>
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Assistant text bubble with Markdown rendering ──────────────────────────
+
+function AssistantTextBubble({ text }: { text: string }) {
+  return (
+    <div className="text-sm leading-relaxed text-foreground break-words
+                    prose prose-sm max-w-none
+                    prose-headings:text-foreground prose-headings:font-semibold
+                    prose-p:my-1 prose-p:first:mt-0 prose-p:last:mb-0
+                    prose-ul:my-1 prose-ol:my-1
+                    prose-li:my-0.5
+                    prose-code:text-primary prose-code:bg-muted prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:text-xs
+                    prose-code:before:content-[''] prose-code:after:content-['']
+                    prose-pre:bg-muted prose-pre:border prose-pre:border-border
+                    prose-strong:text-foreground
+                    prose-a:text-primary prose-a:no-underline hover:prose-a:underline
+                    prose-table:text-xs prose-th:bg-muted prose-th:px-2 prose-th:py-1
+                    prose-td:px-2 prose-td:py-1 prose-td:border prose-td:border-border
+                    prose-hr:border-border
+                    prose-blockquote:border-primary/30 prose-blockquote:text-muted-foreground">
+      <ReactMarkdown remarkPlugins={[remarkGfm]}>
+        {text}
+      </ReactMarkdown>
     </div>
   );
 }
@@ -408,8 +436,11 @@ function renderToolOutput(key: number, toolName: string, output: any, isLastRevi
   if (output.type === 'added') {
     return (
       <div key={key} className="mt-2 space-y-2">
-        <div className="text-xs text-green-600">
-          {output.message}
+        <div className="flex items-center justify-between">
+          <div className="text-xs text-green-600">
+            {output.message}
+          </div>
+          <PinButton wordId={output.wordId} word={output.word} />
         </div>
         <WordCard
           wordId={output.wordId}
@@ -433,6 +464,9 @@ function renderToolOutput(key: number, toolName: string, output: any, isLastRevi
   if (output.type === 'found') {
     return (
       <div key={key} className="mt-2">
+        <div className="flex justify-end mb-1">
+          <PinButton wordId={output.wordId} word={output.word} />
+        </div>
         <WordCard
           wordId={output.wordId}
           word={output.word}
@@ -547,11 +581,48 @@ function renderToolOutput(key: number, toolName: string, output: any, isLastRevi
     );
   }
 
+  if (output.type === 'pinned') {
+    return (
+      <div key={key} className="mt-2 text-xs text-primary flex items-center gap-1.5">
+        <PinChangeNotifier />
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+          <path d="M16 12V4h1V2H7v2h1v8l-2 2v2h5.2v6h1.6v-6H18v-2l-2-2z" />
+        </svg>
+        {output.message}
+      </div>
+    );
+  }
+
+  if (output.type === 'already-pinned') {
+    return (
+      <div key={key} className="mt-2 text-xs text-muted-foreground">
+        {output.message}
+      </div>
+    );
+  }
+
+  if (output.type === 'unpinned') {
+    return (
+      <div key={key} className="mt-2 text-xs text-muted-foreground">
+        <PinChangeNotifier />
+        {output.message}
+      </div>
+    );
+  }
+
+  if (output.type === 'full') {
+    return (
+      <div key={key} className="mt-2 text-xs text-yellow-600">
+        {output.message}
+      </div>
+    );
+  }
+
   // Generic message (for dynamic commands that return formatted text)
   if (output.type === 'message') {
     return (
-      <div key={key} className="mt-2 text-sm leading-relaxed">
-        {output.message}
+      <div key={key} className="mt-2">
+        <AssistantTextBubble text={output.message} />
       </div>
     );
   }
@@ -593,7 +664,7 @@ function renderToolOutput(key: number, toolName: string, output: any, isLastRevi
   }
 
   // Developer tools: file operations & shell — compact collapsed display
-  const devToolNames = new Set(['file-write', 'file-read', 'file-edit', 'file-list', 'shell-exec', 'register-tool', 'register-component', 'create-command', 'db-query', 'save-lesson', 'test-command']);
+  const devToolNames = new Set(['file-write', 'file-read', 'file-edit', 'file-list', 'shell-exec', 'register-tool', 'register-component', 'create-command', 'db-query', 'save-lesson', 'list-lessons', 'merge-lessons', 'test-command']);
   if (devToolNames.has(toolName)) {
     return <DevToolOutput key={key} toolName={toolName} output={output} />;
   }
@@ -687,6 +758,8 @@ const TOOL_DISPLAY_NAMES: Record<string, string> = {
   'vocab-lookup': '查询单词',
   'extract-words': '提炼生词',
   'save-lesson': '保存经验',
+  'list-lessons': '列出经验',
+  'merge-lessons': '合并经验',
   'test-command': '测试命令',
   'dict-lookup': '查词典',
   'vocab-stats': '词库统计',
@@ -877,4 +950,9 @@ function formatTime(date: Date): string {
   const month = (date.getMonth() + 1).toString().padStart(2, '0');
   const day = date.getDate().toString().padStart(2, '0');
   return `${month}-${day} ${time}`;
+}
+
+function PinChangeNotifier() {
+  useEffect(() => { notifyPinChange(); }, []);
+  return null;
 }
