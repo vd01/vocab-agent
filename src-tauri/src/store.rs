@@ -8,9 +8,6 @@ use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 use std::env;
 use std::fs;
-use std::sync::atomic::AtomicBool;
-
-pub static SET_SETUP_MODE: AtomicBool = AtomicBool::new(false);
 use std::path::PathBuf;
 use std::sync::Mutex;
 

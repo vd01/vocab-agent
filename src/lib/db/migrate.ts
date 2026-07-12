@@ -3,17 +3,12 @@ import path from 'path';
 import fs from 'fs';
 
 function resolveDataDir(): string {
-  if (process.platform === 'win32' && (!!process.env.ELECTRON_DEV || !!process.env.ELECTRON_PREVIEW)) {
-    const appData = process.env.APPDATA;
-    if (appData) {
-      const dir = path.join(appData, 'vocab-agent', 'data');
-      if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-      }
-      return dir;
+  if (process.env.VOCAB_DATA_DIR) {
+    if (!fs.existsSync(process.env.VOCAB_DATA_DIR)) {
+      fs.mkdirSync(process.env.VOCAB_DATA_DIR, { recursive: true });
     }
+    return process.env.VOCAB_DATA_DIR;
   }
-
   const dir = path.join(process.cwd(), 'data');
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });

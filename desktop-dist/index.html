@@ -24,7 +24,7 @@ input::placeholder { color: #555; }
 <body>
 <div class="container">
   <h1>Vocab Agent Lite</h1>
-  <p class="subtitle">首次使用，请配置服务端地址</p>
+  <p class="subtitle">配置服务端连接</p>
   <div class="input-group">
     <label>服务端地址</label>
     <input type="url" id="urlInput" placeholder="https://example.duckdns.org:31588" autofocus>
@@ -89,6 +89,19 @@ async function connect() {
 document.getElementById('urlInput').addEventListener('keydown', function(e) {
   if (e.key === 'Enter') connect();
 });
+
+(async function() {
+  try {
+    const { invoke } = window.__TAURI_INTERNALS__;
+    const cfg = await invoke('config_get');
+    if (cfg.server_url) {
+      document.getElementById('urlInput').value = cfg.server_url;
+    }
+    if (cfg.has_password) {
+      document.getElementById('passInput').placeholder = '已存储密码，留空则保持不变';
+    }
+  } catch {}
+})();
 </script>
 </body>
 </html>
