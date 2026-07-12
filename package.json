@@ -17,7 +17,9 @@
     "electron:compile": "tsc -p electron/tsconfig.json",
     "electron:dev": "npm run electron:compile && cross-env ELECTRON_DEV=1 electron dist-electron/main.js",
     "electron:preview": "npm run build && npm run electron:compile && cross-env ELECTRON_PREVIEW=1 electron dist-electron/main.js",
-    "electron:build": "npm run build && npm run electron:compile && npx electron-builder --win"
+    "electron:build": "node scripts/electron-build.js",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build"
   },
   "dependencies": {
     "@ai-sdk/deepseek": "^3.0.6",
@@ -25,6 +27,10 @@
     "@ai-sdk/react": "^4.0.19",
     "@base-ui/react": "^1.6.0",
     "@libsql/client": "^0.17.4",
+    "@tauri-apps/api": "^2.11.1",
+    "@tauri-apps/plugin-autostart": "^2.5.1",
+    "@tauri-apps/plugin-global-shortcut": "^2.3.2",
+    "@tauri-apps/plugin-notification": "^2.3.3",
     "@upstash/vector": "^1.2.3",
     "ai": "^7.0.18",
     "class-variance-authority": "^0.7.1",
@@ -45,6 +51,7 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "@tauri-apps/cli": "^2.11.4",
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^20",
     "@types/react": "^19",
