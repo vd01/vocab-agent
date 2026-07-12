@@ -73,6 +73,14 @@ pub fn run() {
                 let store = app_handle.state::<AppStore>();
                 let cfg = store.get();
 
+                if store::SET_SETUP_MODE.load(std::sync::atomic::Ordering::SeqCst) {
+                    if let Some(win) = app_handle.get_webview_window("main") {
+                        let _ = win.show();
+                        let _ = win.set_focus();
+                    }
+                    return;
+                }
+
                 if !cfg.server_url.is_empty() {
                     let url = cfg.server_url.trim_end_matches('/');
                     log::info!("[Startup] Checking server at {}", url);
@@ -176,6 +184,7 @@ pub fn run() {
             commands::config::password_clear,
             commands::config::auto_login,
             commands::config::check_server,
+            commands::config::open_setup,
             commands::notification::reminder_start,
             commands::notification::reminder_stop,
         ])

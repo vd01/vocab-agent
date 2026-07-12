@@ -1,6 +1,6 @@
 use crate::store::AppStore;
 use serde::Serialize;
-use tauri::State;
+use tauri::{Manager, State};
 
 pub fn http_client() -> Result<reqwest::Client, String> {
     reqwest::Client::builder()
@@ -86,4 +86,15 @@ pub async fn check_server(url: String) -> Result<bool, String> {
     let client = http_client()?;
     let res = client.get(url).send().await.map_err(|e| e.to_string())?;
     Ok(res.status().is_success() || res.status() == reqwest::StatusCode::FOUND || res.status() == reqwest::StatusCode::TEMPORARY_REDIRECT)
+}
+
+#[tauri::command]
+pub async fn open_setup(app: tauri::AppHandle) -> Result<(), String> {
+    crate::store::SET_SETUP_MODE.store(true, std::sync::atomic::Ordering::SeqCst);
+    if let Some(win) = app.get_webview_window("main") {
+        let _ = win.eval("window.location.href = 'index.html'");
+        let _ = win.show();
+        let _ = win.set_focus();
+    }
+    Ok(())
 }

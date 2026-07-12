@@ -1,9 +1,12 @@
+use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{
     image::Image,
     menu::{CheckMenuItemBuilder, MenuBuilder, MenuItem, PredefinedMenuItem},
     tray::TrayIconBuilder,
     App, AppHandle, Manager, Runtime,
 };
+
+static LAST_TOGGLE: AtomicBool = AtomicBool::new(false);
 
 pub fn setup_tray<R: Runtime>(app: &App<R>) -> Result<(), Box<dyn std::error::Error>> {
     let show_item = MenuItem::with_id(app, "show", "显示/隐藏", true, None::<&str>)?;
@@ -44,7 +47,8 @@ pub fn setup_tray<R: Runtime>(app: &App<R>) -> Result<(), Box<dyn std::error::Er
             }
             "settings" => {
                 if let Some(win) = app_handle.get_webview_window("main") {
-                    let _ = win.eval("window.location.href = '/'");
+                    crate::store::SET_SETUP_MODE.store(true, Ordering::SeqCst);
+                    let _ = win.navigate("https://tauri.localhost/index.html".parse().unwrap());
                     let _ = win.show();
                     let _ = win.set_focus();
                 }
@@ -57,8 +61,15 @@ pub fn setup_tray<R: Runtime>(app: &App<R>) -> Result<(), Box<dyn std::error::Er
         .on_tray_icon_event(|tray, event| {
             if let tauri::tray::TrayIconEvent::Click { button, .. } = event {
                 if button == tauri::tray::MouseButton::Left {
+                    if LAST_TOGGLE.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_err() {
+                        return;
+                    }
                     let app = tray.app_handle();
                     toggle_window(app);
+                    std::thread::spawn(|| {
+                        std::thread::sleep(std::time::Duration::from_millis(300));
+                        LAST_TOGGLE.store(false, Ordering::SeqCst);
+                    });
                 }
             }
         })
