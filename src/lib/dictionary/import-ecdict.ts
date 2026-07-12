@@ -3,34 +3,52 @@
  *
  * Usage: npx tsx src/lib/dictionary/import-ecdict.ts
  *
- * Reads ECDICT/ecdict.csv (77万+ entries), batch inserts into ecdict table.
- * Expected runtime: 2-5 minutes depending on disk speed.
+ * Reads ECDICT/ecdict.csv.gz (gzip compressed, ~22 MB), decompresses in memory,
+ * batch inserts into ecdict table. Expected runtime: 2-5 minutes.
  */
 
 import { createClient } from '@libsql/client';
 import fs from 'fs';
 import path from 'path';
 import readline from 'readline';
+import zlib from 'zlib';
 import { Buffer } from 'buffer';
 
-const CSV_PATH = path.join(process.cwd(), 'ECDICT', 'ecdict.csv');
+const CSV_PATH = path.join(process.cwd(), 'ECDICT', 'ecdict.csv.gz');
 const DB_PATH = path.join(process.cwd(), 'data', 'ecdict.db');
 
 const BATCH_SIZE = 2000;
 
 function detectCsvEncoding(filePath: string): BufferEncoding {
-  const head = fs.readFileSync(filePath, { flag: 'r' }).slice(0, 4096);
-  const asUtf8 = head.toString('utf-8');
-  if (asUtf8.includes('\ufffd')) {
-    try {
-      const asGbk = new TextDecoder('gbk', { fatal: true }).decode(head);
-      if (asGbk && !asGbk.includes('\ufffd')) {
-        console.log('Detected GBK encoding for CSV file');
-        return 'gbk' as BufferEncoding;
+  const chunks: Buffer[] = [];
+  let totalLen = 0;
+  const compressed = fs.createReadStream(filePath).pipe(zlib.createGunzip());
+  return new Promise<BufferEncoding>((resolve) => {
+    compressed.on('data', (chunk: Buffer) => {
+      if (totalLen < 4096) {
+        chunks.push(chunk);
+        totalLen += chunk.length;
       }
-    } catch {}
-  }
-  return 'utf-8';
+      if (totalLen >= 4096) {
+        compressed.destroy();
+      }
+    });
+    compressed.on('close', () => {
+      const head = Buffer.concat(chunks).slice(0, 4096);
+      const asUtf8 = head.toString('utf-8');
+      if (asUtf8.includes('\ufffd')) {
+        try {
+          const asGbk = new TextDecoder('gbk', { fatal: true }).decode(head);
+          if (asGbk && !asGbk.includes('\ufffd')) {
+            console.log('Detected GBK encoding for CSV file');
+            resolve('gbk' as BufferEncoding);
+            return;
+          }
+        } catch {}
+      }
+      resolve('utf-8');
+    });
+  }) as unknown as BufferEncoding;
 }
 
 interface CsvRow {
@@ -92,7 +110,7 @@ function parseCsvLine(line: string): string[] | null {
 async function importEcdict() {
   if (!fs.existsSync(CSV_PATH)) {
     console.error(`ECDICT CSV not found at ${CSV_PATH}`);
-    console.error('Please clone ECDICT repo first: git clone https://github.com/skywind3000/ECDICT.git');
+    console.error('Please place ecdict.csv.gz in the ECDICT directory');
     process.exit(1);
   }
 
@@ -123,10 +141,17 @@ async function importEcdict() {
     )
   `);
 
-  console.log('Reading CSV file...');
-  const encoding = detectCsvEncoding(CSV_PATH);
-  const fileStream = fs.createReadStream(CSV_PATH, { encoding });
-  const rl = readline.createInterface({ input: fileStream, crlfDelay: Infinity });
+  console.log('Reading CSV file (gzip compressed)...');
+  const encoding = await detectCsvEncoding(CSV_PATH);
+  let fileStream: NodeJS.ReadableStream;
+  const rawStream = fs.createReadStream(CSV_PATH).pipe(zlib.createGunzip());
+  if (encoding === 'utf-8') {
+    fileStream = rawStream;
+  } else {
+    const iconv = require('iconv-lite');
+    fileStream = rawStream.pipe(iconv.decodeStream(encoding));
+  }
+  const rl = readline.createInterface({ input: fileStream as any, crlfDelay: Infinity });
 
   let totalRows = 0;
   let batch: any[][] = [];

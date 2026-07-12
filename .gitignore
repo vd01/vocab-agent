@@ -47,7 +47,7 @@ next-env.d.ts
 # Claude Code / Omo session files
 .omo/
 
-# ECDICT submodule (large dictionary data)
+# ECDICT submodule (large dictionary data — compressed)
 #ECDICT
 
 # dev logs
