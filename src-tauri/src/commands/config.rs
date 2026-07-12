@@ -2,6 +2,14 @@ use crate::store::AppStore;
 use serde::Serialize;
 use tauri::State;
 
+pub fn http_client() -> Result<reqwest::Client, String> {
+    reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .no_proxy()
+        .build()
+        .map_err(|e| e.to_string())
+}
+
 #[derive(Serialize, Clone)]
 pub struct ConfigResponse {
     server_url: String,
@@ -57,7 +65,7 @@ pub async fn auto_login(store: State<'_, AppStore>) -> Result<bool, String> {
     };
 
     let url = cfg.server_url.trim_end_matches('/');
-    let client = reqwest::Client::new();
+    let client = http_client()?;
     let res = client
         .post(format!("{}/api/auth", url))
         .json(&serde_json::json!({ "password": password }))
@@ -75,11 +83,7 @@ pub async fn auto_login(store: State<'_, AppStore>) -> Result<bool, String> {
 #[tauri::command]
 pub async fn check_server(url: String) -> Result<bool, String> {
     let url = url.trim_end_matches('/');
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(10))
-        .no_proxy()
-        .build()
-        .map_err(|e| e.to_string())?;
+    let client = http_client()?;
     let res = client.get(url).send().await.map_err(|e| e.to_string())?;
     Ok(res.status().is_success() || res.status() == reqwest::StatusCode::FOUND || res.status() == reqwest::StatusCode::TEMPORARY_REDIRECT)
 }

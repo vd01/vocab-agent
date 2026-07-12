@@ -75,23 +75,48 @@ pub fn run() {
 
                 if !cfg.server_url.is_empty() {
                     let url = cfg.server_url.trim_end_matches('/');
+                    log::info!("[Startup] Checking server at {}", url);
+
+                    let client = match commands::config::http_client() {
+                        Ok(c) => c,
+                        Err(e) => {
+                            log::error!("[Startup] Failed to create HTTP client: {}", e);
+                            if let Some(win) = app_handle.get_webview_window("main") {
+                                let _ = win.eval(&format!("document.body.innerHTML = '<div style=\"display:flex;align-items:center;justify-content:center;height:100vh;font-family:system-ui;color:#ef4444\"><p>HTTP 客户端创建失败: {}</p></div>'; document.body.style.background='#0a0a0a'", e));
+                                let _ = win.show();
+                                let _ = win.set_focus();
+                            }
+                            return;
+                        }
+                    };
 
                     let mut connected = false;
-                    match reqwest::Client::new().get(url).timeout(std::time::Duration::from_secs(10)).send().await {
-                        Ok(res) if res.status().is_success() || res.status() == reqwest::StatusCode::FOUND || res.status() == reqwest::StatusCode::TEMPORARY_REDIRECT => {
-                            connected = true;
+                    match client.get(url).send().await {
+                        Ok(res) => {
+                            let status = res.status();
+                            log::info!("[Startup] Server responded: {}", status);
+                            if status.is_success() || status == reqwest::StatusCode::FOUND || status == reqwest::StatusCode::TEMPORARY_REDIRECT {
+                                connected = true;
+                            }
                         }
-                        _ => {}
+                        Err(e) => {
+                            log::error!("[Startup] Server check failed: {}", e);
+                        }
                     }
 
                     if connected {
                         if let Some(password) = store.decrypt_password() {
-                            let client = reqwest::Client::new();
+                            log::info!("[Startup] Attempting auto-login");
                             let res = client
                                 .post(format!("{}/api/auth", url))
                                 .json(&serde_json::json!({ "password": password }))
                                 .send()
                                 .await;
+
+                            match &res {
+                                Ok(resp) => log::info!("[Startup] Auto-login response: {}", resp.status()),
+                                Err(e) => log::error!("[Startup] Auto-login failed: {}", e),
+                            }
 
                             if let Ok(resp) = res {
                                 if let Some(set_cookie) = resp.headers().get("set-cookie") {

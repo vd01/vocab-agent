@@ -1,5 +1,6 @@
 use tauri::{
-    menu::{MenuBuilder, MenuItem, PredefinedMenuItem, CheckMenuItemBuilder},
+    image::Image,
+    menu::{CheckMenuItemBuilder, MenuBuilder, MenuItem, PredefinedMenuItem},
     tray::TrayIconBuilder,
     App, AppHandle, Manager, Runtime,
 };
@@ -25,7 +26,11 @@ pub fn setup_tray<R: Runtime>(app: &App<R>) -> Result<(), Box<dyn std::error::Er
         .item(&quit_item)
         .build()?;
 
+    let icon = Image::from_bytes(include_bytes!("../icons/icon.ico"))?;
+
     let _tray = TrayIconBuilder::new()
+        .icon(icon)
+        .show_menu_on_left_click(false)
         .menu(&menu)
         .tooltip("Vocab Agent Lite")
         .on_menu_event(move |app_handle, event| match event.id().0.as_str() {
@@ -34,16 +39,14 @@ pub fn setup_tray<R: Runtime>(app: &App<R>) -> Result<(), Box<dyn std::error::Er
             }
             "reminder" => {
                 let store = app_handle.state::<crate::store::AppStore>();
-                let mut cfg = store.get();
-                let new_val = !cfg.review_reminder;
+                let new_val = !store.get().review_reminder;
                 let _ = store.set(serde_json::json!({ "review_reminder": new_val }));
-                cfg.review_reminder = new_val;
             }
             "settings" => {
                 if let Some(win) = app_handle.get_webview_window("main") {
                     let cfg = app_handle.state::<crate::store::AppStore>().get();
                     if cfg.server_url.is_empty() {
-                        let _ = win.eval("window.location.href = 'tauri://localhost'");
+                        let _ = win.eval("window.location.reload()");
                     } else {
                         let base = cfg.server_url.trim_end_matches('/');
                         let _ = win.eval(&format!("window.location.href = '{}/settings'", base));
@@ -58,9 +61,11 @@ pub fn setup_tray<R: Runtime>(app: &App<R>) -> Result<(), Box<dyn std::error::Er
             _ => {}
         })
         .on_tray_icon_event(|tray, event| {
-            if let tauri::tray::TrayIconEvent::Click { .. } = event {
-                let app = tray.app_handle();
-                toggle_window(app);
+            if let tauri::tray::TrayIconEvent::Click { button, .. } = event {
+                if button == tauri::tray::MouseButton::Left {
+                    let app = tray.app_handle();
+                    toggle_window(app);
+                }
             }
         })
         .build(app)?;
