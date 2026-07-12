@@ -8,6 +8,11 @@ use tauri::{
 
 static LAST_TOGGLE: AtomicBool = AtomicBool::new(false);
 
+fn setup_html_b64() -> String {
+    use data_encoding::BASE64;
+    BASE64.encode(include_bytes!("../../desktop-dist/index.html"))
+}
+
 pub fn setup_tray<R: Runtime>(app: &App<R>) -> Result<(), Box<dyn std::error::Error>> {
     let show_item = MenuItem::with_id(app, "show", "显示/隐藏", true, None::<&str>)?;
     let separator1 = PredefinedMenuItem::separator(app)?;
@@ -47,7 +52,11 @@ pub fn setup_tray<R: Runtime>(app: &App<R>) -> Result<(), Box<dyn std::error::Er
             }
             "settings" => {
                 if let Some(win) = app_handle.get_webview_window("main") {
-                    let _ = win.navigate("tauri://localhost/index.html".parse().unwrap());
+                    let html_b64 = setup_html_b64();
+                    let _ = win.eval(&format!(
+                        "(function(){{var h=atob('{}');document.open();document.write(h);document.close();}})();",
+                        html_b64
+                    ));
                     let _ = win.show();
                     let _ = win.set_focus();
                 }
