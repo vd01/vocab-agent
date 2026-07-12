@@ -24,13 +24,8 @@ tauri-plugin-log = "2"
 tauri-plugin-notification = "2"
 tauri-plugin-global-shortcut = "2"
 tauri-plugin-autostart = "2"
-aes-gcm = "0.10"
-pbkdf2 = { version = "0.12", features = ["simple"] }
-sha2 = "0.10"
-rand = "0.8"
-reqwest = { version = "0.12", features = ["json", "cookies"] }
+reqwest = { version = "0.12", features = ["json"] }
 tokio = { version = "1", features = ["time", "sync"] }
-dirs = "6"
 data-encoding = "2"
 
 [target."cfg(not(any(target_os = \"android\", target_os = \"ios\")))".dependencies]

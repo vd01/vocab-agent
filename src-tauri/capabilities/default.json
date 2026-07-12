@@ -23,6 +23,11 @@
     "notification:allow-is-permission-granted",
     "notification:allow-request-permission",
     "notification:allow-notify",
-    "global-shortcut:default"
+    "global-shortcut:default",
+    "allow-config-get",
+    "allow-config-set",
+    "allow-check-server",
+    "allow-reminder-start",
+    "allow-reminder-stop"
   ]
 }

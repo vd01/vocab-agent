@@ -4,7 +4,7 @@ use tauri::{AppHandle, Manager, State};
 
 pub struct ReminderState;
 
-#[tauri::command]
+#[tauri::command(rename = "reminder-start")]
 pub async fn reminder_start(
     app: AppHandle,
     store: State<'_, AppStore>,
@@ -35,7 +35,11 @@ pub async fn reminder_start(
 
             let check_url = format!("{}/api/review-due", cfg.server_url.trim_end_matches('/'));
 
-            match reqwest::get(&check_url).await {
+            let check_client = match crate::commands::config::http_client() {
+                Ok(c) => c,
+                Err(_) => continue,
+            };
+            match check_client.get(&check_url).send().await {
                 Ok(res) if res.status().is_success() => {
                     if let Ok(data) = res.json::<serde_json::Value>().await {
                         if let Some(due) = data.get("due").and_then(|v| v.as_u64()) {
@@ -59,7 +63,7 @@ pub async fn reminder_start(
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(rename = "reminder-stop")]
 pub async fn reminder_stop() -> Result<(), String> {
     Ok(())
 }

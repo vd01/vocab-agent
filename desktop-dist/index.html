@@ -29,10 +29,6 @@ input::placeholder { color: #555; }
     <label>服务端地址</label>
     <input type="url" id="urlInput" placeholder="https://example.duckdns.org:31588" autofocus>
   </div>
-  <div class="input-group">
-    <label>登录密码（可选）</label>
-    <input type="password" id="passInput" placeholder="留空则不自动登录">
-  </div>
   <button class="btn" id="connectBtn" onclick="connect()">连接</button>
   <div class="error" id="error"></div>
   <div class="status" id="status"></div>
@@ -40,7 +36,6 @@ input::placeholder { color: #555; }
 <script>
 async function connect() {
   const url = document.getElementById('urlInput').value.trim().replace(/\/+$/, '');
-  const pass = document.getElementById('passInput').value;
   const btn = document.getElementById('connectBtn');
   const err = document.getElementById('error');
   const status = document.getElementById('status');
@@ -55,7 +50,7 @@ async function connect() {
 
   try {
     const { invoke } = window.__TAURI_INTERNALS__;
-    const ok = await invoke('check_server', { url: url });
+    const ok = await invoke('check-server', { url: url });
     if (!ok) throw new Error('服务端返回异常状态');
   } catch (e) {
     err.textContent = '无法连接到服务端: ' + (e.message || e);
@@ -68,15 +63,7 @@ async function connect() {
 
   try {
     const { invoke } = window.__TAURI_INTERNALS__;
-    await invoke('config_set', { partial: { server_url: url } });
-
-    if (pass) {
-      await invoke('password_save', { password: pass });
-      try {
-        await invoke('auto_login');
-      } catch {}
-    }
-
+    await invoke('config-set', { partial: { server_url: url } });
     status.textContent = '正在跳转...';
     window.location.href = url;
   } catch (e) {
@@ -93,12 +80,9 @@ document.getElementById('urlInput').addEventListener('keydown', function(e) {
 (async function() {
   try {
     const { invoke } = window.__TAURI_INTERNALS__;
-    const cfg = await invoke('config_get');
+    const cfg = await invoke('config-get');
     if (cfg.server_url) {
       document.getElementById('urlInput').value = cfg.server_url;
-    }
-    if (cfg.has_password) {
-      document.getElementById('passInput').placeholder = '已存储密码，留空则保持不变';
     }
   } catch {}
 })();

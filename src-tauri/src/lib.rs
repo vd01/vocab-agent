@@ -105,34 +105,6 @@ pub fn run() {
                     }
 
                     if connected {
-                        if let Some(password) = store.decrypt_password() {
-                            log::info!("[Startup] Attempting auto-login");
-                            let res = client
-                                .post(format!("{}/api/auth", url))
-                                .json(&serde_json::json!({ "password": password }))
-                                .send()
-                                .await;
-
-                            match &res {
-                                Ok(resp) => log::info!("[Startup] Auto-login response: {}", resp.status()),
-                                Err(e) => log::error!("[Startup] Auto-login failed: {}", e),
-                            }
-
-                            if let Ok(resp) = res {
-                                if let Some(set_cookie) = resp.headers().get("set-cookie") {
-                                    if let Ok(cookie_str) = set_cookie.to_str() {
-                                        if let Some(win) = app_handle.get_webview_window("main") {
-                                            let cookie_part = cookie_str.split(';').next().unwrap_or("");
-                                            let _ = win.eval(&format!(
-                                                "document.cookie = '{}'",
-                                                cookie_part
-                                            ));
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
                         if let Some(win) = app_handle.get_webview_window("main") {
                             let _ = win.eval(&format!("window.location.href = '{}'", url));
                             let _ = win.show();
@@ -172,9 +144,6 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::config::config_get,
             commands::config::config_set,
-            commands::config::password_save,
-            commands::config::password_clear,
-            commands::config::auto_login,
             commands::config::check_server,
             commands::notification::reminder_start,
             commands::notification::reminder_stop,
@@ -211,7 +180,11 @@ fn spawn_reminder(app_handle: tauri::AppHandle, interval_minutes: u32) {
 
             let check_url = format!("{}/api/review-due", cfg.server_url.trim_end_matches('/'));
 
-            match reqwest::get(&check_url).await {
+            let check_client = match commands::config::http_client() {
+                Ok(c) => c,
+                Err(_) => continue,
+            };
+            match check_client.get(&check_url).send().await {
                 Ok(res) if res.status().is_success() => {
                     if let Ok(data) = res.json::<serde_json::Value>().await {
                         if let Some(due) = data.get("due").and_then(|v| v.as_u64()) {
