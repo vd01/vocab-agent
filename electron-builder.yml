@@ -11,10 +11,23 @@ files:
   - data/**/*
   - package.json
   - next-env.d.ts
-  - dist-electron/**/*
+  - dist-electron/*.js
+  - "!dist-electron/*.map"
+  - "!dist-electron/*.exe"
+  - "!dist-electron/*.blockmap"
+  - "!dist-electron/*.yml"
+  - "!dist-electron/*.yaml"
+  - "!dist-electron/win-unpacked/**"
+  - "!dist-electron/.icon-ico/**"
+  - "!dist-electron/.next/**"
   - "!node_modules/@upstash/vector/**"
   - "!node_modules/better-sqlite3/**"
   - "!node_modules/sharp/**"
+  - "!node_modules/@types/**"
+  - "!node_modules/@tauri-apps/**"
+  - "!node_modules/ts-morph/**"
+  - "!node_modules/@ts-morph/**"
+  - "!node_modules/conf/**"
   - "!node_modules/**/{test,tests,__tests__,spec}/**"
   - "!node_modules/**/*.md"
   - "!node_modules/**/*.map"
@@ -24,11 +37,7 @@ files:
   - "!node_modules/**/tsconfig.json"
   - "!node_modules/**/tsconfig.*.json"
   - "!node_modules/**/src/**"
-asar: true
-asarUnpack:
-  - node_modules/@libsql/client/**/*
-  - node_modules/@libsql/**/*.wasm
-  - node_modules/.prisma/**/*
+asar: false
 win:
   target: nsis
   icon: public/icon.png

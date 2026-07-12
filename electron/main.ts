@@ -27,22 +27,6 @@ if (!gotLock) {
 app.on('window-all-closed', () => {
 });
 
-process.on('SIGINT', () => {
-  if (isQuitting) return;
-  isQuitting = true;
-  forceKillServer();
-  app.quit();
-  process.exit(0);
-});
-
-process.on('SIGTERM', () => {
-  if (isQuitting) return;
-  isQuitting = true;
-  forceKillServer();
-  app.quit();
-  process.exit(0);
-});
-
 async function checkRemoteAvailable(url: string, timeout = 10000): Promise<boolean> {
   try {
     const controller = new AbortController();
@@ -76,7 +60,7 @@ app.whenReady().then(async () => {
       const port = await startServer(isDev, isPreview);
       currentUrl = `http://localhost:${port}`;
     } catch (err) {
-      dialog.showErrorBox('启动失败', `本地服务启动失败: ${err}\n\n请确认已安装 Node.js 20+`);
+      dialog.showErrorBox('启动失败', `本地服务启动失败: ${err}\n\n日志: ${path.join(app.getPath('userData'), 'server.log')}`);
       app.quit();
       return;
     }

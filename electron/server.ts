@@ -6,8 +6,6 @@ import fs from 'fs';
 import { getConfig } from './store';
 
 let serverProcess: ChildProcess | null = null;
-let serverPid: number | null = null;
-let watchdogProcess: ChildProcess | null = null;
 let statusCallback: ((status: string) => void) | null = null;
 
 function getPidFilePath(): string {
@@ -15,7 +13,6 @@ function getPidFilePath(): string {
 }
 
 function savePid(pid: number): void {
-  serverPid = pid;
   try {
     fs.writeFileSync(getPidFilePath(), String(pid), 'utf-8');
   } catch {}
@@ -33,10 +30,19 @@ function readPid(): number | null {
 }
 
 function clearPid(): void {
-  serverPid = null;
   try {
     const pidFile = getPidFilePath();
     if (fs.existsSync(pidFile)) fs.unlinkSync(pidFile);
+  } catch {}
+}
+
+function killByPid(pid: number): void {
+  try {
+    if (process.platform === 'win32') {
+      execSync(`taskkill /PID ${pid} /T /F`, { windowsHide: true, stdio: 'ignore' });
+    } else {
+      process.kill(pid, 9);
+    }
   } catch {}
 }
 
@@ -50,75 +56,8 @@ export function killStaleServer(): void {
     return;
   }
   console.log(`[Server] Killing stale Next.js process (PID ${pid})`);
-  try {
-    if (process.platform === 'win32') {
-      execSync(`taskkill /PID ${pid} /T /F`, { windowsHide: true, stdio: 'ignore' });
-    } else {
-      process.kill(pid, 9);
-    }
-  } catch {}
+  killByPid(pid);
   clearPid();
-}
-
-function startWatchdog(nextPid: number): void {
-  if (watchdogProcess) return;
-  const script = `
-const net = require('net');
-const { execSync } = require('child_process');
-const fs = require('fs');
-const pidFile = process.argv[1];
-const nextPid = parseInt(process.argv[2], 10);
-const electronPid = process.argv[3] ? parseInt(process.argv[3], 10) : 0;
-
-function isAlive(pid) {
-  try { process.kill(pid, 0); return true; } catch { return false; }
-}
-
-function killNext() {
-  try {
-    if (process.platform === 'win32') {
-      execSync('taskkill /PID ' + nextPid + ' /T /F', { stdio: 'ignore' });
-    } else {
-      process.kill(nextPid, 9);
-    }
-  } catch {}
-  try { fs.unlinkSync(pidFile); } catch {}
-  process.exit(0);
-}
-
-if (!isAlive(nextPid)) { process.exit(0); }
-
-setInterval(() => {
-  if (electronPid && !isAlive(electronPid)) {
-    killNext();
-  }
-  if (!isAlive(nextPid)) {
-    try { fs.unlinkSync(pidFile); } catch {}
-    process.exit(0);
-  }
-}, 2000);
-`;
-  const scriptPath = path.join(app.getPath('temp'), 'vocab-agent-watchdog.js');
-  try {
-    fs.writeFileSync(scriptPath, script, 'utf-8');
-    watchdogProcess = spawn(process.execPath, [scriptPath, getPidFilePath(), String(nextPid), String(process.pid)], {
-      detached: true,
-      stdio: 'ignore',
-      windowsHide: true,
-    });
-    watchdogProcess.unref();
-    console.log(`[Server] Watchdog started (watching Next PID ${nextPid}, Electron PID ${process.pid})`);
-  } catch (err) {
-    console.error('[Server] Failed to start watchdog:', err);
-  }
-}
-
-function stopWatchdog(): void {
-  if (!watchdogProcess) return;
-  try {
-    watchdogProcess.kill();
-  } catch {}
-  watchdogProcess = null;
 }
 
 export function onServerStatus(cb: (status: string) => void): void {
@@ -140,6 +79,11 @@ function buildEnvOverrides(): Record<string, string> {
   if (env.teacherModel) overrides.TEACHER_MODEL = env.teacherModel;
   if (env.developerModel) overrides.DEVELOPER_MODEL = env.developerModel;
   if (env.authPassword) overrides.AUTH_PASSWORD = env.authPassword;
+  const dataDir = path.join(app.getPath('userData'), 'data');
+  if (!fs.existsSync(dataDir)) {
+    fs.mkdirSync(dataDir, { recursive: true });
+  }
+  overrides.VOCAB_DATA_DIR = dataDir;
   return overrides;
 }
 
@@ -180,7 +124,7 @@ async function findAvailablePort(startPort: number): Promise<number> {
   return port;
 }
 
-function healthCheck(port: number, timeout = 30000): Promise<void> {
+function healthCheck(port: number, timeout = 60000): Promise<void> {
   const start = Date.now();
   return new Promise((resolve, reject) => {
     const check = () => {
@@ -211,10 +155,8 @@ function healthCheck(port: number, timeout = 30000): Promise<void> {
 function findNodeExe(): string | null {
   if (process.platform !== 'win32') {
     try {
-      const which = execSync('which node', { encoding: 'utf-8' }).trim();
-      if (which) return which;
-    } catch {}
-    return null;
+      return execSync('which node', { encoding: 'utf-8' }).trim() || null;
+    } catch { return null; }
   }
   const paths = (process.env.PATH || '').split(path.delimiter);
   for (const p of paths) {
@@ -236,16 +178,95 @@ function findNodeExe(): string | null {
   return null;
 }
 
+async function runMigrate(cwd: string): Promise<void> {
+  const dataDir = path.join(app.getPath('userData'), 'data');
+  if (!fs.existsSync(dataDir)) {
+    fs.mkdirSync(dataDir, { recursive: true });
+  }
+  const dbPath = path.join(dataDir, 'vocab.db');
+
+  if (!fs.existsSync(dbPath)) {
+    const oldDbPath = path.join(cwd, 'data', 'vocab.db');
+    if (fs.existsSync(oldDbPath)) {
+      console.log(`[Server] Migrating database from ${oldDbPath} to ${dbPath}`);
+      try {
+        fs.copyFileSync(oldDbPath, dbPath);
+        const oldEcdict = path.join(cwd, 'data', 'ecdict.db');
+        if (fs.existsSync(oldEcdict)) {
+          fs.copyFileSync(oldEcdict, path.join(dataDir, 'ecdict.db'));
+        }
+      } catch (err) {
+        console.error('[Server] Failed to migrate database:', err);
+      }
+    }
+  }
+
+  try {
+    const { createClient } = require('@libsql/client');
+    const client = createClient({ url: `file:${dbPath}` });
+
+    await client.execute(`CREATE TABLE IF NOT EXISTS words (id TEXT PRIMARY KEY, word TEXT NOT NULL UNIQUE, phonetic TEXT, definition TEXT NOT NULL, examples TEXT, source TEXT, tag TEXT, collins INTEGER, bnc INTEGER, frq INTEGER, exchange TEXT, created_at INTEGER NOT NULL)`);
+    await client.execute(`CREATE TABLE IF NOT EXISTS reviews (id TEXT PRIMARY KEY, word_id TEXT NOT NULL REFERENCES words(id), rating INTEGER NOT NULL, state INTEGER NOT NULL, due INTEGER NOT NULL, stability REAL NOT NULL, difficulty REAL NOT NULL, elapsed_days INTEGER NOT NULL, scheduled_days INTEGER NOT NULL, reps INTEGER NOT NULL, lapses INTEGER NOT NULL, last_review INTEGER, reviewed_at INTEGER NOT NULL)`);
+    await client.execute(`CREATE INDEX IF NOT EXISTS idx_reviews_word_id ON reviews(word_id)`);
+    await client.execute(`CREATE INDEX IF NOT EXISTS idx_reviews_due ON reviews(due)`);
+    await client.execute(`CREATE TABLE IF NOT EXISTS chat_messages (id TEXT PRIMARY KEY, role TEXT NOT NULL, parts TEXT, agent_type TEXT, seq INTEGER NOT NULL UNIQUE, created_at INTEGER NOT NULL)`);
+    await client.execute(`CREATE TABLE IF NOT EXISTS dynamic_commands (id TEXT PRIMARY KEY, name TEXT NOT NULL UNIQUE, description TEXT NOT NULL, tool_code TEXT NOT NULL, component_code TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)`);
+    await client.execute(`CREATE TABLE IF NOT EXISTS dynamic_extractors (id TEXT PRIMARY KEY, name TEXT NOT NULL UNIQUE, description TEXT NOT NULL, script_code TEXT NOT NULL, output_key TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)`);
+    await client.execute(`CREATE TABLE IF NOT EXISTS developer_lessons (id TEXT PRIMARY KEY, category TEXT NOT NULL, title TEXT NOT NULL, content TEXT NOT NULL, context TEXT, created_at INTEGER NOT NULL)`);
+    await client.execute(`CREATE TABLE IF NOT EXISTS pinned_words (id TEXT PRIMARY KEY, word_id TEXT NOT NULL REFERENCES words(id), word TEXT NOT NULL, phonetic TEXT, definition TEXT, position INTEGER NOT NULL, side TEXT NOT NULL, rich_content TEXT, created_at INTEGER NOT NULL)`);
+    await client.execute(`CREATE INDEX IF NOT EXISTS idx_pinned_words_side ON pinned_words(side)`);
+
+    try {
+      const cols = await client.execute(`PRAGMA table_info(chat_messages)`);
+      const hasSeq = cols.rows.some((r: any) => r.name === 'seq');
+      if (!hasSeq) {
+        await client.execute(`ALTER TABLE chat_messages ADD COLUMN seq INTEGER`);
+        await client.execute(`UPDATE chat_messages SET seq = rowid WHERE seq IS NULL`);
+      }
+    } catch {}
+
+    try {
+      const cols = await client.execute(`PRAGMA table_info(pinned_words)`);
+      const hasArchivedAt = cols.rows.some((r: any) => r.name === 'archived_at');
+      if (!hasArchivedAt) {
+        await client.execute(`ALTER TABLE pinned_words ADD COLUMN archived_at INTEGER`);
+      }
+    } catch {}
+
+    client.close();
+    console.log('[Server] Migrations complete');
+  } catch (err) {
+    console.error('[Server] Migration error:', err);
+  }
+}
+
 export async function startServer(isDev: boolean, isPreview: boolean): Promise<number> {
   const config = getConfig();
   const port = await findAvailablePort(config.local.port);
 
-  const cwd = (isDev || isPreview) ? path.resolve(app.getAppPath(), '..') : path.dirname(app.getPath('exe'));
+  let cwd: string;
+  if (isDev || isPreview) {
+    cwd = path.resolve(app.getAppPath(), '..');
+  } else {
+    const exeDir = path.dirname(app.getPath('exe'));
+    cwd = path.join(exeDir, 'resources', 'app');
+  }
 
   killStaleServer();
 
+  await runMigrate(cwd);
+
   const envOverrides = buildEnvOverrides();
-  const env = { ...process.env, PORT: String(port), ...envOverrides };
+  const nodeExe = (isDev || isPreview) ? process.execPath : findNodeExe();
+  if (!nodeExe) {
+    throw new Error('未找到 Node.js，请确认已安装 Node.js 20+ 并添加到 PATH');
+  }
+
+  const spawnEnv = { ...process.env, PORT: String(port), ...envOverrides } as Record<string, string>;
+  const nodeDir = path.dirname(nodeExe);
+  if (nodeDir && !(spawnEnv.PATH || '').split(path.delimiter).includes(nodeDir)) {
+    spawnEnv.PATH = nodeDir + path.delimiter + (spawnEnv.PATH || '');
+  }
 
   emitStatus('starting');
 
@@ -254,45 +275,58 @@ export async function startServer(isDev: boolean, isPreview: boolean): Promise<n
     ? [nextScript, 'dev', '--turbopack', '-p', String(port)]
     : [nextScript, 'start', '-p', String(port)];
 
-  const nodeExe = (isDev || isPreview) ? process.execPath : findNodeExe();
-  if (!nodeExe) {
-    throw new Error('未找到 Node.js，请确认已安装 Node.js 20+ 并添加到 PATH');
+  console.log(`[Server] Starting: ${nodeExe} ${args.join(' ')}`);
+  console.log(`[Server] cwd: ${cwd}`);
+  console.log(`[Server] getAppPath: ${app.getAppPath()}`);
+  console.log(`[Server] exePath: ${app.getPath('exe')}`);
+  console.log(`[Server] PATH includes nodejs: ${!!(process.env.PATH || '').includes('nodejs')}`);
+
+  const logPath = path.join(app.getPath('userData'), 'server.log');
+  let logStream: fs.WriteStream | null = null;
+  try {
+    logStream = fs.createWriteStream(logPath, { flags: 'w' });
+  } catch {}
+  function log(msg: string) {
+    console.log(msg);
+    logStream?.write(msg + '\n');
   }
 
   serverProcess = spawn(nodeExe, args, {
     cwd,
-    env,
+    env: spawnEnv,
     stdio: ['pipe', 'pipe', 'pipe'],
     windowsHide: true,
   });
 
   if (serverProcess.pid) {
     savePid(serverProcess.pid);
-    startWatchdog(serverProcess.pid);
+    log(`[Server] PID: ${serverProcess.pid}`);
   }
 
   serverProcess.stdout?.on('data', (data: Buffer) => {
     const msg = data.toString().trim();
-    if (msg) console.log(`[Next.js] ${msg}`);
+    if (msg) log(`[Next.js] ${msg}`);
   });
 
   serverProcess.stderr?.on('data', (data: Buffer) => {
     const msg = data.toString().trim();
-    if (msg) console.error(`[Next.js] ${msg}`);
+    if (msg) log(`[Next.js err] ${msg}`);
   });
 
   serverProcess.on('error', (err) => {
-    console.error('[Server] Process error:', err);
+    log(`[Server] Process error: ${err}`);
     emitStatus('error');
   });
 
-  serverProcess.on('exit', (code) => {
+  serverProcess.on('exit', (code, signal) => {
+    log(`[Server] Process exited with code=${code} signal=${signal}`);
     if (code !== 0 && code !== null) {
-      console.error(`[Server] Process exited with code ${code}`);
       emitStatus('error');
     }
     serverProcess = null;
     clearPid();
+    logStream?.end();
+    logStream = null;
   });
 
   try {
@@ -306,61 +340,42 @@ export async function startServer(isDev: boolean, isPreview: boolean): Promise<n
 }
 
 export function stopServer(): Promise<void> {
-  stopWatchdog();
   return new Promise((resolve) => {
     if (!serverProcess) {
+      clearPid();
       resolve();
       return;
     }
 
-    const pid = serverProcess.pid;
+    const pid = serverProcess.pid!;
     let killed = false;
 
     serverProcess.on('exit', () => {
       killed = true;
       serverProcess = null;
+      clearPid();
       resolve();
     });
 
     try {
-      if (process.platform === 'win32') {
-        spawn('taskkill', ['/PID', String(pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' });
-      } else {
-        serverProcess.kill('SIGTERM');
-      }
-    } catch {
-      // process may have already exited
-    }
+      killByPid(pid);
+    } catch {}
 
     setTimeout(() => {
       if (!killed && pid) {
-        try {
-          if (process.platform === 'win32') {
-            spawn('taskkill', ['/PID', String(pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' });
-          } else {
-            process.kill(pid, 9);
-          }
-        } catch {
-          // ignore
-        }
+        try { killByPid(pid); } catch {}
       }
       serverProcess = null;
+      clearPid();
       resolve();
     }, 3000);
   });
 }
 
 export function forceKillServer(): void {
-  stopWatchdog();
-  const pid = serverProcess?.pid || serverPid || readPid();
+  const pid = serverProcess?.pid || readPid();
   if (!pid) return;
-  try {
-    if (process.platform === 'win32') {
-      execSync(`taskkill /PID ${pid} /T /F`, { windowsHide: true, stdio: 'ignore' });
-    } else {
-      process.kill(pid, 9);
-    }
-  } catch {}
+  killByPid(pid);
   serverProcess = null;
   clearPid();
 }
