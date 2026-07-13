@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-reminder-start"
+description = "Enables the reminder-start command without any pre-configured scope."
+commands.allow = ["reminder-start"]
+
+[[permission]]
+identifier = "deny-reminder-start"
+description = "Denies the reminder-start command without any pre-configured scope."
+commands.deny = ["reminder-start"]

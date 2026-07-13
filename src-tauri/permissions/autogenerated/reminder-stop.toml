@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-reminder-stop"
+description = "Enables the reminder-stop command without any pre-configured scope."
+commands.allow = ["reminder-stop"]
+
+[[permission]]
+identifier = "deny-reminder-stop"
+description = "Denies the reminder-stop command without any pre-configured scope."
+commands.deny = ["reminder-stop"]
