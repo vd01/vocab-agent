@@ -21,6 +21,13 @@ class FileBlockStore {
   private pending: Map<string, FileBlock> = new Map();
 
   /**
+   * 当前 step 的文本缓冲区。
+   * LLM 流式输出文本时实时追加，工具 execute 时可从中解析标记块。
+   * 每次 onStepFinish 后清空。
+   */
+  private stepTextBuffer: string = '';
+
+  /**
    * 存入标记块内容。同一 filePath 会被覆盖（后写入的优先）。
    */
   set(filePath: string, block: FileBlock): void {
@@ -49,6 +56,54 @@ class FileBlockStore {
   }
 
   /**
+   * 追加文本到当前 step 缓冲区。
+   * 在 streamText 的文本流中调用，确保工具 execute 时
+   * 能从缓冲区中解析到标记块。
+   */
+  appendStepText(text: string): void {
+    this.stepTextBuffer += text;
+  }
+
+  /**
+   * 从当前 step 缓冲区中解析指定路径的标记块，
+   * 执行写入操作，并从缓冲区中移除已处理的内容。
+   * 返回成功写入的标记块列表。
+   */
+  flushFromStepText(requestedPaths: string[]): FileBlock[] {
+    if (!this.stepTextBuffer || requestedPaths.length === 0) return [];
+
+    const allBlocks = parseFileBlocks(this.stepTextBuffer);
+    if (allBlocks.length === 0) return [];
+
+    const normalizedRequests = new Set(
+      requestedPaths.map(p => p.replace(/\\/g, '/'))
+    );
+
+    const matched: FileBlock[] = [];
+    const unmatched: FileBlock[] = [];
+
+    for (const block of allBlocks) {
+      const normalized = block.filePath.replace(/\\/g, '/');
+      if (normalizedRequests.has(normalized)) {
+        matched.push(block);
+        // Also store in pending so prepareStep won't re-execute
+        this.pending.set(block.filePath, block);
+      } else {
+        unmatched.push(block);
+      }
+    }
+
+    return matched;
+  }
+
+  /**
+   * 清空 step 文本缓冲区。在 onStepFinish 后调用。
+   */
+  clearStepText(): void {
+    this.stepTextBuffer = '';
+  }
+
+  /**
    * 当前暂存的标记块数量。
    */
   get size(): number {
@@ -60,6 +115,7 @@ class FileBlockStore {
    */
   clear(): void {
     this.pending.clear();
+    this.stepTextBuffer = '';
   }
 }
 

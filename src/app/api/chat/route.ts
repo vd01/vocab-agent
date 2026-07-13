@@ -124,6 +124,13 @@ export async function POST(req: Request) {
       maxOutputTokens: config.maxTokens,
       temperature: config.temperature,
       stopWhen: stepCountIs(MAX_STEPS),
+      onChunk({ chunk }) {
+        // Accumulate text deltas into fileBlockStore's step buffer
+        // so that tool execute() can parse file blocks from the current step
+        if (chunk.type === 'text-delta' && agentType === 'developer') {
+          fileBlockStore.appendStepText((chunk as any).text ?? '');
+        }
+      },
       prepareStep: async ({ messages }) => {
         // Context compaction
         const tokens = estimateMessagesTokens(messages);
@@ -155,6 +162,9 @@ export async function POST(req: Request) {
       },
       onStepFinish: async (stepResult) => {
         stepCount++;
+
+        // Clear step text buffer (already parsed by tools via flushFileBlocks)
+        fileBlockStore.clearStepText();
 
         // Execute file blocks from step text (fallback for when prepareStep doesn't run)
         if (agentType === 'developer' && stepResult.text) {

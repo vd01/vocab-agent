@@ -45,5 +45,24 @@ export const componentRegistry = new ComponentRegistryClass();
  */
 
 export function loadGeneratedComponents() {
-  // No components registered yet
+  import('@/components/generated/greet').then(mod => {
+    componentRegistry.register('greet', (mod.default ?? mod) as unknown as React.ComponentType<Record<string, unknown>>);
+  }).catch(err => {
+    console.warn('[component-registry] Failed to load component "greet:', err);
+  });
+  import('@/components/generated/helloworld').then(mod => {
+    componentRegistry.register('helloworld', (mod.default ?? mod) as unknown as React.ComponentType<Record<string, unknown>>);
+  }).catch(err => {
+    console.warn('[component-registry] Failed to load component "helloworld:', err);
+  });
+  import('@/components/generated/hi').then(mod => {
+    componentRegistry.register('hi', (mod.default ?? mod) as unknown as React.ComponentType<Record<string, unknown>>);
+  }).catch(err => {
+    console.warn('[component-registry] Failed to load component "hi:', err);
+  });
+  import('@/components/generated/word-match').then(mod => {
+    componentRegistry.register('word-match', (mod.default ?? mod) as unknown as React.ComponentType<Record<string, unknown>>);
+  }).catch(err => {
+    console.warn('[component-registry] Failed to load component "word-match:', err);
+  });
 }
