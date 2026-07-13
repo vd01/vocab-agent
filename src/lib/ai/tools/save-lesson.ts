@@ -4,6 +4,7 @@ import { db } from '@/lib/db';
 import { developerLessons } from '@/lib/db/schema';
 import { v4 as uuid } from 'uuid';
 import { eq, desc } from 'drizzle-orm';
+import { estimateTokens } from '../utils/token-estimate';
 
 export const saveLessonTool = tool({
   description: '保存经验教训到知识库，供未来开发任务参考。在完成开发任务后，主动总结并保存你学到的经验。',
@@ -56,7 +57,7 @@ export const saveLessonTool = tool({
  * Respects a character budget to avoid inflating the prompt.
  * Prioritizes pitfall > anti-pattern > pattern > tip (most impactful first).
  */
-export async function loadDeveloperLessons(maxChars: number = 3000): Promise<string> {
+export async function loadDeveloperLessons(maxTokens: number = 1500): Promise<string> {
   try {
     const lessons = await db
       .select()
@@ -86,17 +87,18 @@ export async function loadDeveloperLessons(maxChars: number = 3000): Promise<str
       tip: [],
     };
 
-    let totalChars = 0;
+    let totalTokens = 0;
     let includedCount = 0;
 
     for (const l of sorted) {
       const entry = `- **${l.title}**${l.context ? `（${l.context}）` : ''}: ${l.content}`;
-      if (totalChars + entry.length > maxChars) break;
+      const entryTokens = estimateTokens(entry);
+      if (totalTokens + entryTokens > maxTokens) break;
       const cat = l.category as keyof typeof grouped;
       if (grouped[cat]) {
         grouped[cat].push({ title: l.title, content: l.content, context: l.context });
       }
-      totalChars += entry.length;
+      totalTokens += entryTokens;
       includedCount++;
     }
 

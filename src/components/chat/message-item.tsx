@@ -181,7 +181,6 @@ const DEV_TOOL_LABELS: Record<string, { icon: string; label: string }> = {
   'file-read':  { icon: 'R', label: '读取文件' },
   'file-edit':  { icon: 'E', label: '编辑文件' },
   'file-list':  { icon: 'L', label: '列出文件' },
-  'shell-exec': { icon: '>', label: '执行命令' },
   'register-tool':      { icon: 'T', label: '注册工具' },
   'register-component': { icon: 'C', label: '注册组件' },
   'create-command':     { icon: '!', label: '创建命令' },
@@ -211,10 +210,6 @@ function DevToolOutput({ toolName, output }: { toolName: string; output: any; ke
     summary = output.type === 'success'
       ? `${(output.entries ?? []).length} 项`
       : output.message;
-  } else if (toolName === 'shell-exec') {
-    summary = output.type === 'success'
-      ? (output.stdout ? `${output.stdout.slice(0, 60)}${output.stdout.length > 60 ? '...' : ''}` : '无输出')
-      : output.message;
   } else {
     summary = output.message ?? JSON.stringify(output).slice(0, 80);
   }
@@ -223,8 +218,6 @@ function DevToolOutput({ toolName, output }: { toolName: string; output: any; ke
   let detailContent: string | null = null;
   if (toolName === 'file-read' && output.type === 'success') {
     detailContent = output.content;
-  } else if (toolName === 'shell-exec' && (output.stdout || output.stderr)) {
-    detailContent = [output.stdout, output.stderr].filter(Boolean).join('\n--- stderr ---\n');
   } else if (output.content && typeof output.content === 'string') {
     detailContent = output.content;
   }
@@ -680,7 +673,7 @@ function renderToolOutput(key: number, toolName: string, output: any, isLastRevi
   }
 
   // Developer tools: file operations & shell — compact collapsed display
-  const devToolNames = new Set(['file-write', 'file-read', 'file-edit', 'file-list', 'shell-exec', 'register-tool', 'register-component', 'create-command', 'db-query', 'save-lesson', 'list-lessons', 'merge-lessons', 'test-command']);
+  const devToolNames = new Set(['file-write', 'file-read', 'file-edit', 'file-list', 'register-tool', 'register-component', 'create-command', 'db-query', 'save-lesson', 'list-lessons', 'merge-lessons', 'test-command']);
   if (devToolNames.has(toolName)) {
     return <DevToolOutput key={key} toolName={toolName} output={output} />;
   }
@@ -763,7 +756,6 @@ const TOOL_DISPLAY_NAMES: Record<string, string> = {
   'file-read': '读取文件',
   'file-edit': '编辑文件',
   'file-list': '列出文件',
-  'shell-exec': '执行命令',
   'create-command': '创建命令',
   'register-tool': '注册命令',
   'register-component': '注册组件',

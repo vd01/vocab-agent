@@ -2,6 +2,7 @@ import {
   streamText,
   stepCountIs,
   convertToModelMessages,
+  pruneMessages,
   type UIMessage,
 } from 'ai';
 import { getTeacherConfig } from '@/lib/ai/teacher-agent';
@@ -10,10 +11,16 @@ import { routeAgent } from '@/lib/ai/agent-router';
 import { buildWorldState } from '@/lib/pipeline/world-state';
 import { contextManager } from '@/lib/ai/context-manager';
 import { setDebugLogs } from '@/lib/ai/debug-store';
+import { estimateMessagesTokens } from '@/lib/ai/utils/token-estimate';
 
 export const maxDuration = 60;
 
 const MAX_STEPS = 25;
+
+// Token threshold for context compaction within a multi-step task.
+// When accumulated messages exceed this, pruneMessages will trim
+// old reasoning and tool calls to keep the context window manageable.
+const COMPACTION_THRESHOLD = 80000;
 
 // ── Helper: serialize model messages for debug display ────────────────────
 function serializeMessagesForDebug(messages: any[]): any[] {
@@ -51,7 +58,13 @@ export async function POST(req: Request) {
     // Build World State for context injection
     const worldState = await buildWorldState();
 
-    let config;
+    let config: {
+      model: any;
+      instructions: string;
+      tools: any;
+      maxTokens?: number;
+      temperature?: number;
+    };
     if (agentType === 'developer') {
       config = await getDeveloperConfig();
     } else {
@@ -103,7 +116,22 @@ export async function POST(req: Request) {
       instructions: finalInstructions,
       messages: trimmedMessages,
       tools: config.tools,
+      maxOutputTokens: config.maxTokens,
+      temperature: config.temperature,
       stopWhen: stepCountIs(MAX_STEPS),
+      prepareStep: ({ messages }) => {
+        const tokens = estimateMessagesTokens(messages);
+        if (tokens > COMPACTION_THRESHOLD) {
+          return {
+            messages: pruneMessages({
+              messages,
+              reasoning: 'all',
+              toolCalls: 'before-last-3-messages',
+              emptyMessages: 'remove',
+            }),
+          };
+        }
+      },
       onStepFinish: async (stepResult) => {
         stepCount++;
 

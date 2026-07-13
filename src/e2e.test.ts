@@ -183,7 +183,7 @@ describe('E2E - Agent Router', () => {
     // Developer agent should use its tools
     const toolCalls = extractToolCalls(events);
     const devTools = toolCalls.filter(tc =>
-      ['file-write', 'file-read', 'shell-exec', 'register-tool', 'register-component'].includes(tc.toolName)
+      ['file-write', 'file-read', 'register-tool', 'register-component'].includes(tc.toolName)
     );
 
     // Developer may respond with text or use tools

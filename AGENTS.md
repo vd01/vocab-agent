@@ -35,7 +35,7 @@ Self-evolving English learning AI with dual-agent architecture (Teacher + Develo
 
 **Teacher agent** (`src/lib/ai/teacher-agent.ts`): fast model, tools: fsrs-review, fsrs-rate, vocab-lookup, add-word, extract-words, dict-lookup, vocab-stats, pin-word, unpin-word
 
-**Developer agent** (`src/lib/ai/developer-agent.ts`): reasoning model, tools: file-write, file-read, file-edit, file-list, shell-exec, create-command, register-tool, register-component, unregister-component, db-query, save-lesson, list-lessons, merge-lessons, test-command
+**Developer agent** (`src/lib/ai/developer-agent.ts`): reasoning model, tools: file-write, file-read, file-edit, file-list, create-command, register-tool, register-component, unregister-component, db-query, save-lesson, list-lessons, merge-lessons, test-command
 
 **Models** (`src/lib/ai/models.ts`):
 - Teacher: `openaiCompatible.chat()` — uses `/chat/completions` endpoint (not `/responses`)

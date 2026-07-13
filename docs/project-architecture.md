@@ -18,7 +18,7 @@
 ### Developer Agent
 - 模型: `deepseek-reasoner`（返回 reasoning stream parts）
 - 职责: 创建命令、写代码、扩展系统
-- 工具: file-write, file-read, file-edit, file-list, create-command, register-tool, register-component, shell-exec, db-query, test-command, save-lesson
+- 工具: file-write, file-read, file-edit, file-list, create-command, register-tool, register-component, db-query, test-command, save-lesson
 - 返回 reasoning 部分前端会折叠显示
 
 ### 路由规则 (`src/lib/ai/agent-router.ts`)

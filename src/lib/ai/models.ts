@@ -26,6 +26,6 @@ export const teacherModel = openaiCompatible.chat(
 );
 
 // Developer Agent: reasoning model for code generation
-export const developerModel = deepseek(
+export const developerModel = openaiCompatible.chat(
   process.env.DEVELOPER_MODEL ?? 'deepseek-reasoner',
 );

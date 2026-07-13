@@ -10,16 +10,17 @@
  */
 
 import type { ModelMessage } from 'ai';
+import { estimateTokens } from './utils/token-estimate';
 
 // ── Configuration ────────────────────────────────────────────────────────
 
 export interface ContextManagerConfig {
   /** Maximum number of recent messages to keep in full */
   recentWindow: number;
-  /** Maximum characters per tool result (truncated beyond this) */
-  maxToolResultChars: number;
-  /** Maximum total characters for the conversation context (approximate) */
-  maxContextChars: number;
+  /** Maximum tokens per tool result (truncated beyond this) */
+  maxToolResultTokens: number;
+  /** Maximum total tokens for the conversation context (approximate) */
+  maxContextTokens: number;
   /** Whether to include reasoning parts in context */
   includeReasoning: boolean;
   /** Number of recent assistant rounds to keep in full */
@@ -30,8 +31,8 @@ export interface ContextManagerConfig {
 
 const DEFAULT_CONFIG: ContextManagerConfig = {
   recentWindow: 20,
-  maxToolResultChars: 2000,
-  maxContextChars: 60000,
+  maxToolResultTokens: 800,
+  maxContextTokens: 20000,
   includeReasoning: false,
   fullAssistantRounds: 3,
   maxUserTopics: 10,
@@ -102,10 +103,10 @@ export class ContextManager {
       result.push(this.truncateToolResults(msg));
     }
 
-    // Final check: if total chars exceed budget, trim from the front
+    // Final check: if total tokens exceed budget, trim from the front
     // But prefer removing assistant messages over user messages
-    const totalChars = this.estimateChars(result);
-    if (totalChars > this.config.maxContextChars) {
+    const totalTokens = this.estimateMessagesTokens(result);
+    if (totalTokens > this.config.maxContextTokens) {
       this.trimToBudget(result);
       trimmed = true;
     }
@@ -176,11 +177,11 @@ export class ContextManager {
   }
 
   /**
-   * Trim messages to fit budget, preferring to remove assistant messages.
+   * Trim messages to fit token budget, preferring to remove assistant messages.
    */
   private trimToBudget(result: ModelMessage[]): void {
     // First pass: remove oldest assistant messages (keep user messages)
-    while (result.length > 1 && this.estimateChars(result) > this.config.maxContextChars) {
+    while (result.length > 1 && this.estimateMessagesTokens(result) > this.config.maxContextTokens) {
       // Find the oldest assistant message
       const idx = result.findIndex(m => m.role === 'assistant');
       if (idx >= 0 && idx < result.length - 2) {
@@ -210,7 +211,8 @@ export class ContextManager {
 
   /**
    * Truncate oversized tool results in a message.
-   * In V7, tool message content is ToolContent = Array<ToolResultPart | ToolApprovalResponse>
+   * Uses token-based truncation: if a tool result exceeds the token budget,
+   * truncate the string to fit within the budget.
    */
   private truncateToolResults(message: ModelMessage): ModelMessage {
     if (message.role === 'tool') {
@@ -218,12 +220,16 @@ export class ContextManager {
       if (Array.isArray(content)) {
         const truncatedParts = content.map((part: any) => {
           if (part.type === 'tool-result' && typeof part.result === 'string') {
-            if (part.result.length > this.config.maxToolResultChars) {
+            const resultTokens = estimateTokens(part.result);
+            if (resultTokens > this.config.maxToolResultTokens) {
+              // Estimate how many characters to keep based on token ratio
+              const ratio = this.config.maxToolResultTokens / resultTokens;
+              const keepChars = Math.floor(part.result.length * ratio * 0.9); // 0.9 safety margin
               return {
                 ...part,
                 result:
-                  part.result.slice(0, this.config.maxToolResultChars) +
-                  `\n\n[...已截断，原始长度 ${part.result.length} 字符]`,
+                  part.result.slice(0, keepChars) +
+                  `\n\n[...已截断，原始 ${resultTokens} 估算 token，保留约 ${this.config.maxToolResultTokens} token]`,
               };
             }
           }
@@ -265,24 +271,24 @@ export class ContextManager {
   }
 
   /**
-   * Rough character count estimation for context budget.
-   * ~4 chars per token for English, ~2 chars per token for Chinese.
-   * We use a conservative estimate of 3 chars/token.
+   * Estimate total tokens for a list of messages.
+   * Uses the shared estimateTokens utility with CJK-aware token counting.
    */
-  private estimateChars(messages: ModelMessage[]): number {
+  private estimateMessagesTokens(messages: ModelMessage[]): number {
     let total = 0;
     for (const msg of messages) {
       const text = this.extractTextContent(msg);
-      if (text) total += text.length;
+      if (text) total += estimateTokens(text);
       if (msg.role === 'tool') {
-        total += 200;
+        total += 50; // tool result overhead
       }
       if (msg.role === 'assistant' && Array.isArray(msg.content)) {
         const hasToolCalls = (msg.content as any[]).some(
           (part: any) => part.type === 'tool-call',
         );
-        if (hasToolCalls) total += 200;
+        if (hasToolCalls) total += 50; // tool call overhead
       }
+      total += 4; // per-message overhead
     }
     return total;
   }

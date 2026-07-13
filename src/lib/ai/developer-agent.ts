@@ -4,7 +4,6 @@ import { buildDeveloperInstructions } from './prompts/developer-system';
 import { fileWriteTool, fileReadTool } from './tools/file-write';
 import { fileEditTool } from './tools/file-edit';
 import { fileListTool } from './tools/file-list';
-import { shellExecTool } from './tools/shell-exec';
 import { registerToolTool } from './tools/register-tool';
 import { registerComponentTool } from './tools/register-component';
 import { unregisterComponentTool } from './tools/unregister-component';
@@ -22,7 +21,6 @@ export const developerTools = {
   'file-read': fileReadTool,
   'file-edit': fileEditTool,
   'file-list': fileListTool,
-  'shell-exec': shellExecTool,
   'create-command': createCommandTool,
   'register-tool': registerToolTool,
   'register-component': registerComponentTool,
@@ -45,5 +43,7 @@ export async function getDeveloperConfig() {
     model: developerModel,
     instructions: buildDeveloperInstructions(lessons),
     tools: developerTools,
+    maxTokens: 8192,
+    temperature: 0.1,
   };
 }

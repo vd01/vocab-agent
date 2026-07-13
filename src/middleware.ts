@@ -21,6 +21,9 @@ async function isAuthenticated(req: NextRequest): Promise<boolean> {
   const password = process.env.AUTH_PASSWORD;
   if (!password) return true;
 
+  // Bypass auth when AUTH_BYPASS is set (for testing only)
+  if (process.env.AUTH_BYPASS === '1') return true;
+
   const token = req.cookies.get(COOKIE_NAME)?.value;
   if (!token) return false;
 
