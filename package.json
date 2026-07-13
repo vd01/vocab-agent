@@ -10,6 +10,7 @@
     "lint": "eslint",
     "db:migrate": "npx tsx src/lib/db/migrate.ts",
     "db:reset": "npx tsx src/lib/db/reset.ts",
+    "clean:dynamic": "npx tsx scripts/clean-dynamic.ts",
     "import-ecdict": "npx tsx src/lib/dictionary/import-ecdict.ts",
     "test": "vitest run",
     "test:watch": "vitest",

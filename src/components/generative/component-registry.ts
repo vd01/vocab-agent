@@ -33,17 +33,15 @@ export const componentRegistry = new ComponentRegistryClass();
 
 /**
  * Load all generated components using static imports.
- * This file is auto-updated by the register-component / unregister-component tools
- * whenever a component is added or removed. Turbopack HMR
+ * This file is auto-updated by the register-component tool
+ * whenever a new component is registered. Turbopack HMR
  * will hot-reload this module automatically.
  *
  * DO NOT EDIT MANUALLY — changes will be overwritten.
  */
 
-import RandomLetter from '@/components/generated/random-letter';
 import RandomWords from '@/components/generated/random-words';
 
 export function loadGeneratedComponents() {
-  componentRegistry.register('random-letter', RandomLetter as unknown as React.ComponentType<Record<string, unknown>>);
   componentRegistry.register('random-words', RandomWords as unknown as React.ComponentType<Record<string, unknown>>);
 }
