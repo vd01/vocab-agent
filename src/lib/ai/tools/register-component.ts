@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { promises as fs } from 'fs';
 import path from 'path';
 import { updateRegistryFile, GENERATED_SRC_DIR } from './registry-utils';
+import { flushFileBlocks } from './file-block-flush';
 
 export const registerComponentTool = tool({
   description: `注册新的 UI 组件到动态组件注册表，立即生效（无需重启）。同时更新 DB 中的 component_code。
@@ -18,6 +19,11 @@ export const registerComponentTool = tool({
     codePath: z.string().optional().describe('组件代码文件路径（与 code 二选一，推荐用于复杂组件）。如 "generated/components/word-match-panel.tsx"'),
   }),
   execute: async ({ name, code, codePath }) => {
+    // Flush pending file blocks for codePath if provided
+    if (codePath) {
+      await flushFileBlocks([codePath]);
+    }
+
     // Resolve code from either direct string or file path
     let componentCode: string;
     if (codePath) {

@@ -60,3 +60,5 @@ stop.bat
 
 # Electron build output
 /dist-electron/
+
+src-tauri/.cargo/

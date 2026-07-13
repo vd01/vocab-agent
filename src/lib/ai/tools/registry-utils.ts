@@ -95,7 +95,7 @@ export function loadGeneratedComponents() {
 
   const registrations = validFiles.map(f => {
     const name = f.replace(/\.(tsx|ts)$/, '');
-    return `  import('@/components/generated/${name}.tsx').then(mod => {
+    return `  import('@/components/generated/${name}').then(mod => {
     componentRegistry.register('${name}', (mod.default ?? mod) as unknown as React.ComponentType<Record<string, unknown>>);
   }).catch(err => {
     console.warn('[component-registry] Failed to load component "${name}:', err);

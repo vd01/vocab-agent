@@ -6,35 +6,36 @@ import { db } from '@/lib/db';
 import { dynamicCommands } from '@/lib/db/schema';
 import { v4 as uuid } from 'uuid';
 import { eq } from 'drizzle-orm';
+import { flushFileBlocks } from './file-block-flush';
 
 const GENERATED_SRC_DIR = path.join(process.cwd(), 'src', 'components', 'generated');
 
 export const createCommandTool = tool({
   description: `创建或更新一个 / 命令，一步完成命令注册和 UI 组件注册。
 
-**重要：代码必须先写入文件，然后通过路径引用。这是避免 JSON 转义问题的唯一可靠方式。**
+	**重要：代码必须先写入文件，然后通过路径引用。这是避免 JSON 转义问题的唯一可靠方式。**
 
-工作流程:
-1. 先用 file-write 把 toolCode 写到 generated/ 下的 .js 文件
-2. 如果需要 UI 组件，先用 file-write 把组件代码写到 generated/ 下的 .tsx 文件
-3. 然后调用本工具，传入文件路径
+	工作流程:
+	1. 先用 file-write 把 toolCode 写到 generated/ 下的 .js 文件
+	2. 如果需要 UI 组件，先用 file-write 把组件代码写到 generated/ 下的 .tsx 文件
+	3. 然后调用本工具，传入文件路径
 
-toolCode 沙盒注入的变量（无需 import）:
-- db: Drizzle ORM 实例
-- tables: { words, reviews, chatMessages, dynamicCommands, dynamicExtractors }
-- fsrs: { getDueWords, processReview, initializeCard, getProficiencyDistribution, getDailyStats, Rating }
-- args: string[] 命令参数
-- console: { log, error, warn }
+	toolCode 沙盒注入的变量（无需 import）:
+	- db: Drizzle ORM 实例
+	- tables: { words, reviews, chatMessages, dynamicCommands, dynamicExtractors }
+	- fsrs: { getDueWords, processReview, initializeCard, getProficiencyDistribution, getDailyStats, Rating }
+	- args: string[] 命令参数
+	- console: { log, error, warn }
 
-toolCode 返回值规则:
-- 简单文本结果: return { type: 'message', message: '...' }
-- 自定义 UI: return { type: '<name>', ...data }，同时提供 componentCodePath
+	toolCode 返回值规则:
+	- 简单文本结果: return { type: 'message', message: '...' }
+	- 自定义 UI: return { type: '<name>', ...data }，同时提供 componentCodePath
 
-组件代码规范:
-- 必须包含默认导出
-- 使用 Tailwind CSS 样式
-- 可从 @/components/ui 导入 shadcn/ui 组件
-- props 就是 toolCode 返回的整个对象`,
+	组件代码规范:
+	- 必须包含默认导出
+	- 使用 Tailwind CSS 样式
+	- 可从 @/components/ui 导入 shadcn/ui 组件
+	- props 就是 toolCode 返回的整个对象`,
   inputSchema: z.object({
     name: z.string().describe('命令名称（不含 / 前缀），如 "word-match"'),
     description: z.string().describe('命令描述'),
@@ -50,7 +51,12 @@ toolCode 返回值规则:
       return { type: 'error', message: `命令 /${name} 与内置命令冲突，请换一个名称` };
     }
 
-    // 2. Read toolCode from file
+    // 2. Flush any pending file blocks for the paths we need to read.
+    //    标记块写入延迟到 prepareStep 才执行，但工具在同一 step 内调用，
+    //    所以需要先 flush 确保文件已落盘。
+    await flushFileBlocks([toolCodePath, componentCodePath].filter(Boolean) as string[]);
+
+    // 3. Read toolCode from file
     const toolCodeFullPath = path.join(process.cwd(), toolCodePath);
     const toolCodeNormalized = path.normalize(toolCodeFullPath);
     if (!toolCodeNormalized.startsWith(path.normalize(process.cwd()))) {
@@ -64,7 +70,7 @@ toolCode 返回值规则:
       return { type: 'error', message: `toolCode 文件不存在: ${toolCodePath}。请先用 file-write 写入代码文件。` };
     }
 
-    // 3. Read componentCode from file (if provided)
+    // 4. Read componentCode from file (if provided)
     let componentCode: string | undefined;
     if (componentCodePath) {
       const componentFullPath = path.join(process.cwd(), componentCodePath);
@@ -81,7 +87,7 @@ toolCode 返回值规则:
     }
 
     try {
-      // 4. Upsert dynamic_commands
+      // 5. Upsert dynamic_commands
       const existing = await db.select().from(dynamicCommands)
         .where(eq(dynamicCommands.name, name)).limit(1);
 
@@ -104,7 +110,7 @@ toolCode 返回值规则:
         });
       }
 
-      // 5. If componentCode provided, write component file + update registry
+      // 6. If componentCode provided, write component file + update registry
       if (componentCode) {
         // Write to src/components/generated/<name>.tsx
         await fs.mkdir(GENERATED_SRC_DIR, { recursive: true });
