@@ -177,9 +177,7 @@ export function MessageItem({ message, isLastAssistant, isStreaming, isLastRevie
 // ── Developer tool output (collapsed) ─────────────────────────────────────
 
 const DEV_TOOL_LABELS: Record<string, { icon: string; label: string }> = {
-  'file-write': { icon: 'W', label: '写入文件' },
   'file-read':  { icon: 'R', label: '读取文件' },
-  'file-edit':  { icon: 'E', label: '编辑文件' },
   'file-list':  { icon: 'L', label: '列出文件' },
   'register-tool':      { icon: 'T', label: '注册工具' },
   'register-component': { icon: 'C', label: '注册组件' },
@@ -198,11 +196,7 @@ function DevToolOutput({ toolName, output }: { toolName: string; output: any; ke
 
   // Build a short summary line
   let summary = '';
-  if (toolName === 'file-write') {
-    summary = output.type === 'success'
-      ? `${output.path} — ${output.message}`
-      : output.message;
-  } else if (toolName === 'file-read') {
+  if (toolName === 'file-read') {
     summary = output.type === 'success'
       ? `${(output.content ?? '').length} 字符`
       : output.message;
@@ -673,7 +667,7 @@ function renderToolOutput(key: number, toolName: string, output: any, isLastRevi
   }
 
   // Developer tools: file operations & shell — compact collapsed display
-  const devToolNames = new Set(['file-write', 'file-read', 'file-edit', 'file-list', 'register-tool', 'register-component', 'create-command', 'db-query', 'save-lesson', 'list-lessons', 'merge-lessons', 'test-command']);
+  const devToolNames = new Set(['file-read', 'file-list', 'register-tool', 'register-component', 'create-command', 'db-query', 'save-lesson', 'list-lessons', 'merge-lessons', 'test-command']);
   if (devToolNames.has(toolName)) {
     return <DevToolOutput key={key} toolName={toolName} output={output} />;
   }
@@ -752,9 +746,7 @@ function isToolPartWithState(part: any, state: string): boolean {
 }
 
 const TOOL_DISPLAY_NAMES: Record<string, string> = {
-  'file-write': '写入文件',
   'file-read': '读取文件',
-  'file-edit': '编辑文件',
   'file-list': '列出文件',
   'create-command': '创建命令',
   'register-tool': '注册命令',

@@ -13,6 +13,7 @@ import { contextManager } from '@/lib/ai/context-manager';
 import { setDebugLogs } from '@/lib/ai/debug-store';
 import { estimateMessagesTokens } from '@/lib/ai/utils/token-estimate';
 import { fileBlockStore } from '@/lib/ai/utils/file-block-store';
+import { parseAndExecuteFileBlocks } from '@/lib/ai/utils/file-block-executor';
 
 export const maxDuration = 60;
 
@@ -123,7 +124,7 @@ export async function POST(req: Request) {
       maxOutputTokens: config.maxTokens,
       temperature: config.temperature,
       stopWhen: stepCountIs(MAX_STEPS),
-      prepareStep: ({ messages }) => {
+      prepareStep: async ({ messages }) => {
         // Context compaction
         const tokens = estimateMessagesTokens(messages);
         if (tokens > COMPACTION_THRESHOLD) {
@@ -137,29 +138,29 @@ export async function POST(req: Request) {
           };
         }
 
-        // Parse file blocks from all assistant messages in the conversation.
-        // This ensures blocks are available in the store before the next step's
-        // tool execute runs, even if the LLM output blocks in a previous step.
-        for (const msg of messages) {
-          if (msg.role === 'assistant' && typeof msg.content === 'string') {
-            fileBlockStore.parseAndStore(msg.content);
-          } else if (msg.role === 'assistant' && Array.isArray(msg.content)) {
-            for (const part of msg.content as any[]) {
-              if (part.type === 'text' && typeof part.text === 'string') {
-                fileBlockStore.parseAndStore(part.text);
-              }
-            }
+        // Execute file blocks from assistant messages (only for developer agent)
+        if (agentType === 'developer') {
+          const results = await parseAndExecuteFileBlocks(messages as any);
+          if (results.length > 0) {
+            const resultText = results.map(r =>
+              r.success
+                ? `✅ [file-${r.mode}] ${r.message}`
+                : `❌ [file-${r.mode}] ${r.message}`
+            ).join('\n');
+            return {
+              instructions: `${finalInstructions}\n\n[文件操作结果]\n${resultText}`,
+            };
           }
         }
       },
       onStepFinish: async (stepResult) => {
         stepCount++;
 
-        // Parse file blocks from step text output (backup for prepareStep)
-        if (stepResult.text) {
+        // Execute file blocks from step text (fallback for when prepareStep doesn't run)
+        if (agentType === 'developer' && stepResult.text) {
           const blockCount = fileBlockStore.parseAndStore(stepResult.text);
           if (blockCount > 0) {
-            console.log(`[Chat API] Parsed ${blockCount} file block(s) from step ${stepCount} text`);
+            console.log(`[Chat API] Parsed ${blockCount} file block(s) from step ${stepCount}`);
           }
         }
 
@@ -289,7 +290,25 @@ export async function POST(req: Request) {
             controller.enqueue(value);
           }
 
-          // Stream ended normally — check if we hit the step limit
+          // Stream ended normally
+
+          // Execute any remaining file blocks (when LLM's last step had blocks but no next step)
+          if (agentType === 'developer' && fileBlockStore.size > 0) {
+            const { executeFileBlocks } = await import('@/lib/ai/utils/file-block-executor');
+            const results = await executeFileBlocks();
+            if (results.length > 0) {
+              const resultText = results.map(r =>
+                r.success
+                  ? `\n✅ [file-${r.mode}] ${r.message}`
+                  : `\n❌ [file-${r.mode}] ${r.message}`
+              ).join('');
+              const textDeltaEvent = `data: ${JSON.stringify({ type: 'text-delta', textDelta: resultText })}\n\n`;
+              controller.enqueue(new TextEncoder().encode(textDeltaEvent));
+              console.log(`[Chat API] Executed ${results.length} file block(s) at stream end`);
+            }
+          }
+
+          // Check if we hit the step limit
           if (stepCount >= MAX_STEPS) {
             const warning =
               '\n\n---\n⚠ **任务因步数限制中断** — 已执行 ' +

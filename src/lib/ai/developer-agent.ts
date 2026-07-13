@@ -1,8 +1,7 @@
 import { type ToolSet } from 'ai';
 import { developerModel } from './models';
 import { buildDeveloperInstructions } from './prompts/developer-system';
-import { fileWriteTool, fileReadTool } from './tools/file-write';
-import { fileEditTool } from './tools/file-edit';
+import { fileReadTool } from './tools/file-write';
 import { fileListTool } from './tools/file-list';
 import { registerToolTool } from './tools/register-tool';
 import { registerComponentTool } from './tools/register-component';
@@ -17,9 +16,7 @@ import { mergeLessonsTool } from './tools/merge-lessons';
 // ── Developer Tool Set ───────────────────────────────────────────────────
 
 export const developerTools = {
-  'file-write': fileWriteTool,
   'file-read': fileReadTool,
-  'file-edit': fileEditTool,
   'file-list': fileListTool,
   'create-command': createCommandTool,
   'register-tool': registerToolTool,
