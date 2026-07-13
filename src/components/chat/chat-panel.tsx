@@ -7,10 +7,15 @@ import { ChatInput } from './chat-input';
 import { DebugPanel, notifyDebugPanel } from '@/components/debug/debug-panel';
 import { useState, useCallback, useEffect, useRef } from 'react';
 
-import { loadGeneratedComponents } from '@/components/generative/component-registry';
-
+// Dynamic re-import to get the latest loadGeneratedComponents after HMR
 async function reloadComponents() {
-  await loadGeneratedComponents();
+  try {
+    const mod = await import('@/components/generative/component-registry?t=' + Date.now());
+    mod.loadGeneratedComponents();
+  } catch {
+    const mod = await import('@/components/generative/component-registry');
+    mod.loadGeneratedComponents();
+  }
 }
 
 export function ChatPanel() {

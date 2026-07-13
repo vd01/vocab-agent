@@ -104,19 +104,23 @@ toolCode 返回值规则:
         });
       }
 
-      // 5. If componentCode provided, write component file
+      // 5. If componentCode provided, write component file + update registry
       if (componentCode) {
         // Write to src/components/generated/<name>.tsx
         await fs.mkdir(GENERATED_SRC_DIR, { recursive: true });
         const componentPath = path.join(GENERATED_SRC_DIR, `${name}.tsx`);
         await fs.writeFile(componentPath, componentCode, 'utf-8');
+
+        // Update component-registry.ts (triggers Turbopack HMR)
+        const { updateRegistryFile } = await import('./registry-utils');
+        await updateRegistryFile();
       }
 
       return {
         type: 'registered',
         name,
         hasComponent: !!componentCode,
-        message: `命令 /${name} 已注册${componentCode ? '，组件已写入' : ''}。前端会在下次对话时自动加载新组件。`,
+        message: `命令 /${name} 已注册${componentCode ? '，组件已写入并更新注册表' : ''}。Turbopack HMR 会自动热更新，稍等片刻即可使用。`,
       };
     } catch (error) {
       return { type: 'error', message: `注册失败: ${String(error)}` };

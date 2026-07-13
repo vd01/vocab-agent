@@ -32,33 +32,18 @@ class ComponentRegistryClass {
 export const componentRegistry = new ComponentRegistryClass();
 
 /**
- * Dynamically load all generated components at runtime.
- * Fetches the component manifest from the API, then uses
- * dynamic import() to load each component and register it.
+ * Load all generated components using dynamic imports.
+ * This file is auto-updated by the register-component / unregister-component tools
+ * whenever a component is added or removed. The file change triggers Turbopack HMR,
+ * which compiles the new components and hot-reloads this module.
  *
- * This approach keeps component-registry.ts static (no hardcoded
- * component names or imports), so generated/ can be gitignored
- * and clean:dynamic works without breaking the build.
+ * Uses dynamic import() instead of static imports so that:
+ * - Build succeeds when generated/ is empty (git clone, clean:dynamic)
+ * - No hardcoded static imports that would break on missing files
  *
- * Called on mount and after each Agent conversation ends.
+ * DO NOT EDIT MANUALLY — changes will be overwritten.
  */
-export async function loadGeneratedComponents(): Promise<void> {
-  try {
-    const res = await fetch('/api/component-manifest');
-    if (!res.ok) return;
-    const names: string[] = await res.json();
 
-    for (const name of names) {
-      if (componentRegistry.has(name)) continue;
-      try {
-        const mod = await import(`@/components/generated/${name}.tsx`);
-        const Component = mod.default ?? mod;
-        componentRegistry.register(name, Component as unknown as React.ComponentType<Record<string, unknown>>);
-      } catch (err) {
-        console.warn(`[component-registry] Failed to load component "${name}":`, err);
-      }
-    }
-  } catch (err) {
-    console.warn('[component-registry] Failed to fetch component manifest:', err);
-  }
+export function loadGeneratedComponents() {
+  // No components registered yet
 }

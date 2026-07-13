@@ -2,7 +2,7 @@ import { tool } from 'ai';
 import { z } from 'zod';
 import { promises as fs } from 'fs';
 import path from 'path';
-import { GENERATED_SRC_DIR } from './registry-utils';
+import { updateRegistryFile, GENERATED_SRC_DIR } from './registry-utils';
 
 export const registerComponentTool = tool({
   description: `注册新的 UI 组件到动态组件注册表，立即生效（无需重启）。同时更新 DB 中的 component_code。
@@ -43,7 +43,10 @@ export const registerComponentTool = tool({
       const componentPath = path.join(GENERATED_SRC_DIR, `${name}.tsx`);
       await fs.writeFile(componentPath, componentCode, 'utf-8');
 
-      // 2. Update the dynamic_commands table if a matching command exists
+      // 2. Update component-registry.ts (triggers Turbopack HMR)
+      await updateRegistryFile();
+
+      // 3. Update the dynamic_commands table if a matching command exists
       try {
         const { db } = await import('@/lib/db');
         const { dynamicCommands } = await import('@/lib/db/schema');
@@ -68,7 +71,7 @@ export const registerComponentTool = tool({
       return {
         type: 'registered',
         name,
-        message: `组件 "${name}" 已注册。前端会在下次对话时自动加载新组件。`,
+        message: `组件 "${name}" 已注册。Turbopack HMR 会自动热更新，稍等片刻即可使用。`,
       };
     } catch (error) {
       return { type: 'error', message: `注册组件失败: ${String(error)}` };
