@@ -11,6 +11,11 @@ import path from 'path';
 const isDev = process.env.ELECTRON_DEV === '1';
 const isPreview = process.env.ELECTRON_PREVIEW === '1';
 
+// Ignore SSL certificate errors in dev/preview mode (self-signed certs, etc.)
+if (isDev || isPreview) {
+  app.commandLine.appendSwitch('ignore-certificate-errors');
+}
+
 let currentUrl: string | null = null;
 let isQuitting = false;
 
@@ -28,15 +33,26 @@ app.on('window-all-closed', () => {
 });
 
 async function checkRemoteAvailable(url: string, timeout = 10000): Promise<boolean> {
-  try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeout);
-    const res = await fetch(url, { method: 'GET', signal: controller.signal });
-    clearTimeout(timer);
-    return res.ok || res.status === 302 || res.status === 307;
-  } catch {
-    return false;
-  }
+  return new Promise((resolve) => {
+    try {
+      const request = net.request(url);
+      const timer = setTimeout(() => {
+        request.abort();
+        resolve(false);
+      }, timeout);
+      request.on('response', (response) => {
+        clearTimeout(timer);
+        resolve(response.statusCode >= 200 && response.statusCode < 400);
+      });
+      request.on('error', () => {
+        clearTimeout(timer);
+        resolve(false);
+      });
+      request.end();
+    } catch {
+      resolve(false);
+    }
+  });
 }
 
 function getErrorPageUrl(remoteUrl: string): string {

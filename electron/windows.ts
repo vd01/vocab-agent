@@ -27,13 +27,31 @@ export function createMainWindow(url: string): BrowserWindow {
     },
   });
 
-  mainWindow.loadURL(url);
+  mainWindow.webContents.session.setCertificateVerifyProc((request, callback) => {
+    const isDevOrPreview = process.env.ELECTRON_DEV === '1' || process.env.ELECTRON_PREVIEW === '1';
+    if (isDevOrPreview) {
+      callback(0); // trust all in dev
+      return;
+    }
+    // Production: trust remote server cert, default for others
+    try {
+      const config = require('./store').getConfig();
+      if (config.mode === 'remote' && config.remote.url) {
+        const remoteHost = new URL(config.remote.url).hostname;
+        callback(request.hostname === remoteHost ? 0 : -3);
+        return;
+      }
+    } catch {}
+    callback(-3);
+  });
 
   Menu.setApplicationMenu(null);
 
   mainWindow.once('ready-to-show', () => {
     mainWindow?.show();
   });
+
+  mainWindow.loadURL(url);
 
   mainWindow.webContents.setWindowOpenHandler(({ url: openUrl }) => {
     shell.openExternal(openUrl);
