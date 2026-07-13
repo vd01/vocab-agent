@@ -12,6 +12,7 @@ import { buildWorldState } from '@/lib/pipeline/world-state';
 import { contextManager } from '@/lib/ai/context-manager';
 import { setDebugLogs } from '@/lib/ai/debug-store';
 import { estimateMessagesTokens } from '@/lib/ai/utils/token-estimate';
+import { fileBlockStore } from '@/lib/ai/utils/file-block-store';
 
 export const maxDuration = 60;
 
@@ -41,6 +42,9 @@ function serializeMessagesForDebug(messages: any[]): any[] {
 
 export async function POST(req: Request) {
   try {
+    // Clear file block store at the start of each request
+    fileBlockStore.clear();
+
     const body = await req.json();
 
     // AI SDK V7 DefaultChatTransport sends messages in body.messages
@@ -120,6 +124,7 @@ export async function POST(req: Request) {
       temperature: config.temperature,
       stopWhen: stepCountIs(MAX_STEPS),
       prepareStep: ({ messages }) => {
+        // Context compaction
         const tokens = estimateMessagesTokens(messages);
         if (tokens > COMPACTION_THRESHOLD) {
           return {
@@ -131,9 +136,32 @@ export async function POST(req: Request) {
             }),
           };
         }
+
+        // Parse file blocks from all assistant messages in the conversation.
+        // This ensures blocks are available in the store before the next step's
+        // tool execute runs, even if the LLM output blocks in a previous step.
+        for (const msg of messages) {
+          if (msg.role === 'assistant' && typeof msg.content === 'string') {
+            fileBlockStore.parseAndStore(msg.content);
+          } else if (msg.role === 'assistant' && Array.isArray(msg.content)) {
+            for (const part of msg.content as any[]) {
+              if (part.type === 'text' && typeof part.text === 'string') {
+                fileBlockStore.parseAndStore(part.text);
+              }
+            }
+          }
+        }
       },
       onStepFinish: async (stepResult) => {
         stepCount++;
+
+        // Parse file blocks from step text output (backup for prepareStep)
+        if (stepResult.text) {
+          const blockCount = fileBlockStore.parseAndStore(stepResult.text);
+          if (blockCount > 0) {
+            console.log(`[Chat API] Parsed ${blockCount} file block(s) from step ${stepCount} text`);
+          }
+        }
 
         // Use request.messages from stepResult if available, otherwise fall back to snapshot
         const stepRequestMessages = (stepResult.request?.messages?.length)
@@ -249,8 +277,7 @@ export async function POST(req: Request) {
 
     // Wrap the stream: after it ends, if step limit was hit,
     // append a custom SSE event so the frontend knows.
-    // Also handle abort gracefully — the original stream may throw
-    // or may send an abort chunk before closing.
+    // Also handle abort gracefully.
     const transformedBody = new ReadableStream({
       async start(controller) {
         const reader = originalBody.getReader();
@@ -277,15 +304,10 @@ export async function POST(req: Request) {
             );
           }
         } catch (err: any) {
-          // Stream was cancelled (user pressed Stop) or errored.
-          // The original stream may have already sent an abort chunk before
-          // this error, so the frontend should already know about the abort.
-          // Just close our controller cleanly.
           if (err?.name !== 'AbortError') {
             console.error('[Chat API Stream Error]', err);
           }
         } finally {
-          // Always close the controller so the client knows the stream is done
           try { controller.close(); } catch {}
         }
       },

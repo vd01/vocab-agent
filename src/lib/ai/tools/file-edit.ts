@@ -2,6 +2,7 @@ import { tool } from 'ai';
 import { z } from 'zod';
 import { promises as fs } from 'fs';
 import path from 'path';
+import { fileBlockStore } from '../utils/file-block-store';
 
 // Same whitelist as file-write
 const ALLOWED_EDIT_DIRS = [
@@ -15,21 +16,28 @@ function isAllowedEditPath(normalized: string): boolean {
 }
 
 export const fileEditTool = tool({
-  description: `编辑项目文件的局部内容（类似 sed 替换）。支持编辑以下目录：
-- generated/
-- src/components/generated/
-- src/app/api/
+  description: `确认编辑文件。先在回复中用标记块输出代码，再调用本工具确认编辑。
 
-工作方式：在文件中查找 oldString 的第一次出现，替换为 newString。oldString 必须精确匹配（包括缩进和空行）。
+插入模式 — 在第N行后插入代码：
+<<<file-edit:路径:insert:10>>>
+新代码...
+<<<end>>>
+然后调用：file-edit({ filePath: "路径", mode: "insert", startLine: 10 })
 
-如果文件较大且 oldString 可能不唯一，可以提供 lineRange 参数缩小搜索范围。`,
+替换模式 — 替换第M到N行（包含首尾）：
+<<<file-edit:路径:replace:15-18>>>
+替换代码...
+<<<end>>>
+然后调用：file-edit({ filePath: "路径", mode: "replace", startLine: 15, endLine: 18 })
+
+代码在标记块中原样输出，不需要 JSON 转义。行号从 1 开始。可编辑目录：generated/、src/components/generated/、src/app/api/`,
   inputSchema: z.object({
-    filePath: z.string().describe('相对路径，如 "generated/components/word-match.tsx" 或 "src/components/generated/demo.tsx"'),
-    oldString: z.string().describe('要替换的原始文本（必须精确匹配，包括缩进、空行）'),
-    newString: z.string().describe('替换后的新文本'),
-    lineRange: z.string().optional().describe('行范围，如 "10-25"，缩小搜索范围。oldString 只在该范围内查找。'),
+    filePath: z.string().describe('文件路径，必须与标记块中的路径一致'),
+    mode: z.enum(['insert', 'replace']).describe('insert=在指定行后插入; replace=替换指定行范围'),
+    startLine: z.number().describe('insert模式=在第N行后插入; replace模式=起始行号(1-based)'),
+    endLine: z.number().optional().describe('replace模式的结束行号(1-based, 包含该行)'),
   }),
-  execute: async ({ filePath, oldString, newString, lineRange }) => {
+  execute: async ({ filePath, mode, startLine, endLine }) => {
     // Reject absolute paths
     if (path.isAbsolute(filePath)) {
       return { type: 'error', message: '请使用相对路径' };
@@ -45,6 +53,17 @@ export const fileEditTool = tool({
       return { type: 'error', message: `安全限制：只能编辑以下目录: ${allowedList}` };
     }
 
+    // Get content from file block store
+    const block = fileBlockStore.consume(filePath);
+    if (!block) {
+      return {
+        type: 'retry',
+        message: `标记块内容尚未就绪（标记块和 tool 调用不能在同一条消息中）。请重新调用 file-edit({ filePath: "${filePath}", mode: "${mode}", startLine: ${startLine}${endLine ? `, endLine: ${endLine}` : ''} })，标记块内容已在上条消息中输出。`,
+      };
+    }
+
+    const newContent = block.content;
+
     try {
       // Read current file
       let content: string;
@@ -54,68 +73,55 @@ export const fileEditTool = tool({
         return { type: 'error', message: `文件不存在: ${filePath}` };
       }
 
-      // If lineRange provided, narrow the search scope
-      let searchContent = content;
-      let lineOffset = 0;
-      let prefix = '';
-      let suffix = '';
+      const lines = content.split('\n');
+      const totalLines = lines.length;
 
-      if (lineRange) {
-        const match = lineRange.match(/^(\d+)(?:-(\d+))?$/);
-        if (!match) {
-          return { type: 'error', message: `lineRange 格式错误，应为 "10" 或 "10-25"` };
-        }
-        const startLine = parseInt(match[1]);
-        const endLine = match[2] ? parseInt(match[2]) : startLine;
-
-        const lines = content.split('\n');
-        if (startLine < 1 || startLine > lines.length) {
-          return { type: 'error', message: `行号超出范围（文件共 ${lines.length} 行）` };
+      if (mode === 'insert') {
+        // Insert after startLine
+        if (startLine < 0 || startLine > totalLines) {
+          return { type: 'error', message: `行号超出范围（文件共 ${totalLines} 行，insert 位置应在 0-${totalLines} 之间）` };
         }
 
-        const startIdx = startLine - 1;
-        const endIdx = Math.min(endLine, lines.length);
-        prefix = lines.slice(0, startIdx).join('\n') + (startIdx > 0 ? '\n' : '');
-        searchContent = lines.slice(startIdx, endIdx).join('\n');
-        suffix = (endIdx < lines.length ? '\n' : '') + lines.slice(endIdx).join('\n');
-        lineOffset = startLine - 1;
-      }
+        const newLines = newContent.split('\n');
+        // Insert after startLine: lines[0..startLine-1] + newLines + lines[startLine..end]
+        const before = lines.slice(0, startLine);
+        const after = lines.slice(startLine);
+        const result = [...before, ...newLines, ...after].join('\n');
 
-      // Find and replace within search scope
-      const index = searchContent.indexOf(oldString);
-      if (index === -1) {
-        // Provide helpful context about what's in the file
-        const lines = searchContent.split('\n');
-        const previewLines = Math.min(20, lines.length);
-        const preview = lines.slice(0, previewLines).map((l, i) => `${lineOffset + i + 1}: ${l}`).join('\n');
+        await fs.writeFile(normalized, result, 'utf-8');
         return {
-          type: 'error',
-          message: `未找到匹配的文本。请检查 oldString 是否精确匹配（包括缩进、空行）。\n\n${lineRange ? `搜索范围: 第 ${lineOffset + 1}-${lineOffset + lines.length} 行\n\n` : ''}文件预览:\n${preview}`,
+          type: 'success',
+          path: filePath,
+          line: startLine + 1,
+          message: `已在 ${filePath} 第 ${startLine} 行后插入 ${newLines.length} 行代码`,
         };
       }
 
-      // Check for multiple occurrences within search scope
-      const secondIndex = searchContent.indexOf(oldString, index + 1);
-      if (secondIndex !== -1) {
+      if (mode === 'replace') {
+        if (endLine === undefined) {
+          return { type: 'error', message: 'replace 模式必须提供 endLine 参数' };
+        }
+        if (startLine < 1 || endLine > totalLines || startLine > endLine) {
+          return { type: 'error', message: `行号范围无效（文件共 ${totalLines} 行，范围应为 1-${totalLines}，startLine <= endLine）` };
+        }
+
+        const newLines = newContent.split('\n');
+        // Replace lines[startLine-1..endLine-1] with newLines
+        const before = lines.slice(0, startLine - 1);
+        const after = lines.slice(endLine);
+        const result = [...before, ...newLines, ...after].join('\n');
+
+        await fs.writeFile(normalized, result, 'utf-8');
+        const replacedCount = endLine - startLine + 1;
         return {
-          type: 'error',
-          message: `在搜索范围内找到多处匹配，oldString 必须唯一。请扩大上下文使其唯一匹配，或使用 lineRange 缩小范围。`,
+          type: 'success',
+          path: filePath,
+          line: startLine,
+          message: `已替换 ${filePath} 第 ${startLine}-${endLine} 行（${replacedCount} 行 → ${newLines.length} 行）`,
         };
       }
 
-      // Apply replacement
-      const newSearchContent = searchContent.slice(0, index) + newString + searchContent.slice(index + oldString.length);
-      const newContent = prefix + newSearchContent + suffix;
-      await fs.writeFile(normalized, newContent, 'utf-8');
-
-      // Show context around the change
-      const lineNum = (prefix.slice(0, index + prefix.length).split('\n').length) + lineOffset;
-      return {
-        type: 'success',
-        path: filePath,
-        line: lineNum,
-        message: `已替换 ${filePath} 第 ${lineNum} 行附近的内容`,
-      };
+      return { type: 'error', message: `未知模式: ${mode}` };
     } catch (error) {
       return { type: 'error', message: `编辑失败: ${String(error)}` };
     }

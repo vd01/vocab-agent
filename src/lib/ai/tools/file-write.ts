@@ -2,10 +2,9 @@ import { tool } from 'ai';
 import { z } from 'zod';
 import { promises as fs } from 'fs';
 import path from 'path';
+import { fileBlockStore } from '../utils/file-block-store';
 
 // Whitelist of directories where file-write is allowed to create files.
-// This balances safety (no writing to core AI code) with flexibility
-// (Developer needs to write components, API routes, and generated code).
 const ALLOWED_WRITE_DIRS = [
   path.join(process.cwd(), 'generated'),
   path.join(process.cwd(), 'src', 'components', 'generated'),
@@ -21,19 +20,20 @@ async function ensureDir(dir: string) {
 }
 
 export const fileWriteTool = tool({
-  description: `将代码写入项目文件。支持写入以下目录：
-- generated/ — 生成的代码、工具脚本、临时文件
-- src/components/generated/ — 动态注册的 UI 组件
-- src/app/api/ — API 路由
+  description: `确认写入文件。先在回复中用标记块输出代码，再调用本工具确认写入。
 
-**重要：这是写入代码的唯一方式。** 写入后，其他工具（如 create-command、register-component）可以通过文件路径引用已写入的代码，避免在 JSON 参数中嵌入长代码。
+标记块格式：
+<<<file-write:路径>>>
+代码内容...
+<<<end>>>
 
-对于长代码（超过几行），推荐先写入文件再引用，而不是直接在参数中传递。`,
+然后调用：file-write({ filePath: "路径" })
+
+代码在标记块中原样输出，不需要 JSON 转义。支持写入目录：generated/、src/components/generated/、src/app/api/`,
   inputSchema: z.object({
-    filePath: z.string().describe('相对路径。如 "generated/tools/word-match.js"、"src/components/generated/word-match-panel.tsx"、"generated/components/demo.tsx"'),
-    content: z.string().describe('文件内容。直接传入代码文本，无需 base64 编码。'),
+    filePath: z.string().describe('文件路径，必须与标记块中的路径一致。如 "generated/tools/demo.js"、"src/components/generated/demo.tsx"'),
   }),
-  execute: async ({ filePath, content }) => {
+  execute: async ({ filePath }) => {
     // Reject absolute paths
     if (path.isAbsolute(filePath)) {
       return { type: 'error', message: `请使用相对路径，不要使用绝对路径。例如 "generated/tools/demo.js" 而不是 "${filePath}"` };
@@ -49,10 +49,21 @@ export const fileWriteTool = tool({
       return { type: 'error', message: `安全限制：只能写入以下目录: ${allowedList}` };
     }
 
+    // Get content from file block store
+    const block = fileBlockStore.consume(filePath);
+    if (!block) {
+      return {
+        type: 'retry',
+        message: `标记块内容尚未就绪（标记块和 tool 调用不能在同一条消息中）。请重新调用 file-write({ filePath: "${filePath}" })，标记块内容已在上条消息中输出。`,
+      };
+    }
+
+    const content = block.content;
+
     try {
       await ensureDir(path.dirname(normalized));
       await fs.writeFile(normalized, content, 'utf-8');
-      return { type: 'success', path: filePath, message: `文件已写入: ${filePath} (${content.length} 字符)` };
+      return { type: 'success', path: filePath, message: `文件已写入: ${filePath} (${content.length} 字符, ${content.split('\n').length} 行)` };
     } catch (error) {
       return { type: 'error', message: `写入失败: ${String(error)}` };
     }
