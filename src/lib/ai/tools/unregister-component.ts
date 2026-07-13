@@ -2,15 +2,14 @@ import { tool } from 'ai';
 import { z } from 'zod';
 import { promises as fs } from 'fs';
 import path from 'path';
-import { updateRegistryFile, GENERATED_SRC_DIR } from './registry-utils';
+import { GENERATED_SRC_DIR } from './registry-utils';
 
 export const unregisterComponentTool = tool({
   description: `从动态组件注册表中移除组件。会执行以下操作：
 1. 删除 src/components/generated/ 下的组件文件
-2. 自动重写 component-registry.ts（移除对应的 import 和 register 调用）
-3. 清理 DB dynamic_commands 表中对应的 component_code
+2. 清理 DB dynamic_commands 表中对应的 component_code
 
-当 Developer agent 删除组件时，必须使用本工具而非直接删除文件，以确保注册表同步。`,
+当 Developer agent 删除组件时，必须使用本工具而非直接删除文件，以确保 DB 同步。`,
   inputSchema: z.object({
     name: z.string().describe('要移除的组件名称，如 "word-stats-panel"。必须与注册时使用的名称一致。'),
   }),
@@ -38,15 +37,7 @@ export const unregisterComponentTool = tool({
       results.push(`组件文件不存在: src/components/generated/${name}.tsx（可能已被删除）`);
     }
 
-    // 2. Rewrite component-registry.ts (removes the import + register for this component)
-    try {
-      await updateRegistryFile();
-      results.push('已更新 component-registry.ts');
-    } catch (err) {
-      results.push(`更新 registry 失败: ${String(err)}`);
-    }
-
-    // 3. Clean up DB dynamic_commands table
+    // 2. Clean up DB dynamic_commands table
     try {
       const { db } = await import('@/lib/db');
       const { dynamicCommands } = await import('@/lib/db/schema');

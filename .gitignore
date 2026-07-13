@@ -43,6 +43,7 @@ next-env.d.ts
 # local data
 /data/*.db
 /generated/
+/src/components/generated/
 
 # Claude Code / Omo session files
 .omo/

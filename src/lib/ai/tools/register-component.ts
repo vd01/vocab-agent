@@ -2,16 +2,16 @@ import { tool } from 'ai';
 import { z } from 'zod';
 import { promises as fs } from 'fs';
 import path from 'path';
-import { updateRegistryFile, GENERATED_SRC_DIR } from './registry-utils';
+import { GENERATED_SRC_DIR } from './registry-utils';
 
 export const registerComponentTool = tool({
   description: `注册新的 UI 组件到动态组件注册表，立即生效（无需重启）。同时更新 DB 中的 component_code。
 
-	**推荐使用 create-command 代替本工具**，它一步完成命令注册和组件注册。
+		**推荐使用 create-command 代替本工具**，它一步完成命令注册和组件注册。
 
-	如果单独使用本工具，提供组件代码的方式有两种（二选一）：
-	1. code: 直接传入简短的组件代码字符串（适合几行以内的简单组件）
-	2. codePath: 传入组件代码文件路径（推荐！适合复杂组件代码，避免 JSON 转义问题）`,
+		如果单独使用本工具，提供组件代码的方式有两种（二选一）：
+		1. code: 直接传入简短的组件代码字符串（适合几行以内的简单组件）
+		2. codePath: 传入组件代码文件路径（推荐！适合复杂组件代码，避免 JSON 转义问题）`,
   inputSchema: z.object({
     name: z.string().describe('组件名称，如 "word-stats-panel"。必须与命令返回的 type 字段匹配才能自动渲染。'),
     code: z.string().optional().describe('简短的 React 组件代码（与 codePath 二选一）。必须包含默认导出，使用 Tailwind CSS 样式。'),
@@ -43,10 +43,7 @@ export const registerComponentTool = tool({
       const componentPath = path.join(GENERATED_SRC_DIR, `${name}.tsx`);
       await fs.writeFile(componentPath, componentCode, 'utf-8');
 
-      // 2. Update component-registry.ts with static imports
-      await updateRegistryFile();
-
-      // 3. Update the dynamic_commands table if a matching command exists
+      // 2. Update the dynamic_commands table if a matching command exists
       try {
         const { db } = await import('@/lib/db');
         const { dynamicCommands } = await import('@/lib/db/schema');
@@ -71,7 +68,7 @@ export const registerComponentTool = tool({
       return {
         type: 'registered',
         name,
-        message: `组件 "${name}" 已注册。Turbopack HMR 会自动热更新，稍等片刻即可使用。`,
+        message: `组件 "${name}" 已注册。前端会在下次对话时自动加载新组件。`,
       };
     } catch (error) {
       return { type: 'error', message: `注册组件失败: ${String(error)}` };

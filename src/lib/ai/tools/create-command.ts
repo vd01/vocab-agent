@@ -8,7 +8,6 @@ import { v4 as uuid } from 'uuid';
 import { eq } from 'drizzle-orm';
 
 const GENERATED_SRC_DIR = path.join(process.cwd(), 'src', 'components', 'generated');
-const REGISTRY_PATH = path.join(process.cwd(), 'src', 'components', 'generative', 'component-registry.ts');
 
 export const createCommandTool = tool({
   description: `创建或更新一个 / 命令，一步完成命令注册和 UI 组件注册。
@@ -105,121 +104,22 @@ toolCode 返回值规则:
         });
       }
 
-      // 5. If componentCode provided, write component file + update registry
+      // 5. If componentCode provided, write component file
       if (componentCode) {
         // Write to src/components/generated/<name>.tsx
         await fs.mkdir(GENERATED_SRC_DIR, { recursive: true });
         const componentPath = path.join(GENERATED_SRC_DIR, `${name}.tsx`);
         await fs.writeFile(componentPath, componentCode, 'utf-8');
-
-        // Update component-registry.ts
-        await updateRegistryFile();
       }
 
       return {
         type: 'registered',
         name,
         hasComponent: !!componentCode,
-        message: `命令 /${name} 已注册${componentCode ? '，组件已写入并更新注册表' : ''}。Turbopack HMR 会自动热更新，稍等片刻即可使用。`,
+        message: `命令 /${name} 已注册${componentCode ? '，组件已写入' : ''}。前端会在下次对话时自动加载新组件。`,
       };
     } catch (error) {
       return { type: 'error', message: `注册失败: ${String(error)}` };
     }
   },
 });
-
-/**
- * Scan src/components/generated/ and rewrite component-registry.ts
- * with static imports for all components. Turbopack HMR will pick up
- * the change automatically.
- */
-async function updateRegistryFile() {
-  let files: string[];
-  try {
-    files = (await fs.readdir(GENERATED_SRC_DIR))
-      .filter(f => f.endsWith('.tsx') || f.endsWith('.ts'));
-  } catch {
-    files = [];
-  }
-
-  // Filter out empty files
-  const validFiles: string[] = [];
-  for (const f of files) {
-    const stat = await fs.stat(path.join(GENERATED_SRC_DIR, f));
-    if (stat.size > 10) {
-      validFiles.push(f);
-    }
-  }
-
-  if (validFiles.length === 0) return;
-
-  const imports = validFiles.map(f => {
-    const name = f.replace(/\.(tsx|ts)$/, '');
-    // PascalCase the import name to avoid hyphen issues
-    const importName = name
-      .split('-')
-      .map(s => s.charAt(0).toUpperCase() + s.slice(1))
-      .join('');
-    return `import ${importName} from '@/components/generated/${name}';`;
-  }).join('\n');
-
-  const registrations = validFiles.map(f => {
-    const name = f.replace(/\.(tsx|ts)$/, '');
-    const importName = name
-      .split('-')
-      .map(s => s.charAt(0).toUpperCase() + s.slice(1))
-      .join('');
-    return `  componentRegistry.register('${name}', ${importName} as unknown as React.ComponentType<Record<string, unknown>>);`;
-  }).join('\n');
-
-  const code = `'use client';
-
-import React from 'react';
-
-type ComponentMap = Map<string, React.ComponentType<Record<string, unknown>>>;
-
-class ComponentRegistryClass {
-  private components: ComponentMap = new Map();
-
-  register(name: string, component: React.ComponentType<Record<string, unknown>>): void {
-    this.components.set(name, component);
-  }
-
-  get(name: string): React.ComponentType<Record<string, unknown>> | undefined {
-    return this.components.get(name);
-  }
-
-  has(name: string): boolean {
-    return this.components.has(name);
-  }
-
-  getAll(): Map<string, React.ComponentType<Record<string, unknown>>> {
-    return new Map(this.components);
-  }
-
-  unregister(name: string): void {
-    this.components.delete(name);
-  }
-}
-
-// Singleton instance
-export const componentRegistry = new ComponentRegistryClass();
-
-/**
- * Load all generated components using static imports.
- * This file is auto-updated by the register-component tool
- * whenever a new component is registered. Turbopack HMR
- * will hot-reload this module automatically.
- *
- * DO NOT EDIT MANUALLY — changes will be overwritten.
- */
-
-${imports}
-
-export function loadGeneratedComponents() {
-${registrations}
-}
-`;
-
-  await fs.writeFile(REGISTRY_PATH, code, 'utf-8');
-}
