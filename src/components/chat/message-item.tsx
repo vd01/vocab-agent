@@ -252,9 +252,36 @@ function DevToolOutput({ toolName, output }: { toolName: string; output: any; ke
   );
 }
 
+// ── File block collapsing ──────────────────────────────────────────────────
+
+/**
+ * Replace file block markers (<<<file-write:...>>>...<<<end>>>) with
+ * compact collapsible labels. This hides the raw code from the chat display
+ * while showing what files were written/edited.
+ */
+function collapseFileBlocks(text: string): string {
+  // Replace all file-write blocks
+  let result = text.replace(
+    /<<<file-write:(.+?)>>>\n[\s\S]*?\n<<<end>>>/g,
+    (_, filePath) => `\n> 📝 **写入** \`${filePath}\`\n`
+  );
+  // Replace all file-edit insert blocks
+  result = result.replace(
+    /<<<file-edit:(.+?):insert:(\d+)>>>\n[\s\S]*?\n<<<end>>>/g,
+    (_, filePath, line) => `\n> ✏️ **插入** \`${filePath}\` 第${line}行后\n`
+  );
+  // Replace all file-edit replace blocks
+  result = result.replace(
+    /<<<file-edit:(.+?):replace:(\d+)-(\d+)>>>\n[\s\S]*?\n<<<end>>>/g,
+    (_, filePath, start, end) => `\n> ✏️ **替换** \`${filePath}\` 第${start}-${end}行\n`
+  );
+  return result;
+}
+
 // ── Assistant text bubble with Markdown rendering ──────────────────────────
 
 function AssistantTextBubble({ text }: { text: string }) {
+  const displayText = collapseFileBlocks(text);
   return (
     <div className="text-sm leading-relaxed text-foreground break-words
                     prose prose-sm max-w-none
@@ -272,7 +299,7 @@ function AssistantTextBubble({ text }: { text: string }) {
                     prose-hr:border-border
                     prose-blockquote:border-primary/30 prose-blockquote:text-muted-foreground">
       <ReactMarkdown remarkPlugins={[remarkGfm]}>
-        {text}
+        {displayText}
       </ReactMarkdown>
     </div>
   );
