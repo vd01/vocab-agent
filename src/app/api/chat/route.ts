@@ -229,6 +229,18 @@ export async function POST(req: Request) {
     // Get the SSE stream response — use onEnd to capture steps that
     // onStepFinish missed (e.g. deepseek-reasoner doesn't trigger onStepFinish)
     const streamResponse = result.toUIMessageStreamResponse({
+      onError: (error) => {
+        // Log the real error server-side for debugging
+        console.error('[Chat API] Stream error:', error);
+        // Return a more descriptive message to the client
+        if ((error as any)?.name === 'NoSuchToolError') {
+          return `工具不存在: ${(error as any)?.toolName ?? 'unknown'}`;
+        }
+        if ((error as any)?.name === 'InvalidToolInputError') {
+          return `工具参数无效: ${(error as any)?.message ?? String(error)}`;
+        }
+        return `执行出错: ${String(error).slice(0, 200)}`;
+      },
       onEnd: async () => {
         // If onStepFinish already wrote logs, skip
         if (debugLogs.length > 0) return;
