@@ -3,6 +3,9 @@ import { z } from 'zod';
 import { promises as fs } from 'fs';
 import path from 'path';
 import { updateRegistryFile, GENERATED_SRC_DIR } from './registry-utils';
+import { db } from '@/lib/db';
+import { dynamicCommands } from '@/lib/db/schema';
+import { eq } from 'drizzle-orm';
 
 export const unregisterComponentTool = tool({
   description: `从动态组件注册表中移除组件。会执行以下操作：
@@ -48,10 +51,6 @@ export const unregisterComponentTool = tool({
 
     // 3. Clean up DB dynamic_commands table
     try {
-      const { db } = await import('@/lib/db');
-      const { dynamicCommands } = await import('@/lib/db/schema');
-      const { eq } = await import('drizzle-orm');
-
       const candidates = [name, name.replace(/-/g, '_')];
       for (const candidate of candidates) {
         const existing = await db.select().from(dynamicCommands)

@@ -4,6 +4,7 @@ import {
   convertToModelMessages,
   pruneMessages,
   type UIMessage,
+  type ModelMessage,
 } from 'ai';
 import { getTeacherConfig } from '@/lib/ai/teacher-agent';
 import { getDeveloperConfig } from '@/lib/ai/developer-agent';
@@ -18,21 +19,38 @@ export const maxDuration = 60;
 
 const MAX_STEPS = 25;
 
+// Debug panel is disabled by default; set NEXT_PUBLIC_DEBUG_PANEL=true to enable
+const DEBUG_ENABLED = process.env.NEXT_PUBLIC_DEBUG_PANEL === 'true';
+
 // Token threshold for context compaction within a multi-step task.
 // When accumulated messages exceed this, pruneMessages will trim
 // old reasoning and tool calls to keep the context window manageable.
 const COMPACTION_THRESHOLD = 80000;
 
+// ── Types for debug serialization ─────────────────────────────────────────
+
+interface DebugContentPart {
+  type: string;
+  text?: string;
+  toolUseId?: string;
+  toolName?: string;
+}
+
+interface DebugMessage {
+  role: string;
+  content: string | DebugContentPart[] | string;
+}
+
 // ── Helper: serialize model messages for debug display ────────────────────
-function serializeMessagesForDebug(messages: any[]): any[] {
-  return messages.map((m: any) => ({
+function serializeMessagesForDebug(messages: ModelMessage[]): DebugMessage[] {
+  return messages.map((m) => ({
     role: m.role,
     content: typeof m.content === 'string'
       ? m.content.slice(0, 500) + (m.content.length > 500 ? '...' : '')
       : Array.isArray(m.content)
-        ? m.content.slice(0, 5).map((c: any) => {
+        ? m.content.slice(0, 5).map((c) => {
             if (c.type === 'text') return { type: 'text', text: c.text?.slice(0, 200) + (c.text?.length > 200 ? '...' : '') };
-            if (c.type === 'tool-result') return { type: 'tool-result', toolUseId: c.toolUseId };
+            if (c.type === 'tool-result') return { type: 'tool-result', toolCallId: c.toolCallId };
             if (c.type === 'tool-call') return { type: 'tool-call', toolName: c.toolName };
             return { type: c.type };
           })
@@ -55,21 +73,18 @@ export async function POST(req: Request) {
     const userContent = extractTextFromMessage(lastUserMessage);
 
     // Determine agent type from frontend mode switch (body.mode)
-    const mode = (body as any).mode ?? 'teach';
+    const { mode: rawMode, modeSwitched: rawModeSwitched } = body as { mode?: string; modeSwitched?: boolean };
+    const mode = rawMode ?? 'teach';
+    const modeSwitched = rawModeSwitched === true;
     const agentType = mode === 'develop' ? 'developer' : 'teacher';
 
     // Build World State for context injection
     const worldState = await buildWorldState();
 
-    let config: {
-      model: any;
-      instructions: string;
-      tools: any;
-      maxTokens?: number;
-      temperature?: number;
-    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- model/tools types come from AI SDK which uses any
+    let config: { model: any; instructions: string; tools: any; maxTokens?: number; temperature?: number };
     if (agentType === 'developer') {
-      config = await getDeveloperConfig();
+      config = await getDeveloperConfig(worldState);
     } else {
       config = getTeacherConfig(worldState);
     }
@@ -113,19 +128,29 @@ export async function POST(req: Request) {
     }
 
     // Merge conversation summary into instructions (only when cross-session trim produced one)
-    const finalInstructions = summary
+    let finalInstructions = summary
       ? `${config.instructions}\n\n[对话历史摘要]\n${summary}`
       : config.instructions;
+
+    // When the user just switched modes, append a context hint so the LLM
+    // understands the role change without needing an explicit user message.
+    if (modeSwitched) {
+      const modeHint = agentType === 'developer'
+        ? '\n\n[模式切换提示] 用户刚刚切换到开发模式。你现在以系统开发者助手的身份工作，专注于代码开发和功能扩展。之前的对话可能来自教学模式，请忽略其中的教学上下文。'
+        : '\n\n[模式切换提示] 用户刚刚切换到教学模式。你现在以英语教师的身份工作，专注于英语教学和词汇复习。之前的对话可能来自开发模式，请忽略其中的代码开发上下文。';
+      finalInstructions += modeHint;
+    }
 
     // Track step count for step-limit detection
     let stepCount = 0;
 
-    // Debug: collect LLM interaction logs per step
-    const debugLogs: any[] = [];
-    const debugId = `dbg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    // Debug: collect LLM interaction logs per step (only when debug panel is enabled)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- debug log structure is dynamic
+    const debugLogs: Record<string, unknown>[] = [];
+    const debugId = DEBUG_ENABLED ? `dbg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}` : '';
 
     // Snapshot the actual messages sent to LLM (before any step mutates them)
-    const requestMessagesSnapshot = serializeMessagesForDebug(trimmedMessages);
+    const requestMessagesSnapshot = DEBUG_ENABLED ? serializeMessagesForDebug(trimmedMessages) : [];
 
     const result = streamText({
       model: config.model,
@@ -139,6 +164,7 @@ export async function POST(req: Request) {
         // Accumulate text deltas into fileBlockStore's step buffer
         // so that tool execute() can parse file blocks from the current step
         if (chunk.type === 'text-delta' && agentType === 'developer') {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- AI SDK chunk type doesn't expose .text
           fileBlockStore.appendStepText((chunk as any).text ?? '');
         }
       },
@@ -158,6 +184,7 @@ export async function POST(req: Request) {
 
         // Execute file blocks from assistant messages (only for developer agent)
         if (agentType === 'developer') {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- AI SDK step messages type mismatch
           const results = await parseAndExecuteFileBlocks(messages as any);
           if (results.length > 0) {
             const resultText = results.map(r =>
@@ -185,53 +212,57 @@ export async function POST(req: Request) {
           }
         }
 
-        // Use request.messages from stepResult if available, otherwise fall back to snapshot
-        const stepRequestMessages = (stepResult.request?.messages?.length)
-          ? serializeMessagesForDebug(stepResult.request.messages)
-          : requestMessagesSnapshot;
+        // Capture debug info for this step (only when debug panel is enabled)
+        if (DEBUG_ENABLED) {
+          // Use request.messages from stepResult if available, otherwise fall back to snapshot
+          const stepRequestMessages = (stepResult.request?.messages?.length)
+            ? serializeMessagesForDebug(stepResult.request.messages)
+            : requestMessagesSnapshot;
 
-        // Capture debug info for this step
-        const stepLog = {
-          step: stepCount,
-          agent: agentType,
-          model: stepResult.model?.modelId ?? config.model.modelId ?? 'unknown',
-          request: {
-            instructions: finalInstructions.slice(0, 500) + (finalInstructions.length > 500 ? '...' : ''),
-            messages: stepRequestMessages,
-            tools: Object.keys(config.tools),
-          },
-          response: {
-            text: stepResult.text || undefined,
-            reasoningText: stepResult.reasoningText || undefined,
-            toolCalls: stepResult.toolCalls?.map((tc: any) => ({
-              toolName: tc.toolName,
-              args: tc.args,
-            })) || undefined,
-            toolResults: stepResult.toolResults?.map((tr: any) => ({
-              toolName: tr.toolName,
-              result: typeof tr.result === 'string'
-                ? tr.result.slice(0, 300)
-                : JSON.stringify(tr.result).slice(0, 300),
-            })) || undefined,
-            finishReason: stepResult.finishReason,
-            usage: stepResult.usage
-              ? {
-                  inputTokens: stepResult.usage.inputTokens,
-                  outputTokens: stepResult.usage.outputTokens,
-                  totalTokens: stepResult.usage.totalTokens,
-                }
-              : undefined,
-          },
-        };
-        debugLogs.push(stepLog);
+          const stepLog = {
+            step: stepCount,
+            agent: agentType,
+            model: stepResult.model?.modelId ?? config.model.modelId ?? 'unknown',
+            request: {
+              instructions: finalInstructions.slice(0, 500) + (finalInstructions.length > 500 ? '...' : ''),
+              messages: stepRequestMessages,
+              tools: Object.keys(config.tools),
+            },
+            response: {
+              text: stepResult.text || undefined,
+              reasoningText: stepResult.reasoningText || undefined,
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any -- AI SDK toolCall type is loosely typed
+              toolCalls: stepResult.toolCalls?.map((tc: any) => ({
+                toolName: tc.toolName,
+                args: tc.args,
+              })) || undefined,
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any -- AI SDK toolResult type is loosely typed
+              toolResults: stepResult.toolResults?.map((tr: any) => ({
+                toolName: tr.toolName,
+                result: typeof tr.result === 'string'
+                  ? tr.result.slice(0, 300)
+                  : JSON.stringify(tr.result).slice(0, 300),
+              })) || undefined,
+              finishReason: stepResult.finishReason,
+              usage: stepResult.usage
+                ? {
+                    inputTokens: stepResult.usage.inputTokens,
+                    outputTokens: stepResult.usage.outputTokens,
+                    totalTokens: stepResult.usage.totalTokens,
+                  }
+                : undefined,
+            },
+          };
+          debugLogs.push(stepLog);
 
-        // Write debug logs to file immediately after each step
-        // (only effective for teacher — developer uses onEnd fallback below)
-        if (debugLogs.length > 0) {
-          try {
-            setDebugLogs(debugId, debugLogs);
-          } catch (err) {
-            console.error('[Chat API] Failed to store debug logs:', err);
+          // Write debug logs to file immediately after each step
+          // (only effective for teacher — developer uses onEnd fallback below)
+          if (debugLogs.length > 0) {
+            try {
+              setDebugLogs(debugId, debugLogs);
+            } catch (err) {
+              console.error('[Chat API] Failed to store debug logs:', err);
+            }
           }
         }
       },
@@ -244,17 +275,18 @@ export async function POST(req: Request) {
         // Log the real error server-side for debugging
         console.error('[Chat API] Stream error:', error);
         // Return a more descriptive message to the client
-        if ((error as any)?.name === 'NoSuchToolError') {
-          return `工具不存在: ${(error as any)?.toolName ?? 'unknown'}`;
+        const errObj = error as Record<string, unknown>;
+        if (errObj?.name === 'NoSuchToolError') {
+          return `工具不存在: ${errObj?.toolName ?? 'unknown'}`;
         }
-        if ((error as any)?.name === 'InvalidToolInputError') {
-          return `工具参数无效: ${(error as any)?.message ?? String(error)}`;
+        if (errObj?.name === 'InvalidToolInputError') {
+          return `工具参数无效: ${errObj?.message ?? String(error)}`;
         }
         return `执行出错: ${String(error).slice(0, 200)}`;
       },
       onEnd: async () => {
-        // If onStepFinish already wrote logs, skip
-        if (debugLogs.length > 0) return;
+        // If debug is disabled or onStepFinish already wrote logs, skip
+        if (!DEBUG_ENABLED || debugLogs.length > 0) return;
 
         try {
           // result.steps resolves after the stream is fully consumed
@@ -276,10 +308,12 @@ export async function POST(req: Request) {
               response: {
                 text: step.text || undefined,
                 reasoningText: step.reasoningText || undefined,
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any -- AI SDK step types are loosely typed
                 toolCalls: step.toolCalls?.map((tc: any) => ({
                   toolName: tc.toolName,
                   args: tc.args,
                 })) || undefined,
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any -- AI SDK step types are loosely typed
                 toolResults: step.toolResults?.map((tr: any) => ({
                   toolName: tr.toolName,
                   result: typeof tr.result === 'string'
@@ -326,18 +360,32 @@ export async function POST(req: Request) {
           // Stream ended normally
 
           // Execute any remaining file blocks (when LLM's last step had blocks but no next step)
-          if (agentType === 'developer' && fileBlockStore.size > 0) {
-            const { executeFileBlocks } = await import('@/lib/ai/utils/file-block-executor');
-            const results = await executeFileBlocks();
-            if (results.length > 0) {
-              const resultText = results.map(r =>
-                r.success
-                  ? `\n✅ [file-${r.mode}] ${r.message}`
-                  : `\n❌ [file-${r.mode}] ${r.message}`
-              ).join('');
-              const textDeltaEvent = `data: ${JSON.stringify({ type: 'text-delta', textDelta: resultText })}\n\n`;
-              controller.enqueue(new TextEncoder().encode(textDeltaEvent));
-              console.log(`[Chat API] Executed ${results.length} file block(s) at stream end`);
+          if (agentType === 'developer') {
+            // First, parse any remaining step text buffer into pending store
+            // (needed when onStepFinish doesn't fire, e.g. deepseek-reasoner)
+            const { fileBlockStore } = await import('@/lib/ai/utils/file-block-store');
+            const stepText = fileBlockStore.getStepText();
+            if (stepText) {
+              const parsed = fileBlockStore.parseAndStore(stepText);
+              if (parsed > 0) {
+                console.log(`[Chat API] Parsed ${parsed} file block(s) from step text at stream end`);
+              }
+              fileBlockStore.clearStepText();
+            }
+
+            if (fileBlockStore.size > 0) {
+              const { executeFileBlocks } = await import('@/lib/ai/utils/file-block-executor');
+              const results = await executeFileBlocks();
+              if (results.length > 0) {
+                const resultText = results.map(r =>
+                  r.success
+                    ? `\n✅ [file-${r.mode}] ${r.message}`
+                    : `\n❌ [file-${r.mode}] ${r.message}`
+                ).join('');
+                const textDeltaEvent = `data: ${JSON.stringify({ type: 'text-delta', textDelta: resultText })}\n\n`;
+                controller.enqueue(new TextEncoder().encode(textDeltaEvent));
+                console.log(`[Chat API] Executed ${results.length} file block(s) at stream end`);
+              }
             }
           }
 
@@ -355,8 +403,8 @@ export async function POST(req: Request) {
               `[Chat API] ⚠ Step limit reached: ${stepCount}/${MAX_STEPS}. Appended warning as text-delta.`,
             );
           }
-        } catch (err: any) {
-          if (err?.name !== 'AbortError') {
+        } catch (err: unknown) {
+          if ((err as Record<string, unknown>)?.name !== 'AbortError') {
             console.error('[Chat API Stream Error]', err);
           }
         } finally {
@@ -365,9 +413,11 @@ export async function POST(req: Request) {
       },
     });
 
-    // Return response with debug ID in header
+    // Return response with debug ID in header (only when debug panel is enabled)
     const headers = new Headers(streamResponse.headers);
-    headers.set('X-Debug-Id', debugId);
+    if (DEBUG_ENABLED && debugId) {
+      headers.set('X-Debug-Id', debugId);
+    }
 
     return new Response(transformedBody, {
       headers,
@@ -395,14 +445,15 @@ function extractTextFromMessage(message: UIMessage | undefined): string {
   // V7 format: parts array with text parts
   if (message.parts && Array.isArray(message.parts)) {
     return message.parts
-      .filter((p: any) => p.type === 'text')
-      .map((p: any) => p.text)
+      .filter((p): p is { type: 'text'; text: string } => p.type === 'text')
+      .map((p) => p.text)
       .join('');
   }
 
   // Legacy format: content string
-  if (typeof (message as any).content === 'string') {
-    return (message as any).content;
+  const legacyContent = (message as unknown as Record<string, unknown>).content;
+  if (typeof legacyContent === 'string') {
+    return legacyContent;
   }
 
   return '';
@@ -420,36 +471,40 @@ function sanitizeUIMessages(messages: UIMessage[]): UIMessage[] {
     // Normalize: if message has 'content' string but no 'parts', convert to parts format
     // This handles messages from external sources or legacy formats
     let normalized = msg;
-    if ((!msg.parts || !Array.isArray(msg.parts) || msg.parts.length === 0) && typeof (msg as any).content === 'string') {
+    const msgContent = (msg as unknown as Record<string, unknown>).content;
+    if ((!msg.parts || !Array.isArray(msg.parts) || msg.parts.length === 0) && typeof msgContent === 'string') {
       normalized = {
         ...msg,
-        parts: [{ type: 'text' as const, text: (msg as any).content }],
-      };
+        parts: [{ type: 'text' as const, text: msgContent }],
+      } as UIMessage;
     }
 
     if (!normalized.parts || !Array.isArray(normalized.parts)) return normalized;
 
-    const isToolPart = (p: any) =>
+    // Part type guards — parts can be AI SDK typed or custom (e.g. tool-xxx from commands)
+    type PartLike = Record<string, unknown>;
+    const isToolPart = (p: PartLike) =>
       p.type === 'tool-invocation' ||
-      (typeof p.type === 'string' && p.type.startsWith('tool-') && p.type !== 'tool-invocation');
+      (typeof p.type === 'string' && (p.type as string).startsWith('tool-') && p.type !== 'tool-invocation');
 
-    const isToolCall = (p: any) =>
+    const isToolCall = (p: PartLike) =>
       (p.type === 'tool-invocation' && (p.state === 'call' || p.state === 'partial-call')) ||
-      (typeof p.type === 'string' && p.type.startsWith('tool-') && p.type !== 'tool-invocation' && p.state === 'call');
+      (typeof p.type === 'string' && (p.type as string).startsWith('tool-') && p.type !== 'tool-invocation' && p.state === 'call');
 
-    const isToolResult = (p: any) =>
+    const isToolResult = (p: PartLike) =>
       (p.type === 'tool-invocation' && p.state === 'result') ||
-      (typeof p.type === 'string' && p.type.startsWith('tool-') && p.type !== 'tool-invocation' && (p.state === 'output-available' || p.state === 'result'));
+      (typeof p.type === 'string' && (p.type as string).startsWith('tool-') && p.type !== 'tool-invocation' && (p.state === 'output-available' || p.state === 'result'));
 
-    const hasToolCall = normalized.parts.some(isToolCall);
-    const hasToolResult = normalized.parts.some(isToolResult);
+    const hasToolCall = (normalized.parts as PartLike[]).some(isToolCall);
+    const hasToolResult = (normalized.parts as PartLike[]).some(isToolResult);
 
     // If there are tool results but no tool calls, strip all tool parts
     if (hasToolResult && !hasToolCall) {
-      const filteredParts = normalized.parts.filter((p: any) => !isToolPart(p));
+      const filteredParts = (normalized.parts as PartLike[]).filter((p) => !isToolPart(p));
       return {
         ...normalized,
-        parts: filteredParts.length > 0 ? filteredParts : [{ type: 'text' as const, text: '' }],
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- parts type varies at runtime
+        parts: (filteredParts.length > 0 ? filteredParts : [{ type: 'text' as const, text: '' }]) as any,
       };
     }
 

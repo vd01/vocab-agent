@@ -200,15 +200,16 @@ export function ChatInput({
             Alt+S
           </kbd>
         </button>
-        {/* Dev mode switch — right-aligned */}
+        {/* Dev mode switch — right-aligned, disabled during streaming */}
         <div className="ml-auto flex items-center gap-1.5">
           <Switch
             size="sm"
             checked={devMode}
-            onCheckedChange={onDevModeChange}
+            onCheckedChange={isLoading ? undefined : onDevModeChange}
+            disabled={isLoading}
             className={devMode ? 'bg-orange-500 dark:bg-orange-500' : ''}
           />
-          <span className={`text-xs font-medium ${devMode ? 'text-orange-600 dark:text-orange-400' : 'text-muted-foreground'}`}>
+          <span className={`text-xs font-medium ${devMode ? 'text-orange-600 dark:text-orange-400' : isLoading ? 'text-muted-foreground/50' : 'text-muted-foreground'}`}>
             {devMode ? '开发中' : '开发'}
           </span>
         </div>

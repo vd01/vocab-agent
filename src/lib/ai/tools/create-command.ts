@@ -70,7 +70,29 @@ export const createCommandTool = tool({
       return { type: 'error', message: `toolCode 文件不存在: ${toolCodePath}。请先用 file-write 写入代码文件。` };
     }
 
-    // 4. Read componentCode from file (if provided)
+    // 4. Validate toolCode syntax before proceeding
+    try {
+      // new Function() will catch syntax errors at compile time.
+      // We don't execute it — just verify it parses correctly.
+      new Function('db', 'client', 'tables', 'dql', 'fsrs', 'args', 'console',
+        `"use strict"; return (${toolCode})`
+      );
+    } catch (syntaxErr) {
+      const msg = syntaxErr instanceof Error ? syntaxErr.message : String(syntaxErr);
+      // Try to extract line/column from V8 error message
+      const lineMatch = msg.match(/line (\d+)|:(\d+)/);
+      const colMatch = msg.match(/column (\d+)|:(\d+)(?::(\d+))?/);
+      return {
+        type: 'error',
+        errorType: 'syntax-error',
+        message: `toolCode 语法错误: ${msg}`,
+        ...(lineMatch && { line: lineMatch[1] || lineMatch[2] }),
+        ...(colMatch && { column: colMatch[1] || colMatch[2] }),
+        hint: '请检查 toolCode 文件中的 JavaScript 语法，确保是一个合法的 async 函数表达式。',
+      };
+    }
+
+    // 5. Read componentCode from file (if provided)
     let componentCode: string | undefined;
     if (componentCodePath) {
       const componentFullPath = path.join(process.cwd(), componentCodePath);
@@ -84,10 +106,39 @@ export const createCommandTool = tool({
       } catch {
         return { type: 'error', message: `组件代码文件不存在: ${componentCodePath}。请先用 file-write 写入代码文件。` };
       }
+
+      // 5b. Basic component structure validation
+      if (componentCode) {
+        const issues: string[] = [];
+
+        // Check for default export
+        if (!/export\s+default\s+/.test(componentCode) && !/export\s*\{[^}]*\bdefault\b/.test(componentCode)) {
+          issues.push('缺少默认导出 (export default)。组件必须有默认导出才能被动态加载。');
+        }
+
+        // Check for 'use client' directive (required for client components)
+        if (!componentCode.trimStart().startsWith("'use client'") && !componentCode.trimStart().startsWith('"use client"')) {
+          issues.push('缺少 "use client" 指令。生成式组件是客户端组件，必须在文件顶部添加 \'use client\'。');
+        }
+
+        // Check for common syntax issues: unclosed JSX, missing return
+        if (/<[A-Z]\w+[^/]*>/.test(componentCode) && !/<\/[A-Z]\w+>/.test(componentCode) && !/\/>/.test(componentCode)) {
+          issues.push('可能存在未闭合的 JSX 标签。请检查所有组件标签是否正确闭合。');
+        }
+
+        if (issues.length > 0) {
+          return {
+            type: 'error',
+            errorType: 'component-validation',
+            message: `组件代码验证失败:\n${issues.map((s, i) => `${i + 1}. ${s}`).join('\n')}`,
+            hint: '修复以上问题后重新调用 create-command。',
+          };
+        }
+      }
     }
 
     try {
-      // 5. Upsert dynamic_commands
+      // 6. Upsert dynamic_commands
       const existing = await db.select().from(dynamicCommands)
         .where(eq(dynamicCommands.name, name)).limit(1);
 
@@ -110,7 +161,7 @@ export const createCommandTool = tool({
         });
       }
 
-      // 6. If componentCode provided, write component file + update registry
+      // 7. If componentCode provided, write component file + update registry
       if (componentCode) {
         // Write to src/components/generated/<name>.tsx
         await fs.mkdir(GENERATED_SRC_DIR, { recursive: true });

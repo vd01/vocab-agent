@@ -38,8 +38,17 @@ export function notifyDebugPanel(debugId: string) {
 /**
  * Temporary debug panel — Ctrl+D to toggle.
  * Accumulates LLM interaction logs across multiple requests.
+ *
+ * Only active when NEXT_PUBLIC_DEBUG_PANEL=true is set in environment.
  */
 export function DebugPanel() {
+  // Guard: skip all logic when debug panel is disabled
+  if (process.env.NEXT_PUBLIC_DEBUG_PANEL !== 'true') return null;
+
+  return <DebugPanelInner />;
+}
+
+function DebugPanelInner() {
   const [visible, setVisible] = useState(false);
   const [rounds, setRounds] = useState<RequestRound[]>([]);
   const [expandedStep, setExpandedStep] = useState<string | null>(null);

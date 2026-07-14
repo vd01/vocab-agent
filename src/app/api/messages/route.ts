@@ -86,6 +86,7 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const incoming: any[] = body.messages || [];
+    const agentType: string | null = body.agentType || null;
 
     if (incoming.length === 0) {
       return NextResponse.json({ saved: 0 });
@@ -125,7 +126,7 @@ export async function POST(req: NextRequest) {
         id: msg.id || `msg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         role: msg.role,
         parts,
-        agentType: null,
+        agentType,
         seq: nextSeq++,
         createdAt: msg.createdAt ? new Date(msg.createdAt) : new Date(),
       };

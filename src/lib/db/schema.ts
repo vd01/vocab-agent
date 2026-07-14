@@ -91,4 +91,5 @@ export const developerLessons = sqliteTable('developer_lessons', {
   content: text('content').notNull(),         // 详细描述
   context: text('context'),                   // 触发场景，如 "注册新命令时"
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+  lastUsedAt: integer('last_used_at', { mode: 'timestamp' }),  // 最后被注入 prompt 的时间，用于衰减排序
 });

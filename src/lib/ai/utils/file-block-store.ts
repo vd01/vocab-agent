@@ -35,6 +35,21 @@ class FileBlockStore {
   }
 
   /**
+   * Peek at all pending blocks without consuming them.
+   * Used by flushFileBlocks to find matching blocks safely.
+   */
+  peekAll(): FileBlock[] {
+    return Array.from(this.pending.values());
+  }
+
+  /**
+   * Remove a specific block by filePath from the pending store.
+   */
+  remove(filePath: string): boolean {
+    return this.pending.delete(filePath);
+  }
+
+  /**
    * 取出并删除所有未处理的标记块。
    */
   consumeAll(): FileBlock[] {
@@ -94,6 +109,14 @@ class FileBlockStore {
     }
 
     return matched;
+  }
+
+  /**
+   * Get the current step text buffer content (without clearing).
+   * Used at stream end to parse any remaining blocks when onStepFinish didn't fire.
+   */
+  getStepText(): string {
+    return this.stepTextBuffer;
   }
 
   /**

@@ -12,6 +12,7 @@ import { saveLessonTool, loadDeveloperLessons } from './tools/save-lesson';
 import { testCommandTool } from './tools/test-command';
 import { listLessonsTool } from './tools/list-lessons';
 import { mergeLessonsTool } from './tools/merge-lessons';
+import type { WorldState } from '@/lib/pipeline/world-state';
 
 // ── Developer Tool Set ───────────────────────────────────────────────────
 
@@ -33,14 +34,14 @@ export type DeveloperTools = typeof developerTools;
 
 // ── Developer Config ─────────────────────────────────────────────────────
 
-export async function getDeveloperConfig() {
+export async function getDeveloperConfig(worldState: WorldState) {
   const lessons = await loadDeveloperLessons();
 
   return {
     model: developerModel,
-    instructions: buildDeveloperInstructions(lessons),
+    instructions: buildDeveloperInstructions(lessons, worldState),
     tools: developerTools,
-    maxTokens: 8192,
+    maxTokens: 16384,
     temperature: 0.1,
   };
 }

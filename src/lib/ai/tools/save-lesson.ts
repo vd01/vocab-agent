@@ -55,7 +55,13 @@ export const saveLessonTool = tool({
 /**
  * Load developer lessons from DB, formatted for system prompt injection.
  * Respects a character budget to avoid inflating the prompt.
- * Prioritizes pitfall > anti-pattern > pattern > tip (most impactful first).
+ *
+ * Priority ordering:
+ * 1. Category: pitfall > anti-pattern > pattern > tip
+ * 2. Recency: recently used lessons rank higher; lessons unused for >30 days
+ *    are deprioritized (decay factor).
+ *
+ * After loading, updates lastUsedAt for all included lessons.
  */
 export async function loadDeveloperLessons(maxTokens: number = 1500): Promise<string> {
   try {
@@ -66,11 +72,28 @@ export async function loadDeveloperLessons(maxTokens: number = 1500): Promise<st
 
     if (lessons.length === 0) return '';
 
-    // Sort by priority: pitfall and anti-pattern are most important for agent behavior
+    const now = Date.now();
+    const DECAY_THRESHOLD_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+
+    // Sort by priority: category + recency decay
     const priorityOrder: Record<string, number> = { pitfall: 0, 'anti-pattern': 1, pattern: 2, tip: 3 };
-    const sorted = [...lessons].sort((a, b) =>
-      (priorityOrder[a.category] ?? 9) - (priorityOrder[b.category] ?? 9)
-    );
+    const sorted = [...lessons].sort((a, b) => {
+      // Primary: category priority
+      const catDiff = (priorityOrder[a.category] ?? 9) - (priorityOrder[b.category] ?? 9);
+      if (catDiff !== 0) return catDiff;
+
+      // Secondary: recency — recently used lessons rank higher
+      const aLastUsed = a.lastUsedAt ? a.lastUsedAt.getTime() : 0;
+      const bLastUsed = b.lastUsedAt ? b.lastUsedAt.getTime() : 0;
+
+      // Lessons unused for >30 days get a penalty (pushed to end of their category group)
+      const aDecayed = (now - aLastUsed) > DECAY_THRESHOLD_MS;
+      const bDecayed = (now - bLastUsed) > DECAY_THRESHOLD_MS;
+      if (aDecayed !== bDecayed) return aDecayed ? 1 : -1;
+
+      // Within same decay status, prefer more recently used
+      return bLastUsed - aLastUsed;
+    });
 
     const categoryLabels: Record<string, string> = {
       pattern: '✅ 成功模式',
@@ -114,6 +137,19 @@ export async function loadDeveloperLessons(maxTokens: number = 1500): Promise<st
 
     if (includedCount < lessons.length) {
       sections.push(`\n[...还有 ${lessons.length - includedCount} 条经验，因篇幅限制已省略。可用 list-lessons 工具查看全部。]`);
+    }
+
+    // Update lastUsedAt for included lessons (fire-and-forget)
+    const includedIds = sorted.slice(0, includedCount).map(l => l.id);
+    if (includedIds.length > 0) {
+      const nowTimestamp = new Date();
+      Promise.all(
+        includedIds.map(id =>
+          db.update(developerLessons)
+            .set({ lastUsedAt: nowTimestamp })
+            .where(eq(developerLessons.id, id))
+        )
+      ).catch(err => console.error('[loadDeveloperLessons] Failed to update lastUsedAt:', err));
     }
 
     return sections.join('\n');

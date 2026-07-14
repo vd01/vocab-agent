@@ -4,6 +4,29 @@ import { db, client } from '@/lib/db';
 import { words, reviews } from '@/lib/db/schema';
 import { eq, sql, and, desc } from 'drizzle-orm';
 
+// Tables that are forbidden in custom SQL queries (security/sensitivity)
+const FORBIDDEN_TABLES = ['sqlite_master', 'sqlite_sequence', 'dynamic_commands', 'developer_lessons'];
+
+function validateCustomSql(customSql: string): string | null {
+  const upper = customSql.trim().toUpperCase();
+
+  // Only allow SELECT
+  if (!upper.startsWith('SELECT')) {
+    return '只允许 SELECT 查询';
+  }
+
+  // Check for forbidden table names
+  for (const table of FORBIDDEN_TABLES) {
+    // Match table name as a word boundary (case-insensitive)
+    const re = new RegExp('\\b' + table.replace('_', '[_]') + '\\b', 'i');
+    if (re.test(customSql)) {
+      return `禁止查询 ${table} 表`;
+    }
+  }
+
+  return null;
+}
+
 export const dbQueryTool = tool({
   description: '查询数据库中的词汇和复习数据。必须指定 queryType 参数。',
   inputSchema: z.object({
@@ -47,10 +70,10 @@ export const dbQueryTool = tool({
 
         case 'custom': {
           if (!customSql) return { type: 'error', message: '需要 sql 参数' };
-          // Safety: only allow SELECT queries
-          const normalizedSql = customSql.trim().toUpperCase();
-          if (!normalizedSql.startsWith('SELECT')) {
-            return { type: 'error', message: '只允许 SELECT 查询' };
+          // Safety: validate custom SQL
+          const validationError = validateCustomSql(customSql);
+          if (validationError) {
+            return { type: 'error', message: validationError };
           }
           const result = await client.execute({ sql: customSql, args: [] });
           return { type: 'custom', rows: result.rows };

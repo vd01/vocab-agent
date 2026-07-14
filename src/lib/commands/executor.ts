@@ -128,6 +128,8 @@ async function executeDynamicCommand(
     return {
       type: 'command-error',
       message: `动态命令 /${cmd.name} 执行失败: ${err instanceof Error ? err.message : String(err)}`,
+      // Preserve raw error for test-command to extract line/column from stack
+      _rawError: err instanceof Error ? err : new Error(String(err)),
     };
   }
 }

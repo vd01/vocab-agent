@@ -4,6 +4,9 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { updateRegistryFile, GENERATED_SRC_DIR } from './registry-utils';
 import { flushFileBlocks } from './file-block-flush';
+import { db } from '@/lib/db';
+import { dynamicCommands } from '@/lib/db/schema';
+import { eq } from 'drizzle-orm';
 
 export const registerComponentTool = tool({
   description: `注册新的 UI 组件到动态组件注册表，立即生效（无需重启）。同时更新 DB 中的 component_code。
@@ -54,9 +57,6 @@ export const registerComponentTool = tool({
 
       // 3. Update the dynamic_commands table if a matching command exists
       try {
-        const { db } = await import('@/lib/db');
-        const { dynamicCommands } = await import('@/lib/db/schema');
-        const { eq } = await import('drizzle-orm');
         const now = new Date();
 
         const candidates = [name, name.replace(/-/g, '_')];

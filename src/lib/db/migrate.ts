@@ -131,6 +131,17 @@ async function migrate() {
     );
   `);
 
+  // Add last_used_at column to existing developer_lessons table
+  try {
+    const cols = await client.execute(`PRAGMA table_info(developer_lessons)`);
+    const hasLastUsedAt = cols.rows.some((r: any) => r.name === 'last_used_at');
+    if (!hasLastUsedAt) {
+      await client.execute(`ALTER TABLE developer_lessons ADD COLUMN last_used_at INTEGER`);
+    }
+  } catch {
+    // Table might not exist yet, that's fine
+  }
+
   await client.execute(`
     CREATE TABLE IF NOT EXISTS pinned_words (
       id TEXT PRIMARY KEY,

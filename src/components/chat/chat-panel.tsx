@@ -7,6 +7,9 @@ import { ChatInput } from './chat-input';
 import { DebugPanel, notifyDebugPanel } from '@/components/debug/debug-panel';
 import { useState, useCallback, useEffect, useRef } from 'react';
 
+// Read at module level so Next.js can tree-shake when disabled
+const DEBUG_PANEL_ENABLED = process.env.NEXT_PUBLIC_DEBUG_PANEL === 'true';
+
 // Dynamic re-import to get the latest loadGeneratedComponents after HMR
 async function reloadComponents() {
   try {
@@ -75,7 +78,11 @@ function ChatInner({ initialMessages, initialHasMore }: {
   } = useChat({
     transport: new DefaultChatTransport({
       api: '/api/chat',
-      body: () => ({ mode: devModeRef.current ? 'develop' : 'teach' }),
+      body: () => {
+        const switched = modeSwitchedRef.current;
+        modeSwitchedRef.current = false;
+        return { mode: devModeRef.current ? 'develop' : 'teach', modeSwitched: switched };
+      },
     }),
     messages: initialMessages,
     onFinish: () => {
@@ -85,7 +92,7 @@ function ChatInner({ initialMessages, initialHasMore }: {
         saveMessagesToDb();
       }, 500);
       // Notify debug panel to fetch logs (now that stream has ended)
-      if (debugIdRef.current) {
+      if (DEBUG_PANEL_ENABLED && debugIdRef.current) {
         notifyDebugPanel(debugIdRef.current);
         debugIdRef.current = null;
       }
@@ -95,7 +102,11 @@ function ChatInner({ initialMessages, initialHasMore }: {
   const [input, setInput] = useState('');
   const [hasMore, setHasMore] = useState(initialHasMore);
   const [devMode, setDevModeState] = useState(false);
+  const modeSwitchedRef = useRef(false);
   const setDevMode = useCallback((v: boolean) => {
+    if (devModeRef.current !== v) {
+      modeSwitchedRef.current = true;
+    }
     devModeRef.current = v;
     setDevModeState(v);
   }, []);
@@ -106,8 +117,10 @@ function ChatInner({ initialMessages, initialHasMore }: {
   const debugIdRef = useRef<string | null>(null);
   messagesRef.current = messages;
 
-  // Intercept fetch to capture X-Debug-Id from /api/chat responses
+  // Intercept fetch to capture X-Debug-Id from /api/chat responses (only when debug panel is enabled)
   useEffect(() => {
+    if (!DEBUG_PANEL_ENABLED) return;
+
     const originalFetch = window.fetch;
     window.fetch = async function (...args) {
       const response = await originalFetch.apply(this, args);
@@ -146,7 +159,7 @@ function ChatInner({ initialMessages, initialHasMore }: {
       const res = await fetch('/api/messages', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: currentMessages }),
+        body: JSON.stringify({ messages: currentMessages, agentType: devModeRef.current ? 'developer' : 'teacher' }),
       });
       const result = await res.json();
       if (result.saved > 0) {
@@ -245,7 +258,7 @@ function ChatInner({ initialMessages, initialHasMore }: {
         fetch('/api/messages', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ messages: [userMsg, assistantMsg] }),
+          body: JSON.stringify({ messages: [userMsg, assistantMsg], agentType: devModeRef.current ? 'developer' : 'teacher' }),
         }).catch(err => console.error('[ChatPanel] Failed to save command messages:', err));
       }, 100);
     } catch (err) {
@@ -268,14 +281,15 @@ function ChatInner({ initialMessages, initialHasMore }: {
 
     const trimmed = input.trim();
 
-    // / commands → direct execution, no LLM
-    if (trimmed.startsWith('/')) {
+    // / commands → in teach mode, direct execution (no LLM); in dev mode, send to LLM
+    // so the Developer Agent can handle requests like "帮我创建一个 /xxx 命令"
+    if (trimmed.startsWith('/') && !devModeRef.current) {
       executeCommandViaApi(trimmed);
       setInput('');
       return;
     }
 
-    // Natural language → LLM Agent
+    // Natural language (or / commands in dev mode) → LLM Agent
     sendMessage({ text: input });
     setInput('');
   }, [input, sendMessage, executeCommandViaApi]);
@@ -319,8 +333,8 @@ function ChatInner({ initialMessages, initialHasMore }: {
           onDevModeChange={setDevMode}
         />
       </div>
-      {/* Debug panel — Ctrl+D to toggle, temporary research tool */}
-      <DebugPanel />
+      {/* Debug panel — Ctrl+D to toggle, only when NEXT_PUBLIC_DEBUG_PANEL=true */}
+      {DEBUG_PANEL_ENABLED && <DebugPanel />}
     </div>
   );
 }
