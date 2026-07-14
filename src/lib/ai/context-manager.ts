@@ -2,20 +2,20 @@
  * Context Management — 对话上下文管理
  *
  * 策略：
- * 1. Token 预算：为模型输入设定 token 上限，超出时自动截断/摘要
- * 2. 差异化保留：用户消息始终完整保留，assistant 消息按距离递减保留
- * 3. World State 注入：将 World State 作为 instructions 的一部分注入，而非消息
+ * 1. 功能性消息过滤：/review, /stats 等命令消息不发给 LLM
+ * 2. Prompt Cache 友好：同会话内不改变消息前缀，保证 cache 命中
+ * 3. Cache TTL：距上次请求 ≥ 4h 时 cache 已失效，可放心做完整 trim
  * 4. 工具结果截断：过长的工具输出自动截断，保留关键信息
- * 5. 摘要优先级：用户意图 > 助手结论 > 工具调用记录
+ * 5. 跨会话 trim：摘要优先级 — 用户意图 > 助手结论 > 工具调用记录
  */
 
-import type { ModelMessage } from 'ai';
+import type { UIMessage, ModelMessage } from 'ai';
 import { estimateTokens } from './utils/token-estimate';
 
 // ── Configuration ────────────────────────────────────────────────────────
 
 export interface ContextManagerConfig {
-  /** Maximum number of recent messages to keep in full */
+  /** Maximum number of recent messages to keep in full (cross-session trim only) */
   recentWindow: number;
   /** Maximum tokens per tool result (truncated beyond this) */
   maxToolResultTokens: number;
@@ -23,39 +23,117 @@ export interface ContextManagerConfig {
   maxContextTokens: number;
   /** Whether to include reasoning parts in context */
   includeReasoning: boolean;
-  /** Number of recent assistant rounds to keep in full */
+  /** Number of recent assistant rounds to keep in full (cross-session trim only) */
   fullAssistantRounds: number;
   /** Maximum user topics to include in summary */
   maxUserTopics: number;
+  /** Cache TTL in ms — trim is skipped within this window to preserve prefix cache */
+  cacheTtlMs: number;
 }
 
 const DEFAULT_CONFIG: ContextManagerConfig = {
-  recentWindow: 20,
+  recentWindow: 50,
   maxToolResultTokens: 800,
-  maxContextTokens: 20000,
+  maxContextTokens: 80000,
   includeReasoning: false,
   fullAssistantRounds: 3,
   maxUserTopics: 10,
+  cacheTtlMs: 4 * 60 * 60 * 1000, // 4 hours
 };
 
 // ── Context Manager ──────────────────────────────────────────────────────
 
 export class ContextManager {
   private config: ContextManagerConfig;
+  /** Timestamp of the last LLM request (used for cache TTL) */
+  private lastRequestTime: number = 0;
 
   constructor(config: Partial<ContextManagerConfig> = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
   }
 
   /**
+   * Filter out functional command messages that don't need to be sent to LLM.
+   *
+   * Functional messages are identified by:
+   * - User message text starts with '/' (e.g. /review, /stats)
+   * - The following assistant message contains only tool parts (no text)
+   *
+   * This only affects what's sent to the LLM — the frontend and DB
+   * still retain these messages for display.
+   */
+  filterFunctionalMessages(messages: UIMessage[]): UIMessage[] {
+    if (messages.length === 0) return messages;
+
+    const skipIndices = new Set<number>();
+
+    for (let i = 0; i < messages.length; i++) {
+      const msg = messages[i];
+      if (msg.role !== 'user') continue;
+
+      // Check if user message starts with '/'
+      const userText = this.extractUIText(msg);
+      if (!userText || !userText.trim().startsWith('/')) continue;
+
+      // Check if the next message is an assistant with only tool parts
+      if (i + 1 < messages.length && messages[i + 1].role === 'assistant') {
+        const nextMsg = messages[i + 1];
+        if (this.isFunctionalAssistantMessage(nextMsg)) {
+          skipIndices.add(i);
+          skipIndices.add(i + 1);
+        }
+      }
+    }
+
+    if (skipIndices.size === 0) return messages;
+
+    return messages.filter((_, idx) => !skipIndices.has(idx));
+  }
+
+  /**
+   * Check if an assistant message contains only functional tool parts
+   * (no text content — just tool results from command execution).
+   */
+  private isFunctionalAssistantMessage(msg: UIMessage): boolean {
+    if (!msg.parts || !Array.isArray(msg.parts)) return false;
+
+    // If there's any text part with non-empty content, it's not purely functional
+    const hasTextContent = msg.parts.some(
+      (p: any) => p.type === 'text' && typeof p.text === 'string' && p.text.trim().length > 0,
+    );
+    if (hasTextContent) return false;
+
+    // If all parts are tool-related, it's functional
+    const allToolParts = msg.parts.every((p: any) =>
+      p.type === 'tool-invocation' ||
+      (typeof p.type === 'string' && p.type.startsWith('tool-')),
+    );
+    return allToolParts && msg.parts.length > 0;
+  }
+
+  /**
+   * Extract plain text from a UIMessage.
+   */
+  private extractUIText(msg: UIMessage): string | null {
+    if (!msg.parts || !Array.isArray(msg.parts)) {
+      // Legacy format
+      if (typeof (msg as any).content === 'string') return (msg as any).content;
+      return null;
+    }
+    return msg.parts
+      .filter((p: any) => p.type === 'text')
+      .map((p: any) => p.text)
+      .join('\n');
+  }
+
+  /**
    * Trim the message list to fit within the context budget.
    *
-   * Strategy (priority: user messages > recent assistant > old assistant):
-   * 1. Keep all user messages intact (they carry intent)
-   * 2. Keep the most recent `fullAssistantRounds` assistant messages intact
-   * 3. Compress older assistant messages into brief summaries
-   * 4. Truncate oversized tool results
-   * 5. If still over budget, remove oldest messages from front
+   * Cache-aware strategy:
+   * - Within cache TTL (< 4h since last request): only filter functional
+   *   messages and truncate tool results — NO prefix changes to preserve cache
+   * - Beyond cache TTL (≥ 4h): cache is stale, safe to do full trim
+   *   (summarize old messages, remove from front, etc.)
    */
   trimMessages(messages: ModelMessage[]): {
     messages: ModelMessage[];
@@ -63,21 +141,63 @@ export class ContextManager {
     originalCount: number;
     summaryAdded: boolean;
     summary: string | null;
+    cacheAware: boolean;
   } {
+    const now = Date.now();
+    // Check if we're within the cache TTL — preserve prefix for cache hits
+    // First request (lastRequestTime === 0) is treated as cross-session
+    // since there's no cache to protect yet, but we still only trim if needed.
+    const withinCacheTtl = this.lastRequestTime > 0 &&
+      (now - this.lastRequestTime) < this.config.cacheTtlMs;
+
+    // Save the time gap before updating lastRequestTime
+    const timeSinceLastRequest = now - this.lastRequestTime;
+
+    // Update last request time
+    this.lastRequestTime = now;
+
     const originalCount = messages.length;
     let trimmed = false;
     let summaryAdded = false;
     let summary: string | null = null;
 
+    // Always: truncate oversized tool results
+    const processed = messages.map(m => this.truncateToolResults(m));
+
+    if (withinCacheTtl) {
+      // Same session — preserve message prefix for cache hits.
+      // Note: we still truncate oversized tool results. This may slightly
+      // alter message content, but tool results are typically in the tail
+      // of the prompt, so the prefix (which matters for caching) stays intact.
+      console.log(
+        `[Context Manager] Cache-aware mode: skipping trim (last request ${Math.round(timeSinceLastRequest / 60000)}min ago, TTL ${Math.round(this.config.cacheTtlMs / 60000)}min)`,
+      );
+      return {
+        messages: processed,
+        trimmed: false,
+        originalCount,
+        summaryAdded: false,
+        summary: null,
+        cacheAware: true,
+      };
+    }
+
+    // Cross-session — cache is stale, safe to do full trim
     if (originalCount <= this.config.recentWindow) {
-      const processed = messages.map(m => this.truncateToolResults(m));
-      return { messages: processed, trimmed: false, originalCount, summaryAdded: false, summary: null };
+      return {
+        messages: processed,
+        trimmed: false,
+        originalCount,
+        summaryAdded: false,
+        summary: null,
+        cacheAware: false,
+      };
     }
 
     // Identify assistant message indices for round counting
     const assistantIndices: number[] = [];
-    for (let i = 0; i < messages.length; i++) {
-      if (messages[i].role === 'assistant') assistantIndices.push(i);
+    for (let i = 0; i < processed.length; i++) {
+      if (processed[i].role === 'assistant') assistantIndices.push(i);
     }
 
     // The last `fullAssistantRounds` assistant messages (and everything after them) are "recent"
@@ -87,8 +207,8 @@ export class ContextManager {
 
     // Split: messages before recentAssistantStart are "old", rest are "recent"
     const splitIndex = Math.min(recentAssistantStart, originalCount - this.config.recentWindow);
-    const oldMessages = messages.slice(0, Math.max(splitIndex, 0));
-    const recentMessages = messages.slice(Math.max(splitIndex, 0));
+    const oldMessages = processed.slice(0, Math.max(splitIndex, 0));
+    const recentMessages = processed.slice(Math.max(splitIndex, 0));
 
     // Summarize old messages with differential treatment
     if (oldMessages.length > 0) {
@@ -104,14 +224,20 @@ export class ContextManager {
     }
 
     // Final check: if total tokens exceed budget, trim from the front
-    // But prefer removing assistant messages over user messages
     const totalTokens = this.estimateMessagesTokens(result);
     if (totalTokens > this.config.maxContextTokens) {
       this.trimToBudget(result);
       trimmed = true;
     }
 
-    return { messages: result, trimmed, originalCount, summaryAdded, summary };
+    return {
+      messages: result,
+      trimmed,
+      originalCount,
+      summaryAdded,
+      summary,
+      cacheAware: false,
+    };
   }
 
   /**
@@ -178,6 +304,7 @@ export class ContextManager {
 
   /**
    * Trim messages to fit token budget, preferring to remove assistant messages.
+   * Only called during cross-session trim (cache is already stale).
    */
   private trimToBudget(result: ModelMessage[]): void {
     // First pass: remove oldest assistant messages (keep user messages)
@@ -243,7 +370,7 @@ export class ContextManager {
   }
 
   /**
-   * Extract plain text content from a message.
+   * Extract plain text content from a ModelMessage.
    */
   private extractTextContent(message: ModelMessage): string | null {
     if (message.role === 'system') {

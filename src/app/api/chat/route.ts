@@ -82,24 +82,37 @@ export async function POST(req: Request) {
     // in convertToModelMessages.
     const sanitizedMessages = sanitizeUIMessages(uiMessages);
 
+    // Filter out functional command messages (/review, /stats, etc.)
+    // These are pure frontend operations that don't need LLM context.
+    const filteredMessages = contextManager.filterFunctionalMessages(sanitizedMessages);
+    const filteredCount = sanitizedMessages.length - filteredMessages.length;
+    if (filteredCount > 0) {
+      console.log(`[Context Manager] Filtered ${filteredCount} functional command messages`);
+    }
+
     // Convert UIMessage[] → ModelMessage[] using AI SDK V7 converter
-    const modelMessages = await convertToModelMessages(sanitizedMessages, {
+    const modelMessages = await convertToModelMessages(filteredMessages, {
       tools: config.tools,
       ignoreIncompleteToolCalls: true,
     });
 
-    // Apply context management: trim/summarize old messages
-    const { messages: trimmedMessages, trimmed, summaryAdded, summary } =
+    // Apply context management: trim/summarize old messages (cache-aware)
+    const { messages: trimmedMessages, trimmed, summaryAdded, summary, cacheAware } =
       contextManager.trimMessages(modelMessages);
 
     if (trimmed) {
       console.log(
         `[Context Manager] Trimmed ${modelMessages.length} → ${trimmedMessages.length} messages` +
-        (summaryAdded ? ' (with summary)' : ''),
+        (summaryAdded ? ' (with summary)' : '') +
+        (cacheAware ? '' : ' (cross-session, cache stale)'),
+      );
+    } else if (cacheAware) {
+      console.log(
+        `[Context Manager] Cache-aware: skipped trim to preserve prefix cache`,
       );
     }
 
-    // Merge conversation summary into instructions (AI SDK V7 forbids system messages in messages[])
+    // Merge conversation summary into instructions (only when cross-session trim produced one)
     const finalInstructions = summary
       ? `${config.instructions}\n\n[对话历史摘要]\n${summary}`
       : config.instructions;
