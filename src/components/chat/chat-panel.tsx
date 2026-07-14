@@ -199,14 +199,11 @@ function ChatInner({ initialMessages, initialHasMore }: {
   }, [loadingMore, hasMore, messages, setMessages]);
 
   /**
-   * Execute a / command via the dedicated /api/commands endpoint.
-   * Injects user message + result as a tool part (AI SDK V7 format) into the chat,
-   * so the existing MessageItem renderer works unchanged.
-   *
-   * Note: these tool parts are "orphaned" (no matching tool-call in a prior message),
-   * but the backend (route.ts) sanitizes them before passing to convertToModelMessages.
+   * Try to execute a / command directly. Returns true if the command exists
+   * and was executed (or attempted), false if the command is unknown
+   * (caller should then send to LLM Agent).
    */
-  const executeCommandViaApi = useCallback(async (command: string) => {
+  const tryExecuteCommand = useCallback(async (command: string): Promise<boolean> => {
     const cmdName = command.split(/\s+/)[0].slice(1); // strip leading /
 
     // Add user message to chat
@@ -237,6 +234,13 @@ function ChatInner({ initialMessages, initialHasMore }: {
         throw new Error(`Expected JSON, got ${contentType}: ${responseText.slice(0, 200)}`);
       }
 
+      // If command is unknown, remove the user message and return false
+      // so the caller can send it to the LLM Agent instead
+      if (result.type === 'unknown-command') {
+        setMessages(prev => prev.filter(m => m.id !== userMsg.id));
+        return false;
+      }
+
       // Wrap result as assistant message with AI SDK V7 tool part
       // type = 'tool-<name>', state = 'output-available', output = result
       const assistantMsg = {
@@ -261,6 +265,8 @@ function ChatInner({ initialMessages, initialHasMore }: {
           body: JSON.stringify({ messages: [userMsg, assistantMsg], agentType: devModeRef.current ? 'developer' : 'teacher' }),
         }).catch(err => console.error('[ChatPanel] Failed to save command messages:', err));
       }, 100);
+
+      return true;
     } catch (err) {
       // Show error as assistant message
       const errorMsg = {
@@ -272,6 +278,7 @@ function ChatInner({ initialMessages, initialHasMore }: {
         }],
       };
       setMessages(prev => [...prev, errorMsg as any]);
+      return true; // Command existed but failed — don't send to Agent
     }
   }, [setMessages]);
 
@@ -281,30 +288,42 @@ function ChatInner({ initialMessages, initialHasMore }: {
 
     const trimmed = input.trim();
 
-    // / commands → in teach mode, direct execution (no LLM); in dev mode, send to LLM
-    // so the Developer Agent can handle requests like "帮我创建一个 /xxx 命令"
-    if (trimmed.startsWith('/') && !devModeRef.current) {
-      executeCommandViaApi(trimmed);
+    // / commands → try direct execution first; if unknown, fall through to LLM
+    if (trimmed.startsWith('/')) {
+      if (!devModeRef.current) {
+        // Teach mode: always execute directly (no LLM fallback for unknown commands)
+        tryExecuteCommand(trimmed);
+        setInput('');
+        return;
+      }
+      // Dev mode: try direct execution; if command doesn't exist, send to Agent
+      // (so Developer can handle requests like "帮我创建一个 /xxx 命令")
+      tryExecuteCommand(trimmed).then(executed => {
+        if (!executed) {
+          // Unknown command — send to Developer Agent
+          sendMessage({ text: input });
+        }
+      });
       setInput('');
       return;
     }
 
-    // Natural language (or / commands in dev mode) → LLM Agent
+    // Natural language → LLM Agent
     sendMessage({ text: input });
     setInput('');
-  }, [input, sendMessage, executeCommandViaApi]);
+  }, [input, sendMessage, tryExecuteCommand]);
 
   const handleCommand = useCallback((command: string) => {
     setInput(command + ' ');
   }, []);
 
   const handleReview = useCallback(() => {
-    executeCommandViaApi('/review');
-  }, [executeCommandViaApi]);
+    tryExecuteCommand('/review');
+  }, [tryExecuteCommand]);
 
   const handleStats = useCallback(() => {
-    executeCommandViaApi('/stats');
-  }, [executeCommandViaApi]);
+    tryExecuteCommand('/stats');
+  }, [tryExecuteCommand]);
 
   return (
     <div className="flex flex-col h-full w-full">
