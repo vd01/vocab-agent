@@ -179,6 +179,8 @@ export function MessageItem({ message, isLastAssistant, isStreaming, isLastRevie
 const DEV_TOOL_LABELS: Record<string, { icon: string; label: string }> = {
   'file-read':  { icon: 'R', label: '读取文件' },
   'file-list':  { icon: 'L', label: '列出文件' },
+  'file-write': { icon: '⚠', label: '写文件(引导)' },
+  'file-edit':  { icon: '⚠', label: '编辑文件(引导)' },
   'register-tool':      { icon: 'T', label: '注册工具' },
   'register-component': { icon: 'C', label: '注册组件' },
   'create-command':     { icon: '!', label: '创建命令' },
@@ -716,7 +718,7 @@ function renderToolOutput(key: number, toolName: string, output: any, isLastRevi
   }
 
   // Developer tools: file operations & shell — compact collapsed display
-  const devToolNames = new Set(['file-read', 'file-list', 'register-tool', 'register-component', 'create-command', 'db-query', 'save-lesson', 'list-lessons', 'merge-lessons', 'test-command']);
+  const devToolNames = new Set(['file-read', 'file-list', 'register-tool', 'register-component', 'create-command', 'db-query', 'save-lesson', 'list-lessons', 'merge-lessons', 'test-command', 'file-write', 'file-edit']);
   if (devToolNames.has(toolName)) {
     return <DevToolOutput key={key} toolName={toolName} output={output} />;
   }
@@ -797,6 +799,8 @@ function isToolPartWithState(part: any, state: string): boolean {
 const TOOL_DISPLAY_NAMES: Record<string, string> = {
   'file-read': '读取文件',
   'file-list': '列出文件',
+  'file-write': '写文件(引导)',
+  'file-edit': '编辑文件(引导)',
   'create-command': '创建命令',
   'register-tool': '注册命令',
   'register-component': '注册组件',

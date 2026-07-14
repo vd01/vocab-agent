@@ -2,6 +2,8 @@ import { type ToolSet } from 'ai';
 import { developerModel } from './models';
 import { buildDeveloperInstructions } from './prompts/developer-system';
 import { fileReadTool } from './tools/file-write';
+import { fileWriteGuidanceTool } from './tools/file-write-tool';
+import { fileEditGuidanceTool } from './tools/file-edit-tool';
 import { fileListTool } from './tools/file-list';
 import { registerToolTool } from './tools/register-tool';
 import { registerComponentTool } from './tools/register-component';
@@ -19,6 +21,8 @@ import type { WorldState } from '@/lib/pipeline/world-state';
 export const developerTools = {
   'file-read': fileReadTool,
   'file-list': fileListTool,
+  'file-write': fileWriteGuidanceTool,
+  'file-edit': fileEditGuidanceTool,
   'create-command': createCommandTool,
   'register-tool': registerToolTool,
   'register-component': registerComponentTool,

@@ -3,6 +3,7 @@ import {
   stepCountIs,
   convertToModelMessages,
   pruneMessages,
+  NoSuchToolError,
   type UIMessage,
   type ModelMessage,
 } from 'ai';
@@ -160,6 +161,76 @@ export async function POST(req: Request) {
       maxOutputTokens: config.maxTokens,
       temperature: config.temperature,
       stopWhen: stepCountIs(MAX_STEPS),
+      // Repair tool calls where deepseek-reasoner puts the entire file-block
+      // syntax (e.g. "file-write:generated/tools/word-match.js") into the
+      // toolName field instead of using the <<<file-write:...>>> text syntax.
+      repairToolCall: agentType === 'developer' ? async ({ toolCall, error }) => {
+        if (!(error instanceof NoSuchToolError)) return null;
+
+        const name = toolCall.toolName;
+
+        // Case 1: "file-write:path" → redirect to file-write guidance tool
+        if (name.startsWith('file-write:')) {
+          const filePath = name.slice('file-write:'.length);
+          return {
+            type: 'tool-call' as const,
+            toolCallId: toolCall.toolCallId,
+            toolName: 'file-write',
+            input: JSON.stringify({ filePath, content: String(toolCall.input ?? '') }),
+          };
+        }
+
+        // Case 2: "file-edit:path:replace:start-end" or "file-edit:path:insert:line"
+        if (name.startsWith('file-edit:')) {
+          const rest = name.slice('file-edit:'.length);
+          // Try to parse replace pattern: path:replace:start-end
+          const replaceMatch = rest.match(/^(.+?):replace:(\d+)-(\d+)$/);
+          if (replaceMatch) {
+            return {
+              type: 'tool-call' as const,
+              toolCallId: toolCall.toolCallId,
+              toolName: 'file-edit',
+              input: JSON.stringify({
+                filePath: replaceMatch[1],
+                mode: 'replace',
+                startLine: parseInt(replaceMatch[2], 10),
+                endLine: parseInt(replaceMatch[3], 10),
+                content: String(toolCall.input ?? ''),
+              }),
+            };
+          }
+          // Try to parse insert pattern: path:insert:line
+          const insertMatch = rest.match(/^(.+?):insert:(\d+)$/);
+          if (insertMatch) {
+            return {
+              type: 'tool-call' as const,
+              toolCallId: toolCall.toolCallId,
+              toolName: 'file-edit',
+              input: JSON.stringify({
+                filePath: insertMatch[1],
+                mode: 'insert',
+                startLine: parseInt(insertMatch[2], 10),
+                content: String(toolCall.input ?? ''),
+              }),
+            };
+          }
+          // Fallback: can't parse, redirect to file-edit with raw info
+          return {
+            type: 'tool-call' as const,
+            toolCallId: toolCall.toolCallId,
+            toolName: 'file-edit',
+            input: JSON.stringify({
+              filePath: rest,
+              mode: 'replace',
+              startLine: 1,
+              endLine: 1,
+              content: String(toolCall.input ?? ''),
+            }),
+          };
+        }
+
+        return null;
+      } : undefined,
       onChunk({ chunk }) {
         // Accumulate text deltas into fileBlockStore's step buffer
         // so that tool execute() can parse file blocks from the current step
