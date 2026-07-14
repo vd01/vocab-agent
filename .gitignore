@@ -44,6 +44,7 @@ next-env.d.ts
 /data/*.db
 /generated/
 /src/components/generated/
+/src/components/generative/component-registry.ts
 
 # Claude Code / Omo session files
 .omo/

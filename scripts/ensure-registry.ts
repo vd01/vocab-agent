@@ -1,4 +1,15 @@
-'use client';
+/**
+ * 确保 component-registry.ts 存在（空模板）
+ * 该文件被 gitignore，新 clone 后需要生成
+ */
+import fs from 'fs';
+import path from 'path';
+
+const REGISTRY_PATH = path.join(
+  process.cwd(), 'src', 'components', 'generative', 'component-registry.ts'
+);
+
+const EMPTY_REGISTRY = `'use client';
 
 import React from 'react';
 
@@ -45,24 +56,21 @@ export const componentRegistry = new ComponentRegistryClass();
  */
 
 export function loadGeneratedComponents() {
-  import('@/components/generated/greet').then(mod => {
-    componentRegistry.register('greet', (mod.default ?? mod) as unknown as React.ComponentType<Record<string, unknown>>);
-  }).catch(err => {
-    console.warn('[component-registry] Failed to load component "greet:', err);
-  });
-  import('@/components/generated/helloworld').then(mod => {
-    componentRegistry.register('helloworld', (mod.default ?? mod) as unknown as React.ComponentType<Record<string, unknown>>);
-  }).catch(err => {
-    console.warn('[component-registry] Failed to load component "helloworld:', err);
-  });
-  import('@/components/generated/hi').then(mod => {
-    componentRegistry.register('hi', (mod.default ?? mod) as unknown as React.ComponentType<Record<string, unknown>>);
-  }).catch(err => {
-    console.warn('[component-registry] Failed to load component "hi:', err);
-  });
-  import('@/components/generated/word-match').then(mod => {
-    componentRegistry.register('word-match', (mod.default ?? mod) as unknown as React.ComponentType<Record<string, unknown>>);
-  }).catch(err => {
-    console.warn('[component-registry] Failed to load component "word-match:', err);
-  });
+  // No components registered yet
+}
+`;
+
+if (!fs.existsSync(REGISTRY_PATH)) {
+  fs.mkdirSync(path.dirname(REGISTRY_PATH), { recursive: true });
+  fs.writeFileSync(REGISTRY_PATH, EMPTY_REGISTRY, 'utf-8');
+  console.log('✅ Created component-registry.ts (empty template)');
+} else {
+  console.log('✅ component-registry.ts exists');
+}
+
+// Also ensure src/components/generated/ directory exists
+const GENERATED_DIR = path.join(process.cwd(), 'src', 'components', 'generated');
+if (!fs.existsSync(GENERATED_DIR)) {
+  fs.mkdirSync(GENERATED_DIR, { recursive: true });
+  console.log('✅ Created src/components/generated/ directory');
 }
