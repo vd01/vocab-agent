@@ -6,7 +6,6 @@ const BUILTIN_COMMANDS = [
   { name: 'add', description: '添加新单词 (如: /add ephemeral)' },
   { name: 'pin', description: '置顶单词到侧边栏 (如: /pin ephemeral)' },
   { name: 'stats', description: '查看学习统计' },
-  { name: 'dev', description: '触发开发者模式 (如: /dev 帮我写一个组件)' },
 ];
 
 export async function GET() {

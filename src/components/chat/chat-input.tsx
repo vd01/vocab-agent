@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback, type FormEvent, type KeyboardEvent } from 'react';
 import { Button } from '@/components/ui/button';
+import { Switch } from '@/components/ui/switch';
 import { CommandSuggestions } from './command-suggestions';
 
 const MAX_ROWS = 5;
@@ -16,6 +17,8 @@ interface ChatInputProps {
   onCommand: (command: string) => void;
   onReview?: () => void;
   onStats?: () => void;
+  devMode?: boolean;
+  onDevModeChange?: (v: boolean) => void;
 }
 
 export function ChatInput({
@@ -27,6 +30,8 @@ export function ChatInput({
   onCommand,
   onReview,
   onStats,
+  devMode = false,
+  onDevModeChange,
 }: ChatInputProps) {
   const [showCommands, setShowCommands] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -195,6 +200,18 @@ export function ChatInput({
             Alt+S
           </kbd>
         </button>
+        {/* Dev mode switch — right-aligned */}
+        <div className="ml-auto flex items-center gap-1.5">
+          <Switch
+            size="sm"
+            checked={devMode}
+            onCheckedChange={onDevModeChange}
+            className={devMode ? 'bg-orange-500 dark:bg-orange-500' : ''}
+          />
+          <span className={`text-xs font-medium ${devMode ? 'text-orange-600 dark:text-orange-400' : 'text-muted-foreground'}`}>
+            {devMode ? '开发中' : '开发'}
+          </span>
+        </div>
       </div>
       <div className="relative px-4 pb-5">
         {showCommands && (
@@ -214,7 +231,7 @@ export function ChatInput({
               requestAnimationFrame(() => adjustHeight());
             }}
             onKeyDown={handleKeyDown}
-            placeholder="输入消息或 / 命令... (Shift+Enter 换行, Ctrl+/ 聚焦, Esc 清空)"
+            placeholder={devMode ? '描述你想添加或修改的功能... (Shift+Enter 换行)' : '输入消息或 / 命令... (Shift+Enter 换行, Ctrl+/ 聚焦, Esc 清空)'}
             disabled={isLoading}
             autoComplete="off"
             rows={1}

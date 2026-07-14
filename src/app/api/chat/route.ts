@@ -7,7 +7,6 @@ import {
 } from 'ai';
 import { getTeacherConfig } from '@/lib/ai/teacher-agent';
 import { getDeveloperConfig } from '@/lib/ai/developer-agent';
-import { routeAgent } from '@/lib/ai/agent-router';
 import { buildWorldState } from '@/lib/pipeline/world-state';
 import { contextManager } from '@/lib/ai/context-manager';
 import { setDebugLogs } from '@/lib/ai/debug-store';
@@ -51,14 +50,13 @@ export async function POST(req: Request) {
     // AI SDK V7 DefaultChatTransport sends messages in body.messages
     const uiMessages: UIMessage[] = body.messages || [];
 
-    // Get the last user message for routing
+    // Get the last user message for context
     const lastUserMessage = [...uiMessages].reverse().find((m) => m.role === 'user');
-    // V7 UIMessage uses 'parts' array, but messages from DB or external sources
-    // may still use 'content' string. Handle both formats.
     const userContent = extractTextFromMessage(lastUserMessage);
 
-    // Route to appropriate agent
-    const agentType = routeAgent(userContent);
+    // Determine agent type from frontend mode switch (body.mode)
+    const mode = (body as any).mode ?? 'teach';
+    const agentType = mode === 'develop' ? 'developer' : 'teacher';
 
     // Build World State for context injection
     const worldState = await buildWorldState();

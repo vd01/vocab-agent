@@ -63,6 +63,9 @@ function ChatInner({ initialMessages, initialHasMore }: {
   initialMessages: UIMessage[];
   initialHasMore: boolean;
 }) {
+  // devMode ref — used by transport body to read current mode at request time
+  const devModeRef = useRef(false);
+
   const {
     messages,
     sendMessage,
@@ -72,6 +75,7 @@ function ChatInner({ initialMessages, initialHasMore }: {
   } = useChat({
     transport: new DefaultChatTransport({
       api: '/api/chat',
+      body: () => ({ mode: devModeRef.current ? 'develop' : 'teach' }),
     }),
     messages: initialMessages,
     onFinish: () => {
@@ -90,6 +94,11 @@ function ChatInner({ initialMessages, initialHasMore }: {
 
   const [input, setInput] = useState('');
   const [hasMore, setHasMore] = useState(initialHasMore);
+  const [devMode, setDevModeState] = useState(false);
+  const setDevMode = useCallback((v: boolean) => {
+    devModeRef.current = v;
+    setDevModeState(v);
+  }, []);
   const [loadingMore, setLoadingMore] = useState(false);
   const prevStatusRef = useRef<string>(status);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -259,15 +268,14 @@ function ChatInner({ initialMessages, initialHasMore }: {
 
     const trimmed = input.trim();
 
-    // / commands (except /dev and /d) → direct execution, no LLM
-    const isDevTrigger = trimmed === '/dev' || trimmed === '/d' || trimmed.startsWith('/dev ') || trimmed.startsWith('/d ');
-    if (trimmed.startsWith('/') && !isDevTrigger) {
+    // / commands → direct execution, no LLM
+    if (trimmed.startsWith('/')) {
       executeCommandViaApi(trimmed);
       setInput('');
       return;
     }
 
-    // /dev, /d, or natural language → LLM Agent
+    // Natural language → LLM Agent
     sendMessage({ text: input });
     setInput('');
   }, [input, sendMessage, executeCommandViaApi]);
@@ -307,6 +315,8 @@ function ChatInner({ initialMessages, initialHasMore }: {
           onCommand={handleCommand}
           onReview={handleReview}
           onStats={handleStats}
+          devMode={devMode}
+          onDevModeChange={setDevMode}
         />
       </div>
       {/* Debug panel — Ctrl+D to toggle, temporary research tool */}

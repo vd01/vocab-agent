@@ -246,12 +246,4 @@ describe('E2E - Command Handling', () => {
     const result = await res.json();
     expect(result.type).toBe('unknown-command');
   });
-
-  it('should handle /dev command via chat API', async () => {
-    const events = await chat('/dev 我想加一个统计功能', 90000);
-
-    // Should get a response
-    const text = extractText(events);
-    expect(text.length).toBeGreaterThan(0);
-  });
 });

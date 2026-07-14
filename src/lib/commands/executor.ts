@@ -65,8 +65,10 @@ export async function executeCommand(input: string): Promise<CommandResult> {
     return executeDynamicCommand(dynamic[0], args);
   }
 
-  // 3. Not found
-  return { type: 'unknown-command', message: `未知命令 /${cmdName}，输入 /help 查看可用命令` };
+  // 3. Not found — list available commands
+  const dynamicNames = (await db.select({ name: dynamicCommands.name }).from(dynamicCommands)).map(r => r.name);
+  const allNames = [...Array.from(builtinHandlers.keys()), ...dynamicNames];
+  return { type: 'unknown-command', message: `未知命令 /${cmdName}，可用命令: ${allNames.join(', ')}` };
 }
 
 // ── Register built-in handlers ───────────────────────────────────────────
