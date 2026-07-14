@@ -258,23 +258,45 @@ function DevToolOutput({ toolName, output }: { toolName: string; output: any; ke
  * Replace file block markers (<<<file-write:...>>>...<<<end>>>) with
  * compact collapsible labels. This hides the raw code from the chat display
  * while showing what files were written/edited.
+ *
+ * Handles both complete blocks (with <<<end>>>) and incomplete blocks
+ * (still streaming, no <<<end>>> yet) so that code is hidden immediately
+ * during streaming instead of flashing raw content.
  */
 function collapseFileBlocks(text: string): string {
-  // Replace all file-write blocks
+  // Replace all COMPLETE file-write blocks
   let result = text.replace(
     /<<<file-write:(.+?)>>>\n[\s\S]*?\n<<<end>>>/g,
     (_, filePath) => `\n> 📝 **写入** \`${filePath}\`\n`
   );
-  // Replace all file-edit insert blocks
+  // Replace all COMPLETE file-edit insert blocks
   result = result.replace(
     /<<<file-edit:(.+?):insert:(\d+)>>>\n[\s\S]*?\n<<<end>>>/g,
     (_, filePath, line) => `\n> ✏️ **插入** \`${filePath}\` 第${line}行后\n`
   );
-  // Replace all file-edit replace blocks
+  // Replace all COMPLETE file-edit replace blocks
   result = result.replace(
     /<<<file-edit:(.+?):replace:(\d+)-(\d+)>>>\n[\s\S]*?\n<<<end>>>/g,
     (_, filePath, start, end) => `\n> ✏️ **替换** \`${filePath}\` 第${start}-${end}行\n`
   );
+
+  // Replace INCOMPLETE (still streaming) file-write blocks
+  // These have <<<file-write:...>>> but no <<<end>>> yet
+  result = result.replace(
+    /<<<file-write:(.+?)>>>\n[\s\S]*$/g,
+    (_, filePath) => `\n> 📝 **写入** \`${filePath}\` ...\n`
+  );
+  // Replace INCOMPLETE file-edit insert blocks
+  result = result.replace(
+    /<<<file-edit:(.+?):insert:(\d+)>>>\n[\s\S]*$/g,
+    (_, filePath, line) => `\n> ✏️ **插入** \`${filePath}\` 第${line}行后 ...\n`
+  );
+  // Replace INCOMPLETE file-edit replace blocks
+  result = result.replace(
+    /<<<file-edit:(.+?):replace:(\d+)-(\d+)>>>\n[\s\S]*$/g,
+    (_, filePath, start, end) => `\n> ✏️ **替换** \`${filePath}\` 第${start}-${end}行 ...\n`
+  );
+
   return result;
 }
 
