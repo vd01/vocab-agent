@@ -41,6 +41,9 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
+# scripts TypeScript 编译产物（scripts 用 tsx 直接运行 .ts，.js 为偶然生成的降级产物）
+scripts/*.js
+
 # local data
 /data/*.db
 /generated/
