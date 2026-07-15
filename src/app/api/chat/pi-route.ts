@@ -11,8 +11,7 @@
  *   4. Frontend consumes SSE to render messages
  */
 
-import { getPiSession } from "@/lib/pi/session";
-import { type AgentSession } from "@earendil-works/pi-coding-agent";
+import { getPiSession, type AgentSession } from "@/lib/pi/session";
 
 export const maxDuration = 60;
 
@@ -36,7 +35,7 @@ export async function POST(req: Request) {
 		// Get the global pi session
 		const session = await getPiSession();
 
-		// Store mode context for the vocab-router extension to read
+		// Store mode context for the vocab-agent extension to read
 		// (The extension reads this in before_agent_start to switch tools/prompts)
 		setCurrentMode(mode ?? "teach", {
 			modeSwitched: modeSwitched === true,
@@ -65,7 +64,7 @@ export async function POST(req: Request) {
 	}
 }
 
-// ── Mode context (shared with vocab-router extension) ─────────────────────
+// ── Mode context (shared with vocab-agent extension) ─────────────────────
 
 export interface ModeContext {
 	mode: "teach" | "develop";
@@ -79,35 +78,43 @@ let currentModeContext: ModeContext = {
 	activeGroup: null,
 };
 
-function setCurrentMode(mode: string, extra: { modeSwitched: boolean; activeGroup: string | null }) {
+function setCurrentMode(
+	mode: string,
+	extra: { modeSwitched: boolean; activeGroup: string | null },
+) {
 	currentModeContext = {
 		mode: mode === "develop" ? "develop" : "teach",
 		...extra,
 	};
 }
 
-/** Read by vocab-router extension to determine active mode */
+/** Read by vocab-agent extension to determine active mode */
 export function getCurrentModeContext(): ModeContext {
 	return currentModeContext;
 }
 
 // ── SSE Stream Builder ───────────────────────────────────────────────────
 
-function createSSEStream(session: AgentSession, message: string): ReadableStream<Uint8Array> {
+function createSSEStream(
+	session: AgentSession,
+	message: string,
+): ReadableStream<Uint8Array> {
 	const encoder = new TextEncoder();
 	let aborted = false;
 
 	return new ReadableStream({
 		async start(controller) {
-			// Subscribe to events
+			// Subscribe to pi session events
 			const unsubscribe = session.subscribe((event) => {
 				if (aborted) return;
 
 				try {
 					switch (event.type) {
-						// ── Streaming text ──────────────────────────────
+						// ── Streaming text/thinking ──────────────────────
 						case "message_update": {
 							const ae = event.assistantMessageEvent;
+							if (!ae) break;
+
 							if (ae.type === "text_delta") {
 								controller.enqueue(
 									encoder.encode(
@@ -127,6 +134,7 @@ function createSSEStream(session: AgentSession, message: string): ReadableStream
 									),
 								);
 							}
+							// text_start, text_end, thinking_start, thinking_end, etc. can be handled here
 							break;
 						}
 
@@ -144,7 +152,9 @@ function createSSEStream(session: AgentSession, message: string): ReadableStream
 						}
 
 						case "tool_execution_end": {
-							const details = event.result?.details as Record<string, unknown> | undefined;
+							const details = event.result?.details as
+								| Record<string, unknown>
+								| undefined;
 							controller.enqueue(
 								encoder.encode(
 									formatSSE("tool-result", {
@@ -166,12 +176,23 @@ function createSSEStream(session: AgentSession, message: string): ReadableStream
 
 						// ── Agent lifecycle ─────────────────────────────
 						case "agent_start": {
-							controller.enqueue(encoder.encode(formatSSE("agent-start", {})));
+							controller.enqueue(
+								encoder.encode(formatSSE("agent-start", {})),
+							);
+							break;
+						}
+
+						case "agent_end": {
+							controller.enqueue(
+								encoder.encode(formatSSE("agent-end", {})),
+							);
 							break;
 						}
 
 						case "agent_settled": {
-							controller.enqueue(encoder.encode(formatSSE("agent-end", {})));
+							controller.enqueue(
+								encoder.encode(formatSSE("agent-settled", {})),
+							);
 							break;
 						}
 					}
@@ -189,7 +210,8 @@ function createSSEStream(session: AgentSession, message: string): ReadableStream
 					controller.enqueue(
 						encoder.encode(
 							formatSSE("error", {
-								message: err instanceof Error ? err.message : String(err),
+								message:
+									err instanceof Error ? err.message : String(err),
 							}),
 						),
 					);
@@ -211,6 +233,9 @@ function createSSEStream(session: AgentSession, message: string): ReadableStream
 
 // ── SSE Formatting ───────────────────────────────────────────────────────
 
-function formatSSE(event: string, data: Record<string, unknown>): string {
+function formatSSE(
+	event: string,
+	data: Record<string, unknown>,
+): string {
 	return `data: ${JSON.stringify({ type: event, ...data })}\n\n`;
 }
