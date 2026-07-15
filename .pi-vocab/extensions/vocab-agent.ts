@@ -103,7 +103,7 @@ export default function vocabAgentExtension(pi: ExtensionAPI) {
 		],
 		parameters: Type.Object({
 			limit: Type.Optional(Type.Number({ description: "获取的单词数量，默认 5" })),
-			group: Type.Optional(Type.String({ description: "分组名称，如"四级"、"考研"" })),
+			group: Type.Optional(Type.String({ description: "分组名称，如 四级、考研" })),
 		}),
 		async execute(_toolCallId, params) {
 			const { fsrsReviewTool } = await import("@/lib/ai/tools/fsrs-review");

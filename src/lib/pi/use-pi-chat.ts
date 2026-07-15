@@ -107,7 +107,6 @@ export function usePiChat(options: UsePiChatOptions): UsePiChatReturn {
 			id: assistantIdRef.current,
 			role: "assistant",
 			parts,
-			createdAt: new Date(),
 		};
 	}, []);
 
@@ -136,7 +135,6 @@ export function usePiChat(options: UsePiChatOptions): UsePiChatReturn {
 				id: `user-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
 				role: "user",
 				parts: [{ type: "text", text }],
-				createdAt: new Date(),
 			};
 
 			// Reset assistant accumulation
@@ -150,7 +148,6 @@ export function usePiChat(options: UsePiChatOptions): UsePiChatReturn {
 				id: assistantIdRef.current,
 				role: "assistant",
 				parts: [],
-				createdAt: new Date(),
 			};
 
 			setMessages((prev) => [...prev, userMsg, assistantMsg]);

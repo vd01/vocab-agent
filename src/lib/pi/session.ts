@@ -16,7 +16,7 @@ import {
 	type CreateAgentSessionResult,
 } from "@earendil-works/pi-coding-agent";
 import { join } from "node:path";
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 
 // ── Isolated agentDir for vocab-agent ────────────────────────────────────
 
@@ -76,15 +76,41 @@ async function initSession(): Promise<CreateAgentSessionResult> {
 
 	const cwd = process.cwd();
 
-	// Auth: read from .pi-vocab/auth.json; fall back to env vars
+	// Write models.json with env vars at runtime (not committed to git)
+	const apiKey = process.env.OPENAI_API_KEY ?? "";
+	const baseUrl = process.env.OPENAI_BASE_URL ?? "";
+	const teacherModelId = process.env.TEACHER_MODEL ?? "gpt-4o-mini";
+	const developerModelId = process.env.DEVELOPER_MODEL ?? teacherModelId;
+
+	const modelsConfig = {
+		providers: {
+			"openai-compatible": {
+				name: "OpenAI Compatible",
+				baseUrl,
+				apiKey,
+				api: "openai-completions",
+				models: [
+					{
+						id: teacherModelId,
+						name: `Teacher (${teacherModelId})`,
+						reasoning: false,
+						contextWindow: 128000,
+						maxTokens: 4096,
+					},
+					{
+						id: developerModelId,
+						name: `Developer (${developerModelId})`,
+						reasoning: true,
+						contextWindow: 128000,
+						maxTokens: 16384,
+					},
+				],
+			},
+		},
+	};
+	writeFileSync(join(VOCAB_AGENT_DIR, "models.json"), JSON.stringify(modelsConfig, null, 2));
+
 	const authStorage = AuthStorage.create(join(VOCAB_AGENT_DIR, "auth.json"));
-
-	// If OPENAI_API_KEY is set in env but not in auth.json, inject it at runtime
-	const apiKey = process.env.OPENAI_API_KEY;
-	if (apiKey) {
-		authStorage.setRuntimeApiKey("openai-compatible", apiKey);
-	}
-
 	const modelRegistry = ModelRegistry.create(
 		authStorage,
 		join(VOCAB_AGENT_DIR, "models.json"),
@@ -101,24 +127,17 @@ async function initSession(): Promise<CreateAgentSessionResult> {
 	});
 	await loader.reload();
 
-	// Resolve model from env vars
-	const teacherModelId = process.env.TEACHER_MODEL ?? "gpt-4o-mini";
-	const developerModelId = process.env.DEVELOPER_MODEL ?? teacherModelId;
-
-	// Try to find models in the registry
+	// Find the teacher model in the registry
 	const available = await modelRegistry.getAvailable();
 	let model = available.find(
-		(m) =>
-			m.id === teacherModelId ||
-			m.name === teacherModelId ||
-			m.id.includes(teacherModelId),
+		(m) => m.id === teacherModelId || m.name === teacherModelId,
 	);
 
-	// If no model found, use the first available
+	// If no exact match, use the first available from our provider
 	if (!model && available.length > 0) {
 		model = available[0];
 		console.log(
-			`[Pi SDK] Teacher model "${teacherModelId}" not found, using "${model.name}"`,
+			`[Pi SDK] Model "${teacherModelId}" not found, using "${model.name}"`,
 		);
 	}
 

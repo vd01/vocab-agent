@@ -282,7 +282,6 @@ function ChatInner({
 				id: `cmd-user-${Date.now()}`,
 				role: "user",
 				parts: [{ type: "text", text: command }],
-				createdAt: new Date(),
 			};
 			setMessages((prev) => [...prev, userMsg]);
 
@@ -325,13 +324,11 @@ function ChatInner({
 						{
 							type: `tool-${cmdName}`,
 							toolCallId: `cmd-${Date.now()}`,
-							toolName: cmdName,
 							state: "output-available",
 							input: {},
 							output: result,
 						},
 					],
-					createdAt: new Date(),
 				};
 				setMessages((prev) => [...prev, assistantMsg]);
 
@@ -365,7 +362,6 @@ function ChatInner({
 							text: `命令执行失败: ${err instanceof Error ? err.message : String(err)}`,
 						},
 					],
-					createdAt: new Date(),
 				};
 				setMessages((prev) => [...prev, errorMsg]);
 				return true;

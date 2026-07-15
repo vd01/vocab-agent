@@ -1,26 +1,19 @@
-[
-  {
-    "id": "teacher-model",
-    "name": "Teacher Model",
-    "api": "openai-completions",
-    "provider": "openai-compatible",
-    "baseUrl": "",
-    "reasoning": false,
-    "input": ["text"],
-    "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
-    "contextWindow": 128000,
-    "maxTokens": 4096
-  },
-  {
-    "id": "developer-model",
-    "name": "Developer Model",
-    "api": "openai-completions",
-    "provider": "openai-compatible",
-    "baseUrl": "",
-    "reasoning": true,
-    "input": ["text"],
-    "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
-    "contextWindow": 128000,
-    "maxTokens": 16384
+{
+  "providers": {
+    "openai-compatible": {
+      "name": "OpenAI Compatible",
+      "baseUrl": "https://maas-coding-api.cn-huabei-1.xf-yun.com/v2",
+      "apiKey": "4f786b4f89211bc128952eb487174b52:NWFjNmYzYWQ5ZTVkNDA2MzE3ZGM3MzRi",
+      "api": "openai-completions",
+      "models": [
+        {
+          "id": "xminimaxm25",
+          "name": "Teacher",
+          "reasoning": false,
+          "contextWindow": 128000,
+          "maxTokens": 4096
+        }
+      ]
+    }
   }
-]
+}
