@@ -1,0 +1,26 @@
+[
+  {
+    "id": "teacher-model",
+    "name": "Teacher Model",
+    "api": "openai-completions",
+    "provider": "openai-compatible",
+    "baseUrl": "",
+    "reasoning": false,
+    "input": ["text"],
+    "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
+    "contextWindow": 128000,
+    "maxTokens": 4096
+  },
+  {
+    "id": "developer-model",
+    "name": "Developer Model",
+    "api": "openai-completions",
+    "provider": "openai-compatible",
+    "baseUrl": "",
+    "reasoning": true,
+    "input": ["text"],
+    "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
+    "contextWindow": 128000,
+    "maxTokens": 16384
+  }
+]

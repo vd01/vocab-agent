@@ -1,0 +1,7 @@
+{
+  "defaultProvider": "openai-compatible",
+  "defaultModel": "gpt-4o-mini",
+  "packages": [
+    "npm:pi-readseek"
+  ]
+}

@@ -63,6 +63,12 @@ dev-server.log
 restart.bat
 stop.bat
 
+# pi-vocab runtime data (not tracked)
+.pi-vocab/auth.json
+.pi-vocab/npm/
+.pi-vocab/sessions/
+.pi-vocab/tmp/
+
 # Electron build output
 /dist-electron/
 
