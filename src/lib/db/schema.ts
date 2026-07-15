@@ -114,3 +114,10 @@ export const developerLessons = sqliteTable('developer_lessons', {
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
   lastUsedAt: integer('last_used_at', { mode: 'timestamp' }),  // 最后被注入 prompt 的时间，用于衰减排序
 });
+
+// 用户设置（key-value 存储，用于通知/调度等配置持久化）
+export const userSettings = sqliteTable('user_settings', {
+  key: text('key').primaryKey(),              // 设置键名，如 "notification.enabled"
+  value: text('value').notNull(),             // JSON string — 值可以是 boolean/number/string/object
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+});

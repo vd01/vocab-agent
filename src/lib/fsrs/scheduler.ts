@@ -16,6 +16,24 @@ import { v4 as uuid } from 'uuid';
 
 const engine = fsrs();
 
+// ── New word queue ──────────────────────────────────────────────────────
+// New words are "queued" by setting their due date far in the future (QUEUE_DUE_SEC).
+// A daily release mechanism moves queued words into the active pool by
+// setting their due to now, up to the dailyNewLimit.
+//
+// State transitions:
+//   add-word → initializeCard() → due = QUEUE_DUE (far future, "queued")
+//   releaseNewWords() → due = now ("released", available for review)
+//   user reviews → processReview() → due = FSRS-calculated (normal scheduling)
+
+/** Sentinel due timestamp for queued new words — year 2099 */
+const QUEUE_DUE_SEC = Math.floor(new Date('2099-12-31T23:59:59').getTime() / 1000);
+
+/** Check if a due timestamp indicates a queued (unreleased) new word */
+function isQueuedDue(dueSec: number): boolean {
+  return dueSec >= QUEUE_DUE_SEC - 86400; // within 1 day of sentinel = queued
+}
+
 // ── Timestamp helper ────────────────────────────────────────────────────
 // Drizzle's `timestamp` mode stores seconds since epoch in SQLite integer columns.
 // When passing a JS Date as a query parameter, Drizzle does NOT auto-convert it
@@ -43,19 +61,296 @@ export interface DueWord {
   examples: string | null;
   pinned: boolean;
   card: Card;
+  /** Is this a new (never reviewed) word? */
+  isNew: boolean;
 }
 
 /**
- * Get words due for review today.
+ * Get today's daily queue info: how many new/review words are due,
+ * and how many of each have already been reviewed today.
  *
+ * This is the Anki-style "new + review" daily budget system.
+ */
+export async function getDailyQueueInfo(groupId?: string | null): Promise<{
+  newDue: number;         // new words currently due (released from queue, rating=0)
+  reviewDue: number;     // review words currently due (rating>0)
+  newQueued: number;     // new words still in queue (not yet released)
+  todayNewReviewed: number;  // new words already reviewed today
+  todayReviewReviewed: number; // review words already reviewed today
+  dailyNewLimit: number;     // configured daily new limit (0=unlimited)
+  dailyReviewLimit: number;  // configured daily review limit (0=unlimited)
+  newRemaining: number;     // new words still available today (limit - already reviewed)
+  reviewRemaining: number;  // review words still available today
+}> {
+  // Release queued new words before computing queue info
+  await releaseNewWords(groupId);
+
+  const nowSec = toUnixSec(new Date());
+  const todayStartSec = toUnixSec(new Date(new Date().setHours(0, 0, 0, 0)));
+
+  const groupJoin = groupId
+    ? 'INNER JOIN word_group_members wgm ON wgm.word_id = r.word_id AND wgm.group_id = ?'
+    : '';
+  const groupArgs = groupId ? [groupId] : [];
+
+  // Count new words due (state=New, rating=0 = never reviewed by user)
+  const newDueResult = await client.execute({
+    sql: `
+      SELECT COUNT(*) as cnt
+      FROM reviews r
+      INNER JOIN (
+        SELECT word_id, max(reviewed_at) as max_reviewed_at
+        FROM reviews
+        GROUP BY word_id
+      ) latest ON r.word_id = latest.word_id AND r.reviewed_at = latest.max_reviewed_at
+      ${groupJoin}
+      WHERE r.due <= ? AND r.rating = 0
+    `,
+    args: [...groupArgs, nowSec],
+  });
+
+  // Count review words due (state != New, or rating > 0)
+  const reviewDueResult = await client.execute({
+    sql: `
+      SELECT COUNT(*) as cnt
+      FROM reviews r
+      INNER JOIN (
+        SELECT word_id, max(reviewed_at) as max_reviewed_at
+        FROM reviews
+        GROUP BY word_id
+      ) latest ON r.word_id = latest.word_id AND r.reviewed_at = latest.max_reviewed_at
+      ${groupJoin}
+      WHERE r.due <= ? AND r.rating > 0
+    `,
+    args: [...groupArgs, nowSec],
+  });
+
+  // Count today's reviewed new words (first review with rating > 0 for a word that was previously New)
+  // A word counts as "new reviewed today" if its FIRST real review (rating>0) happened today
+  const todayNewResult = await client.execute({
+    sql: `
+      SELECT COUNT(DISTINCT r.word_id) as cnt
+      FROM reviews r
+      INNER JOIN (
+        SELECT word_id, MIN(reviewed_at) as first_real_review
+        FROM reviews
+        WHERE rating > 0
+        GROUP BY word_id
+      ) first ON r.word_id = first.word_id AND r.reviewed_at = first.first_real_review
+      ${groupJoin.replace(/r\./g, 'first.').replace(/wgm\.word_id = r\.word_id/, 'wgm.word_id = first.word_id')}
+      WHERE r.reviewed_at >= ? AND r.rating > 0
+    `,
+    args: [...groupArgs, todayStartSec],
+  });
+
+  // Count today's reviewed review words (reviews of words that already had a prior real review)
+  const todayReviewResult = await client.execute({
+    sql: `
+      SELECT COUNT(*) as cnt
+      FROM reviews r
+      WHERE r.rating > 0 AND r.reviewed_at >= ?
+        AND r.word_id NOT IN (
+          SELECT word_id FROM reviews
+          WHERE rating > 0 AND reviewed_at >= ?
+          GROUP BY word_id
+          HAVING MIN(reviewed_at) = reviewed_at
+        )
+    `,
+    args: [todayStartSec, todayStartSec],
+  });
+
+  // Simpler approach: count all today's reviews, then subtract new-reviewed
+  const todayAllReviewedResult = await client.execute({
+    sql: `
+      SELECT COUNT(*) as cnt
+      FROM reviews
+      WHERE rating > 0 AND reviewed_at >= ?
+    `,
+    args: [todayStartSec],
+  });
+
+  const newDue = Number((newDueResult.rows[0] as any)?.cnt ?? 0);
+  const reviewDue = Number((reviewDueResult.rows[0] as any)?.cnt ?? 0);
+  const todayNewReviewed = Number((todayNewResult.rows[0] as any)?.cnt ?? 0);
+  const todayAllReviewed = Number((todayAllReviewedResult.rows[0] as any)?.cnt ?? 0);
+  const todayReviewReviewed = Math.max(0, todayAllReviewed - todayNewReviewed);
+
+  // Read limits from settings
+  const { getSetting } = await import('@/lib/db/settings');
+  const dailyNewLimit = parseInt(await getSetting('review.dailyNewLimit'), 10) || 0;
+  const dailyReviewLimit = parseInt(await getSetting('review.dailyReviewLimit'), 10) || 0;
+
+  // Count queued (unreleased) new words
+  const newQueued = await getQueuedNewCount(groupId);
+
+  const newRemaining = dailyNewLimit > 0
+    ? Math.max(0, dailyNewLimit - todayNewReviewed)
+    : newDue;  // 0 = unlimited, so all due new words are available
+
+  const reviewRemaining = dailyReviewLimit > 0
+    ? Math.max(0, dailyReviewLimit - todayReviewReviewed)
+    : reviewDue;  // 0 = unlimited
+
+  return {
+    newDue,
+    reviewDue,
+    newQueued,
+    todayNewReviewed,
+    todayReviewReviewed,
+    dailyNewLimit,
+    dailyReviewLimit,
+    newRemaining,
+    reviewRemaining,
+  };
+}
+
+/**
+ * Release queued new words into the active review pool.
+ *
+ * This is the Anki-style "new cards per day" mechanism:
+ * - Count how many new words were already reviewed today
+ * - Calculate remaining quota = dailyNewLimit - todayNewReviewed
+ * - Move up to `remaining` queued words (due=QUEUE_DUE) to due=now
+ *
+ * Should be called before getDueWords/getDailyQueueInfo.
+ * Idempotent within the same day — safe to call multiple times.
+ *
+ * @returns Number of words released
+ */
+export async function releaseNewWords(groupId?: string | null): Promise<number> {
+  const { getSetting } = await import('@/lib/db/settings');
+  const dailyNewLimit = parseInt(await getSetting('review.dailyNewLimit'), 10) || 0;
+
+  // If unlimited, release all queued words
+  if (dailyNewLimit === 0) {
+    const result = await client.execute({
+      sql: `
+        UPDATE reviews SET due = ?
+        WHERE rowid IN (
+          SELECT r.rowid
+          FROM reviews r
+          INNER JOIN (
+            SELECT word_id, max(reviewed_at) as max_reviewed_at
+            FROM reviews
+            GROUP BY word_id
+          ) latest ON r.word_id = latest.word_id AND r.reviewed_at = latest.max_reviewed_at
+          WHERE r.due >= ? AND r.rating = 0
+        )
+      `,
+      args: [toUnixSec(new Date()), QUEUE_DUE_SEC - 86400],
+    });
+    return Number(result.rowsAffected ?? 0);
+  }
+
+  const nowSec = toUnixSec(new Date());
+  const todayStartSec = toUnixSec(new Date(new Date().setHours(0, 0, 0, 0)));
+
+  // Count new words already reviewed today
+  const todayNewResult = await client.execute({
+    sql: `
+      SELECT COUNT(DISTINCT r.word_id) as cnt
+      FROM reviews r
+      INNER JOIN (
+        SELECT word_id, MIN(reviewed_at) as first_real_review
+        FROM reviews
+        WHERE rating > 0
+        GROUP BY word_id
+      ) first ON r.word_id = first.word_id AND r.reviewed_at = first.first_real_review
+      WHERE r.reviewed_at >= ? AND r.rating > 0
+    `,
+    args: [todayStartSec],
+  });
+  const todayNewReviewed = Number((todayNewResult.rows[0] as any)?.cnt ?? 0);
+
+  // Also count new words already released (due <= now, rating=0) — they're
+  // in the active pool but not yet reviewed by the user today.
+  // These were released earlier today and count against the quota.
+  const alreadyReleasedResult = await client.execute({
+    sql: `
+      SELECT COUNT(*) as cnt
+      FROM reviews r
+      INNER JOIN (
+        SELECT word_id, max(reviewed_at) as max_reviewed_at
+        FROM reviews
+        GROUP BY word_id
+      ) latest ON r.word_id = latest.word_id AND r.reviewed_at = latest.max_reviewed_at
+      WHERE r.rating = 0 AND r.due <= ? AND r.due < ?
+    `,
+    args: [nowSec, QUEUE_DUE_SEC - 86400],
+  });
+  const alreadyReleased = Number((alreadyReleasedResult.rows[0] as any)?.cnt ?? 0);
+
+  // Total "consumed" today = reviewed + released-but-not-yet-reviewed
+  const consumed = todayNewReviewed + alreadyReleased;
+  const remaining = Math.max(0, dailyNewLimit - consumed);
+
+  if (remaining === 0) return 0;
+
+  // Release `remaining` queued words: update their due from QUEUE_DUE to now
+  // Order by reviewed_at (earliest added first = FIFO queue)
+  const groupJoin = groupId
+    ? 'INNER JOIN word_group_members wgm ON wgm.word_id = r.word_id AND wgm.group_id = ?'
+    : '';
+
+  const result = await client.execute({
+    sql: `
+      UPDATE reviews SET due = ?
+      WHERE rowid IN (
+        SELECT r.rowid
+        FROM reviews r
+        INNER JOIN (
+          SELECT word_id, max(reviewed_at) as max_reviewed_at
+          FROM reviews
+          GROUP BY word_id
+        ) latest ON r.word_id = latest.word_id AND r.reviewed_at = latest.max_reviewed_at
+        ${groupJoin}
+        WHERE r.due >= ? AND r.rating = 0
+        ORDER BY r.reviewed_at ASC
+        LIMIT ?
+      )
+    `,
+    args: groupId
+      ? [nowSec, groupId, QUEUE_DUE_SEC - 86400, remaining]
+      : [nowSec, QUEUE_DUE_SEC - 86400, remaining],
+  });
+
+  return Number(result.rowsAffected ?? 0);
+}
+
+/**
+ * Get the count of queued (unreleased) new words.
+ */
+export async function getQueuedNewCount(groupId?: string | null): Promise<number> {
+  const groupJoin = groupId
+    ? 'INNER JOIN word_group_members wgm ON wgm.word_id = r.word_id AND wgm.group_id = ?'
+    : '';
+
+  const result = await client.execute({
+    sql: `
+      SELECT COUNT(*) as cnt
+      FROM reviews r
+      INNER JOIN (
+        SELECT word_id, max(reviewed_at) as max_reviewed_at
+        FROM reviews
+        GROUP BY word_id
+      ) latest ON r.word_id = latest.word_id AND r.reviewed_at = latest.max_reviewed_at
+      ${groupJoin}
+      WHERE r.due >= ? AND r.rating = 0
+    `,
+    args: groupId ? [groupId, QUEUE_DUE_SEC - 86400] : [QUEUE_DUE_SEC - 86400],
+  });
+
+  return Number((result.rows[0] as any)?.cnt ?? 0);
+}
+
+/**
+ * Get words due for review today, respecting daily new/review limits.
+ *
+ * Priority: review words first, then new words (up to daily limit).
  * Each word appears at most once — uses the latest review record per word
- * to determine if it's due. This avoids duplicate entries because the
- * reviews table is append-only (every processReview inserts a new row).
+ * to determine if it's due.
  *
- * Uses raw SQL to avoid Drizzle timestamp deserialization issues
- * with subquery joins.
- *
- * @param limit Max number of words to return
+ * @param limit Max number of words to return (total)
  * @param groupId Optional group ID to filter by (null/undefined = all groups)
  */
 export async function getDueWords(limit = 20, groupId?: string | null): Promise<DueWord[]> {
@@ -63,11 +358,72 @@ export async function getDueWords(limit = 20, groupId?: string | null): Promise<
 
   // Exclude words actually reviewed in the last 5 minutes to prevent
   // the same word appearing again in the same review session.
-  // (FSRS Learning state has very short intervals, so a word
-  // rated "Good" can become due again in seconds.)
-  // However, initialization records (rating=0) are NOT filtered —
-  // newly added words should be immediately available for review.
   const fiveMinAgoSec = nowSec - 300;
+
+  // Get daily queue info for limit enforcement
+  const queueInfo = await getDailyQueueInfo(groupId);
+
+  // Calculate how many review vs new words to fetch
+  // Priority: review words first, then new words
+  const reviewSlots = queueInfo.dailyReviewLimit > 0
+    ? Math.min(queueInfo.reviewRemaining, limit)
+    : limit;  // unlimited review
+
+  const newSlots = queueInfo.dailyNewLimit > 0
+    ? Math.min(queueInfo.newRemaining, limit - Math.min(reviewSlots, queueInfo.reviewDue))
+    : Math.max(0, limit - Math.min(reviewSlots, queueInfo.reviewDue));  // unlimited new
+
+  // If both unlimited, just use the original limit split
+  const effectiveReviewLimit = queueInfo.dailyReviewLimit > 0
+    ? Math.min(reviewSlots, queueInfo.reviewDue)
+    : queueInfo.reviewDue;
+
+  const effectiveNewLimit = queueInfo.dailyNewLimit > 0
+    ? Math.min(newSlots, queueInfo.newDue)
+    : queueInfo.newDue;
+
+  // Cap total to requested limit
+  const totalAvailable = effectiveReviewLimit + effectiveNewLimit;
+  const totalToFetch = Math.min(totalAvailable, limit);
+
+  if (totalToFetch === 0) {
+    return [];
+  }
+
+  // Fetch review words (priority)
+  const reviewWords = effectiveReviewLimit > 0
+    ? await fetchDueWordsByType('review', effectiveReviewLimit, groupId, nowSec, fiveMinAgoSec)
+    : [];
+
+  // Fetch new words
+  const remainingSlots = Math.max(0, totalToFetch - reviewWords.length);
+  const newWords = remainingSlots > 0 && effectiveNewLimit > 0
+    ? await fetchDueWordsByType('new', Math.min(remainingSlots, effectiveNewLimit), groupId, nowSec, fiveMinAgoSec)
+    : [];
+
+  // Combine: review first, then new
+  const allWords = [...reviewWords, ...newWords];
+
+  return allWords.slice(0, limit);
+}
+
+/**
+ * Fetch due words filtered by type (new or review).
+ * New = rating=0 (never reviewed by user)
+ * Review = rating>0 (has been reviewed at least once)
+ */
+async function fetchDueWordsByType(
+  type: 'new' | 'review',
+  limit: number,
+  groupId: string | null | undefined,
+  nowSec: number,
+  fiveMinAgoSec: number,
+): Promise<DueWord[]> {
+  const ratingFilter = type === 'new' ? 'r.rating = 0' : 'r.rating > 0';
+  // For new words, don't apply the 5-minute filter (they haven't been reviewed yet)
+  const timeFilter = type === 'new'
+    ? ''
+    : 'AND r.reviewed_at < ?';
 
   const result = await client.execute({
     sql: `
@@ -88,12 +444,15 @@ export async function getDueWords(limit = 20, groupId?: string | null): Promise<
       LEFT JOIN pinned_words pw ON pw.word_id = w.id
       ${groupId ? 'INNER JOIN word_group_members wgm ON wgm.word_id = w.id AND wgm.group_id = ?' : ''}
       WHERE r.due <= ?
-        AND (r.rating = 0 OR r.reviewed_at < ?)
+        AND ${ratingFilter}
+        ${timeFilter}
       GROUP BY r.word_id
-      ORDER BY MIN(r.due) DESC
+      ORDER BY ${type === 'review' ? 'MIN(r.due) ASC' : 'w.word ASC'}
       LIMIT ?
     `,
-    args: groupId ? [groupId, nowSec, fiveMinAgoSec, limit] : [nowSec, fiveMinAgoSec, limit],
+    args: groupId
+      ? [groupId, nowSec, ...(type === 'review' ? [fiveMinAgoSec] : []), limit]
+      : [nowSec, ...(type === 'review' ? [fiveMinAgoSec] : []), limit],
   });
 
   return result.rows.map((row: any) => ({
@@ -104,6 +463,7 @@ export async function getDueWords(limit = 20, groupId?: string | null): Promise<
     definition: row.w_definition as string,
     examples: row.w_examples as string | null,
     pinned: Number(row.w_pinned) === 1,
+    isNew: type === 'new',
     card: {
       due: fromUnixSec(Number(row.due)),
       stability: Number(row.stability),
@@ -213,18 +573,30 @@ export async function processReview(
 /**
  * Create an initial review record for a new word.
  * Rating is 0 (not yet reviewed by user — excluded from stats).
- * Due is set to now so the word is immediately available for review.
+ * Due is set to a far-future sentinel (QUEUE_DUE_SEC), meaning the word
+ * is "queued" but NOT yet available for review. It will be released
+ * into the active pool by releaseNewWords() when the daily quota allows.
+ *
+ * If dailyNewLimit is 0 (unlimited), the word is released immediately.
  */
 export async function initializeCard(wordId: string): Promise<Card> {
   const card = createEmptyCard();
   const now = new Date();
+
+  // Check if daily new limit is set — if unlimited (0), release immediately
+  const { getSetting } = await import('@/lib/db/settings');
+  const dailyNewLimit = parseInt(await getSetting('review.dailyNewLimit'), 10) || 0;
+
+  // If unlimited, make the word immediately available (due = now)
+  // Otherwise, queue it (due = far future sentinel)
+  const dueSec = dailyNewLimit > 0 ? QUEUE_DUE_SEC : toUnixSec(now);
 
   await db.insert(reviews).values({
     id: uuid(),
     wordId,
     rating: 0,
     state: card.state as number,
-    due: card.due,
+    due: fromUnixSec(dueSec),
     stability: card.stability,
     difficulty: card.difficulty,
     elapsedDays: card.elapsed_days,

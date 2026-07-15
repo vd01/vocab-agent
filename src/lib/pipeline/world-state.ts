@@ -2,6 +2,7 @@ import { extractorRegistry } from './index';
 
 export interface WorldState {
   dueCount: number;
+  newQueued: number;
   proficiency: { new: number; learning: number; review: number; relearning: number };
   dailyStats: { reviewed: number; correctRate: number };
   totalWords: number;
@@ -36,6 +37,7 @@ export async function buildWorldState(): Promise<WorldState> {
 
   return {
     dueCount: (merged.dueCount as number) ?? 0,
+    newQueued: (merged.newQueued as number) ?? 0,
     proficiency: (merged.proficiency as WorldState['proficiency']) ?? { new: 0, learning: 0, review: 0, relearning: 0 },
     dailyStats: (merged.dailyStats as WorldState['dailyStats']) ?? { reviewed: 0, correctRate: 0 },
     totalWords: (merged.totalWords as number) ?? 0,

@@ -28,7 +28,7 @@ export function buildTeacherInstructions(worldState: WorldState): string {
 ## 用户画像
 - 词库总量: ${worldState.totalWords} 词
 - 连续学习: ${worldState.streakDays} 天
-- 待复习: ${worldState.dueCount} 词
+- 待复习: ${worldState.dueCount} 词${worldState.newQueued > 0 ? ` (新词排队: ${worldState.newQueued})` : ''}
 - 熟练度: 新词 ${worldState.proficiency.new}, 学习中 ${worldState.proficiency.learning}, 复习中 ${worldState.proficiency.review}, 重新学习 ${worldState.proficiency.relearning}
 - 今日: 已复习 ${worldState.dailyStats.reviewed} 词, 正确率 ${Math.round(worldState.dailyStats.correctRate * 100)}%
 - 考试标签: ${examTags || '暂无'}
@@ -84,6 +84,7 @@ export function buildTeacherInstructions(worldState: WorldState): string {
 - add-word 支持 group 参数指定添加到哪个分组（默认"日常"）
 - extract-words 已过滤停用词和用户已学词汇，直接展示结果即可
 - fsrs-review 支持 group 参数，可按分组筛选待复习单词，如"复习四级单词"时传 group="四级"
+- fsrs-review 返回的 queueInfo 包含每日新词/复习配额信息，向用户展示时可引用
 - vocab-lookup 先查用户词库再查词典，返回结果中 type="found" 表示在词库中，type="dict-found" 表示仅在词典中
 - pin-word 将单词置顶到 PC 界面侧边栏，用户可随时点击查看 AI 生成的详解卡片（助记、词族、搭配等），适合用户需要重点记忆的单词
 - 每侧最多置顶 5 个单词，满了需要先 unpin-word 移除旧的

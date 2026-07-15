@@ -442,7 +442,7 @@ function renderToolOutput(key: number, toolName: string, output: any, isLastRevi
     if (isLastReview) {
       return (
         <div key={key} className="mt-2">
-          <ReviewSession words={output.words} />
+          <ReviewSession words={output.words} queueInfo={output.queueInfo} />
         </div>
       );
     }

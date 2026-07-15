@@ -28,8 +28,28 @@ export const fsrsReviewTool = tool({
 
     const dueWords = await getDueWords(limit, groupId);
     if (dueWords.length === 0) {
-      return { type: 'no-due-words', message: group ? `分组"${group}"中没有待复习的单词！` : '当前没有待复习的单词！' };
+      const { getDailyQueueInfo } = await import('@/lib/fsrs/scheduler');
+      const queueInfo = await getDailyQueueInfo(groupId);
+      return {
+        type: 'no-due-words',
+        message: group ? `分组"${group}"中没有待复习的单词！` : '当前没有待复习的单词！',
+        queueInfo: {
+          newDue: queueInfo.newDue,
+          reviewDue: queueInfo.reviewDue,
+          newQueued: queueInfo.newQueued,
+          todayNewReviewed: queueInfo.todayNewReviewed,
+          todayReviewReviewed: queueInfo.todayReviewReviewed,
+          dailyNewLimit: queueInfo.dailyNewLimit,
+          dailyReviewLimit: queueInfo.dailyReviewLimit,
+          newRemaining: queueInfo.newRemaining,
+          reviewRemaining: queueInfo.reviewRemaining,
+        },
+      };
     }
+
+    const { getDailyQueueInfo } = await import('@/lib/fsrs/scheduler');
+    const queueInfo = await getDailyQueueInfo(groupId);
+
     return {
       type: 'due-words',
       group: group || null,
@@ -40,7 +60,19 @@ export const fsrsReviewTool = tool({
         definition: w.definition,
         examples: w.examples,
         pinned: w.pinned,
+        isNew: w.isNew,
       })),
+      queueInfo: {
+        newDue: queueInfo.newDue,
+        reviewDue: queueInfo.reviewDue,
+        newQueued: queueInfo.newQueued,
+        todayNewReviewed: queueInfo.todayNewReviewed,
+        todayReviewReviewed: queueInfo.todayReviewReviewed,
+        dailyNewLimit: queueInfo.dailyNewLimit,
+        dailyReviewLimit: queueInfo.dailyReviewLimit,
+        newRemaining: queueInfo.newRemaining,
+        reviewRemaining: queueInfo.reviewRemaining,
+      },
     };
   },
 });

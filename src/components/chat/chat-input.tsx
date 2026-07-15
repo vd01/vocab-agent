@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, useCallback, type FormEvent, type Keyboard
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { CommandSuggestions } from './command-suggestions';
+import { ReviewReminderToggle } from '@/components/notification/review-reminder-toggle';
 
 const MAX_ROWS = 5;
 const LINE_HEIGHT = 24; // px, matches text-sm line-height roughly
@@ -19,6 +20,7 @@ interface ChatInputProps {
   onStats?: () => void;
   devMode?: boolean;
   onDevModeChange?: (v: boolean) => void;
+  dueCount?: number;
 }
 
 export function ChatInput({
@@ -32,6 +34,7 @@ export function ChatInput({
   onStats,
   devMode = false,
   onDevModeChange,
+  dueCount,
 }: ChatInputProps) {
   const [showCommands, setShowCommands] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -181,10 +184,19 @@ export function ChatInput({
             <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 4v-5h-.581m0 0a8.003 8.003 0 01-15.357 2m15.357-2H15" />
           </svg>
           复习
+          {dueCount !== undefined && dueCount > 0 && (
+            <span className="inline-flex items-center justify-center min-w-[16px] h-4 rounded-full bg-red-500 text-white text-[10px] font-bold px-1">
+              {dueCount > 99 ? '99+' : dueCount}
+            </span>
+          )}
           <kbd className="hidden sm:inline-flex items-center rounded bg-muted px-1 py-0.5 text-[10px] font-mono text-muted-foreground">
             Alt+R
           </kbd>
         </button>
+        <ReviewReminderToggle
+          onReviewFromNotification={() => onReview?.()}
+          dueCount={dueCount}
+        />
         <button
           type="button"
           onClick={() => debouncedAction(() => onStats?.())}

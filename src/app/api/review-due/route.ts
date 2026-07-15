@@ -1,22 +1,18 @@
-import { client } from '@/lib/db';
+import { getDailyQueueInfo } from '@/lib/fsrs/scheduler';
 
 export async function GET() {
-  const nowSec = Math.floor(Date.now() / 1000);
+  const queueInfo = await getDailyQueueInfo();
 
-  const result = await client.execute({
-    sql: `
-      SELECT COUNT(*) as cnt
-      FROM reviews r
-      INNER JOIN (
-        SELECT word_id, max(reviewed_at) as max_reviewed_at
-        FROM reviews
-        GROUP BY word_id
-      ) latest ON r.word_id = latest.word_id AND r.reviewed_at = latest.max_reviewed_at
-      WHERE r.due <= ?
-    `,
-    args: [nowSec],
+  return Response.json({
+    due: queueInfo.reviewDue + queueInfo.newDue,  // backward compat
+    newDue: queueInfo.newDue,
+    reviewDue: queueInfo.reviewDue,
+    newQueued: queueInfo.newQueued,
+    todayNewReviewed: queueInfo.todayNewReviewed,
+    todayReviewReviewed: queueInfo.todayReviewReviewed,
+    dailyNewLimit: queueInfo.dailyNewLimit,
+    dailyReviewLimit: queueInfo.dailyReviewLimit,
+    newRemaining: queueInfo.newRemaining,
+    reviewRemaining: queueInfo.reviewRemaining,
   });
-
-  const due = Number((result.rows[0] as Record<string, unknown>)?.cnt ?? 0);
-  return Response.json({ due });
 }

@@ -14,6 +14,7 @@ interface ReviewWord {
   definition: string;
   examples: string | null;
   pinned: boolean;
+  isNew?: boolean;
 }
 
 interface RateResult {
@@ -31,14 +32,27 @@ const RATING_LABELS: Record<number, string> = {
   4: 'Easy',
 };
 
+interface QueueInfo {
+  newDue: number;
+  reviewDue: number;
+  newQueued: number;
+  todayNewReviewed: number;
+  todayReviewReviewed: number;
+  dailyNewLimit: number;
+  dailyReviewLimit: number;
+  newRemaining: number;
+  reviewRemaining: number;
+}
+
 interface ReviewSessionProps {
   words: ReviewWord[];
+  queueInfo?: QueueInfo | null;
 }
 
 // Global counter: only the most recently mounted ReviewSession handles keyboard
 let activeSessionId = 0;
 
-export function ReviewSession({ words }: ReviewSessionProps) {
+export function ReviewSession({ words, queueInfo }: ReviewSessionProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [results, setResults] = useState<RateResult[]>([]);
   const [phase, setPhase] = useState<'reviewing' | 'completed'>('reviewing');
@@ -105,10 +119,15 @@ export function ReviewSession({ words }: ReviewSessionProps) {
 
       setResults(prev => [...prev, rateResult]);
 
+      // Notify the app that a review happened — so due count badges refresh
+      window.dispatchEvent(new CustomEvent('review-word-rated'));
+
       setTimeout(() => {
         const nextIndex = idx + 1;
         if (nextIndex >= wordsRef.current.length) {
           setPhase('completed');
+          // Notify the app that a review session completed
+          window.dispatchEvent(new CustomEvent('review-session-completed'));
         } else {
           setCurrentIndex(nextIndex);
           setRating(null);
@@ -184,15 +203,38 @@ export function ReviewSession({ words }: ReviewSessionProps) {
 
   // ── Completed: show summary ──────────────────────────────────────────
   if (phase === 'completed') {
+    const newResults = results.filter((_, i) => words[i]?.isNew);
+    const reviewResults = results.length - newResults.length;
+
     return (
       <div className="space-y-3">
         <div className="text-sm font-medium text-foreground">
           复习完成！共 {results.length} 个单词
+          {newResults.length > 0 && reviewResults > 0 && (
+            <span className="ml-2 text-xs font-normal text-muted-foreground">
+              （新词 {newResults.length} · 复习 {reviewResults}）
+            </span>
+          )}
         </div>
+        {queueInfo && (queueInfo.dailyNewLimit > 0 || queueInfo.dailyReviewLimit > 0) && (
+          <div className="flex gap-3 text-xs text-muted-foreground">
+            {queueInfo.dailyNewLimit > 0 && (
+              <span>今日新词: {queueInfo.todayNewReviewed}/{queueInfo.dailyNewLimit}</span>
+            )}
+            {queueInfo.dailyReviewLimit > 0 && (
+              <span>今日复习: {queueInfo.todayReviewReviewed}/{queueInfo.dailyReviewLimit}</span>
+            )}
+          </div>
+        )}
         <div className="space-y-1">
           {results.map((r, i) => (
             <div key={i} className="flex items-center justify-between text-xs py-1 border-b border-muted last:border-0">
-              <span className="font-medium">{r.word}</span>
+              <span className="flex items-center gap-1.5 font-medium">
+                {words[i]?.isNew && (
+                  <span className="inline-flex items-center rounded-full bg-blue-100 px-1 py-0.5 text-[9px] font-medium text-blue-700 dark:bg-blue-900 dark:text-blue-300">新</span>
+                )}
+                {r.word}
+              </span>
               <span className="flex items-center gap-2">
                 <span className={
                   r.rating === 1 ? 'text-red-500' :
@@ -214,20 +256,41 @@ export function ReviewSession({ words }: ReviewSessionProps) {
   // ── Reviewing: show one card at a time ───────────────────────────────
   const currentWord = words[currentIndex];
 
+  // Count new vs review in this session
+  const newCount = words.filter(w => w.isNew).length;
+  const reviewCount = words.length - newCount;
+  const currentIsNew = currentWord.isNew;
+
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between text-xs text-muted-foreground h-4">
-        <span>{currentIndex + 1} / {words.length}</span>
-        {rating && (
-          <span className={
-            rating === 1 ? 'text-red-500' :
-            rating === 2 ? 'text-yellow-500' :
-            rating === 3 ? 'text-green-500' :
-            'text-blue-500'
-          }>
-            {RATING_LABELS[rating]}
-          </span>
-        )}
+        <span className="flex items-center gap-2">
+          <span>{currentIndex + 1} / {words.length}</span>
+          {newCount > 0 && reviewCount > 0 && (
+            <span className="flex items-center gap-1.5">
+              <span className="text-blue-500">新{newCount}</span>
+              <span className="text-muted-foreground/50">·</span>
+              <span className="text-amber-500">复{reviewCount}</span>
+            </span>
+          )}
+        </span>
+        <span className="flex items-center gap-2">
+          {currentIsNew && (
+            <span className="inline-flex items-center rounded-full bg-blue-100 px-1.5 py-0.5 text-[10px] font-medium text-blue-700 dark:bg-blue-900 dark:text-blue-300">
+              新词
+            </span>
+          )}
+          {rating && (
+            <span className={
+              rating === 1 ? 'text-red-500' :
+              rating === 2 ? 'text-yellow-500' :
+              rating === 3 ? 'text-green-500' :
+              'text-blue-500'
+            }>
+              {RATING_LABELS[rating]}
+            </span>
+          )}
+        </span>
       </div>
       <div className="relative mx-auto" style={{ width: '400px' }}>
         <WordCard

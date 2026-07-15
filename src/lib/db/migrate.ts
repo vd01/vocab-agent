@@ -237,6 +237,47 @@ async function migrate() {
     args: [nowSec],
   });
 
+  // ── User Settings ─────────────────────────────────────────────────────────
+
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS user_settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+  `);
+
+  // ── Migrate existing new words into the queue ──────────────────────────────
+  // Words that have rating=0 (never reviewed) and due <= now are "new words"
+  // that were created before the queue system existed. Move them into the
+  // queue by setting their due to the sentinel value (year 2099).
+  // They will be gradually released by releaseNewWords() per the daily quota.
+  try {
+    const nowSec = Math.floor(Date.now() / 1000);
+    const queueDueSec = Math.floor(new Date('2099-12-31T23:59:59').getTime() / 1000);
+    const result = await client.execute({
+      sql: `
+        UPDATE reviews SET due = ?
+        WHERE rowid IN (
+          SELECT r.rowid
+          FROM reviews r
+          INNER JOIN (
+            SELECT word_id, max(reviewed_at) as max_reviewed_at
+            FROM reviews
+            GROUP BY word_id
+          ) latest ON r.word_id = latest.word_id AND r.reviewed_at = latest.max_reviewed_at
+          WHERE r.rating = 0 AND r.due <= ?
+        )
+      `,
+      args: [queueDueSec, nowSec],
+    });
+    if (result.rowsAffected && result.rowsAffected > 0) {
+      console.log(`Queued ${result.rowsAffected} existing new words for gradual release`);
+    }
+  } catch (err) {
+    console.error('Failed to queue existing new words:', err);
+  }
+
   console.log('Migrations complete!');
   process.exit(0);
 }

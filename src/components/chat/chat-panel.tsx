@@ -6,6 +6,8 @@ import { MessageList } from './message-list';
 import { ChatInput } from './chat-input';
 import { DebugPanel, notifyDebugPanel } from '@/components/debug/debug-panel';
 import { useGroup } from '@/lib/groups/group-context';
+import { NotificationManager } from '@/lib/notification/notification-manager';
+import { ReviewPromptBanner, useAutoReviewPrompt } from '@/components/notification/review-prompt-banner';
 import { useState, useCallback, useEffect, useRef } from 'react';
 
 // Read at module level so Next.js can tree-shake when disabled
@@ -116,8 +118,12 @@ function ChatInner({ initialMessages, initialHasMore }: {
     setDevModeState(v);
   }, []);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [dueCount, setDueCount] = useState(0);
+  const [dueBreakdown, setDueBreakdown] = useState<{ newDue: number; reviewDue: number; newQueued: number }>({ newDue: 0, reviewDue: 0, newQueued: 0 });
+  const { showPrompt, dismiss: dismissPrompt, markReviewDone } = useAutoReviewPrompt(dueCount);
   const prevStatusRef = useRef<string>(status);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const rateRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const messagesRef = useRef(messages);
   const debugIdRef = useRef<string | null>(null);
   messagesRef.current = messages;
@@ -144,6 +150,54 @@ function ChatInner({ initialMessages, initialHasMore }: {
   // Load generated components on mount
   useEffect(() => {
     reloadComponents();
+  }, []);
+
+  // Initialize NotificationManager and fetch initial due count
+  useEffect(() => {
+    const nm = NotificationManager.getInstance();
+    nm.init();
+
+    // Fetch initial due count with breakdown
+    const fetchDueInfo = async () => {
+      try {
+        const res = await fetch('/api/review-due');
+        if (res.ok) {
+          const data = await res.json();
+          setDueCount(data.due ?? 0);
+          setDueBreakdown({ newDue: data.newDue ?? 0, reviewDue: data.reviewDue ?? 0, newQueued: data.newQueued ?? 0 });
+        }
+      } catch {}
+    };
+    fetchDueInfo();
+
+    // Subscribe to due words changes from scheduler
+    const unsub = nm.onDueWords((count) => {
+      setDueCount(count);
+    });
+
+    // Periodically refresh due count (every 5 minutes, lightweight)
+    const dueCountTimer = setInterval(fetchDueInfo, 5 * 60 * 1000);
+
+    // Listen for review events from ReviewSession — refresh due count immediately
+    const onWordRated = () => {
+      // Debounce: wait 1s after last rate to batch rapid keypresses
+      if (rateRefreshTimerRef.current) clearTimeout(rateRefreshTimerRef.current);
+      rateRefreshTimerRef.current = setTimeout(fetchDueInfo, 1000);
+    };
+    const onSessionCompleted = () => {
+      // Immediate refresh on session complete
+      fetchDueInfo();
+    };
+    window.addEventListener('review-word-rated', onWordRated);
+    window.addEventListener('review-session-completed', onSessionCompleted);
+
+    return () => {
+      unsub();
+      clearInterval(dueCountTimer);
+      if (rateRefreshTimerRef.current) clearTimeout(rateRefreshTimerRef.current);
+      window.removeEventListener('review-word-rated', onWordRated);
+      window.removeEventListener('review-session-completed', onSessionCompleted);
+    };
   }, []);
 
   // Reload components after each Agent conversation ends
@@ -347,8 +401,9 @@ function ChatInner({ initialMessages, initialHasMore }: {
   }, []);
 
   const handleReview = useCallback(() => {
+    markReviewDone();
     tryExecuteCommand('/review');
-  }, [tryExecuteCommand]);
+  }, [tryExecuteCommand, markReviewDone]);
 
   const handleStats = useCallback(() => {
     tryExecuteCommand('/stats');
@@ -356,6 +411,20 @@ function ChatInner({ initialMessages, initialHasMore }: {
 
   return (
     <div className="flex flex-col h-full w-full">
+      {/* Auto-review prompt banner */}
+      {showPrompt && dueCount > 0 && !devMode && (
+        <ReviewPromptBanner
+          dueCount={dueCount}
+          newDue={dueBreakdown.newDue}
+          reviewDue={dueBreakdown.reviewDue}
+          newQueued={dueBreakdown.newQueued}
+          onStartReview={() => {
+            markReviewDone();
+            tryExecuteCommand('/review');
+          }}
+          onDismiss={dismissPrompt}
+        />
+      )}
       <div className="flex-1 overflow-hidden">
         <div className="max-w-3xl mx-auto h-full">
           <MessageList
@@ -379,6 +448,7 @@ function ChatInner({ initialMessages, initialHasMore }: {
           onStats={handleStats}
           devMode={devMode}
           onDevModeChange={setDevMode}
+          dueCount={dueCount}
         />
       </div>
       {/* Debug panel — Ctrl+D to toggle, only when NEXT_PUBLIC_DEBUG_PANEL=true */}
