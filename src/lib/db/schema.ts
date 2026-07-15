@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer, real } from 'drizzle-orm/sqlite-core';
+import { sqliteTable, text, integer, real, uniqueIndex } from 'drizzle-orm/sqlite-core';
 
 // 词汇表
 export const words = sqliteTable('words', {
@@ -84,6 +84,25 @@ export const pinnedWords = sqliteTable('pinned_words', {
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
   archivedAt: integer('archived_at', { mode: 'timestamp' }),  // 归档时间，null=未归档
 });
+
+// 单词分组
+export const wordGroups = sqliteTable('word_groups', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull().unique(),
+  description: text('description'),
+  isDefault: integer('is_default').notNull().default(0), // 1=默认分组"日常"
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+});
+
+// 分组-单词 多对多关系
+export const wordGroupMembers = sqliteTable('word_group_members', {
+  id: text('id').primaryKey(),
+  groupId: text('group_id').notNull().references(() => wordGroups.id),
+  wordId: text('word_id').notNull().references(() => words.id),
+  addedAt: integer('added_at', { mode: 'timestamp' }).notNull(),
+}, (table) => ({
+  uniqueMembership: uniqueIndex('idx_wgm_unique').on(table.groupId, table.wordId),
+}));
 
 // Developer Agent 经验教训
 export const developerLessons = sqliteTable('developer_lessons', {

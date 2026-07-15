@@ -74,7 +74,7 @@ export async function POST(req: Request) {
     const userContent = extractTextFromMessage(lastUserMessage);
 
     // Determine agent type from frontend mode switch (body.mode)
-    const { mode: rawMode, modeSwitched: rawModeSwitched } = body as { mode?: string; modeSwitched?: boolean };
+    const { mode: rawMode, modeSwitched: rawModeSwitched, activeGroup } = body as { mode?: string; modeSwitched?: boolean; activeGroup?: string };
     const mode = rawMode ?? 'teach';
     const modeSwitched = rawModeSwitched === true;
     const agentType = mode === 'develop' ? 'developer' : 'teacher';
@@ -132,6 +132,11 @@ export async function POST(req: Request) {
     let finalInstructions = summary
       ? `${config.instructions}\n\n[对话历史摘要]\n${summary}`
       : config.instructions;
+
+    // Inject active group context for the teacher agent
+    if (agentType === 'teacher' && activeGroup) {
+      finalInstructions += `\n\n[当前分组] 用户当前选中的分组是"${activeGroup}"，复习和学习相关的操作默认针对该分组。`;
+    }
 
     // When the user just switched modes, append a context hint so the LLM
     // understands the role change without needing an explicit user message.

@@ -1,7 +1,7 @@
 import { tool } from 'ai';
 import { z } from 'zod';
 import { db } from '@/lib/db';
-import { words } from '@/lib/db/schema';
+import { words, wordGroups, wordGroupMembers } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
 import { initializeCard } from '@/lib/fsrs/scheduler';
 import { lookupWord } from '@/lib/dictionary/lookup';
@@ -15,9 +15,10 @@ export const addWordTool = tool({
     definition: z.string().optional().describe('中文释义（留空自动填充）'),
     examples: z.array(z.string()).optional().describe('例句列表（留空自动填充）'),
     source: z.string().optional().describe('来源：manual、reading、ecdict'),
+    group: z.string().optional().describe('添加到指定分组（分组名），默认"日常"'),
     autoFill: z.boolean().optional().describe('是否从词典自动填充缺失字段，默认 true'),
   }),
-  execute: async ({ word: wordText, phonetic, definition, examples, source, autoFill = true }) => {
+  execute: async ({ word: wordText, phonetic, definition, examples, source, group, autoFill = true }) => {
     const normalized = wordText.toLowerCase();
 
     // Check if word already exists
@@ -115,6 +116,42 @@ export const addWordTool = tool({
     // Initialize FSRS card
     await initializeCard(wordId);
 
+    // Assign to group (default: "日常")
+    const groupName = group?.trim() || '日常';
+    let assignedGroup = groupName;
+    try {
+      const targetGroup = await db
+        .select()
+        .from(wordGroups)
+        .where(eq(wordGroups.name, groupName))
+        .limit(1);
+
+      let targetGroupId: string;
+      if (targetGroup.length > 0) {
+        targetGroupId = targetGroup[0].id;
+      } else {
+        // Auto-create the group if it doesn't exist
+        targetGroupId = uuid();
+        await db.insert(wordGroups).values({
+          id: targetGroupId,
+          name: groupName,
+          isDefault: 0,
+          createdAt: new Date(),
+        });
+      }
+
+      await db.insert(wordGroupMembers).values({
+        id: uuid(),
+        groupId: targetGroupId,
+        wordId,
+        addedAt: new Date(),
+      });
+    } catch (err) {
+      // Group assignment failure should not block word addition
+      console.error('[add-word] Group assignment failed:', err);
+      assignedGroup = '日常';
+    }
+
     const fillInfo = autoFilled ? '（自动填充自词典）' : '';
     return {
       type: 'added',
@@ -126,7 +163,8 @@ export const addWordTool = tool({
       examples: finalExamples,
       tag: finalTag,
       collins: finalCollins,
-      message: `已添加单词 "${wordText}" 到词库，复习卡片已初始化${fillInfo}`,
+      group: assignedGroup,
+      message: `已添加单词 "${wordText}" 到词库（分组：${assignedGroup}），复习卡片已初始化${fillInfo}`,
     };
   },
 });

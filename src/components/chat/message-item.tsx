@@ -486,6 +486,7 @@ function renderToolOutput(key: number, toolName: string, output: any, isLastRevi
           audioUrl={output.audioUrl}
           definition={output.definition}
           examples={output.examples ? (typeof output.examples === 'string' ? output.examples : JSON.stringify(output.examples)) : null}
+          groups={output.group ? [output.group] : undefined}
           topRightSlot={<PinButton wordId={output.wordId} word={output.word} />}
         />
       </div>
@@ -510,6 +511,7 @@ function renderToolOutput(key: number, toolName: string, output: any, isLastRevi
           audioUrl={output.audioUrl}
           definition={output.definition}
           examples={output.examples}
+          groups={output.groups}
           topRightSlot={<PinButton wordId={output.wordId} word={output.word} />}
         />
       </div>
@@ -691,7 +693,9 @@ function renderToolOutput(key: number, toolName: string, output: any, isLastRevi
   if (output.type === 'stats') {
     return (
       <div key={key} className="mt-2 space-y-2">
-        <div className="text-sm font-medium">学习统计</div>
+        <div className="text-sm font-medium">
+          学习统计{output.group ? ` — ${output.group}` : ''}
+        </div>
         <div className="grid grid-cols-2 gap-2 text-xs">
           <div className="bg-muted rounded-lg p-2">
             <div className="text-muted-foreground">总词汇量</div>
@@ -710,6 +714,43 @@ function renderToolOutput(key: number, toolName: string, output: any, isLastRevi
             <div className="text-lg font-bold">{output.distribution?.learning ?? 0}</div>
           </div>
         </div>
+        {output.groupDistribution && output.groupDistribution.length > 0 && (
+          <div className="space-y-1">
+            <div className="text-xs text-muted-foreground">分组分布</div>
+            <div className="flex flex-wrap gap-1.5">
+              {output.groupDistribution.map((g: any) => (
+                <span key={g.id} className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
+                  {g.name} ({g.wordCount})
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Group management results
+  if (output.type === 'group-list') {
+    return (
+      <div key={key} className="mt-2 space-y-1.5">
+        <div className="text-sm font-medium">分组列表</div>
+        {output.groups?.map((g: any) => (
+          <div key={g.id} className="text-xs flex items-center gap-2">
+            <span className="font-medium">{g.name}</span>
+            {g.isDefault && <span className="text-[10px] text-muted-foreground">(默认)</span>}
+            <span className="text-muted-foreground">{g.wordCount} 词</span>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  if (['group-created', 'group-deleted', 'group-renamed', 'group-switched',
+       'word-added-to-group', 'word-removed-from-group', 'already-member'].includes(output.type)) {
+    return (
+      <div key={key} className="mt-2 text-xs text-green-600">
+        {output.message}
       </div>
     );
   }

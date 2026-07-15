@@ -12,6 +12,7 @@ interface WordCardProps {
   audioUrl?: string | null;
   definition: string;
   examples: string | null;
+  groups?: string[];  // Group names the word belongs to
   flipped?: boolean;
   onFlip?: () => void;
   fixedHeight?: string;
@@ -21,7 +22,7 @@ interface WordCardProps {
   pronounceRef?: Ref<PronounceButtonHandle>;
 }
 
-export function WordCard({ wordId, word, phonetic, audioUrl, definition, examples, flipped: controlledFlipped, onFlip, fixedHeight, fixedWidth, topRightSlot, pronounceRef }: WordCardProps) {
+export function WordCard({ wordId, word, phonetic, audioUrl, definition, examples, groups, flipped: controlledFlipped, onFlip, fixedHeight, fixedWidth, topRightSlot, pronounceRef }: WordCardProps) {
   const [internalFlipped, setInternalFlipped] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
 
@@ -141,6 +142,15 @@ export function WordCard({ wordId, word, phonetic, audioUrl, definition, example
                     <p key={i} className="text-xs text-muted-foreground italic pl-2 border-l-2 border-muted whitespace-pre-wrap break-words">
                       {ex}
                     </p>
+                  ))}
+                </div>
+              )}
+              {groups && groups.length > 0 && (
+                <div className="flex flex-wrap gap-1">
+                  {groups.map(g => (
+                    <span key={g} className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">
+                      {g}
+                    </span>
                   ))}
                 </div>
               )}

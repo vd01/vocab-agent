@@ -5,6 +5,7 @@ import { DefaultChatTransport, type UIMessage } from 'ai';
 import { MessageList } from './message-list';
 import { ChatInput } from './chat-input';
 import { DebugPanel, notifyDebugPanel } from '@/components/debug/debug-panel';
+import { useGroup } from '@/lib/groups/group-context';
 import { useState, useCallback, useEffect, useRef } from 'react';
 
 // Read at module level so Next.js can tree-shake when disabled
@@ -68,6 +69,10 @@ function ChatInner({ initialMessages, initialHasMore }: {
 }) {
   // devMode ref — used by transport body to read current mode at request time
   const devModeRef = useRef(false);
+  const { activeGroup } = useGroup();
+  // Track activeGroup via ref so tryExecuteCommand always reads the latest value
+  const activeGroupRef = useRef(activeGroup);
+  activeGroupRef.current = activeGroup;
 
   const {
     messages,
@@ -81,7 +86,7 @@ function ChatInner({ initialMessages, initialHasMore }: {
       body: () => {
         const switched = modeSwitchedRef.current;
         modeSwitchedRef.current = false;
-        return { mode: devModeRef.current ? 'develop' : 'teach', modeSwitched: switched };
+        return { mode: devModeRef.current ? 'develop' : 'teach', modeSwitched: switched, activeGroup: activeGroup || null };
       },
     }),
     messages: initialMessages,
@@ -206,6 +211,30 @@ function ChatInner({ initialMessages, initialHasMore }: {
   const tryExecuteCommand = useCallback(async (command: string): Promise<boolean> => {
     const cmdName = command.split(/\s+/)[0].slice(1); // strip leading /
 
+    // Inject active group into /review and /stats if not already specified
+    let finalCommand = command;
+    const currentGroup = activeGroupRef.current;
+    if (currentGroup) {
+      if (cmdName === 'review') {
+        // /review → /review <group>, /review 5 → /review 5 <group>
+        // Only inject if group name not already present as an arg
+        const args = command.split(/\s+/).slice(1);
+        const hasGroupArg = args.some(a => !/^\d+$/.test(a));
+        if (!hasGroupArg) {
+          const numArg = args.find(a => /^\d+$/.test(a));
+          finalCommand = numArg
+            ? `/review ${numArg} ${currentGroup}`
+            : `/review ${currentGroup}`;
+        }
+      } else if (cmdName === 'stats') {
+        // /stats → /stats <group> (only if no args yet)
+        const args = command.split(/\s+/).slice(1);
+        if (args.length === 0) {
+          finalCommand = `/stats ${currentGroup}`;
+        }
+      }
+    }
+
     // Add user message to chat
     const userMsg = {
       id: `cmd-user-${Date.now()}`,
@@ -219,7 +248,7 @@ function ChatInner({ initialMessages, initialHasMore }: {
       const res = await fetch('/api/commands', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ command }),
+        body: JSON.stringify({ command: finalCommand }),
       });
 
       let result: any;

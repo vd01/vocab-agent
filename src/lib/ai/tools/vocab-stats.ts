@@ -1,8 +1,8 @@
 import { tool } from 'ai';
 import { z } from 'zod';
 import { db, client } from '@/lib/db';
-import { words } from '@/lib/db/schema';
-import { sql, desc } from 'drizzle-orm';
+import { words, wordGroups, wordGroupMembers } from '@/lib/db/schema';
+import { sql, desc, eq } from 'drizzle-orm';
 import { getProficiencyDistribution, getDailyStats } from '@/lib/fsrs/scheduler';
 
 /**
@@ -25,6 +25,7 @@ export const vocabStatsTool = tool({
       tagRows,
       collinsRows,
       streakResult,
+      groupRows,
     ] = await Promise.all([
       db.select({ count: sql<number>`count(*)` }).from(words),
       db.select({ word: words.word }).from(words).orderBy(desc(words.createdAt)).limit(5),
@@ -34,6 +35,15 @@ export const vocabStatsTool = tool({
       db.select({ tag: words.tag }).from(words).where(sql`${words.tag} IS NOT NULL`),
       db.select({ collins: words.collins, count: sql<number>`count(*)` }).from(words).groupBy(words.collins),
       computeStreakDays(),
+      db.select({
+        id: wordGroups.id,
+        name: wordGroups.name,
+        isDefault: wordGroups.isDefault,
+        wordCount: sql<number>`COUNT(${wordGroupMembers.id})`,
+      }).from(wordGroups)
+        .leftJoin(wordGroupMembers, eq(wordGroups.id, wordGroupMembers.groupId))
+        .groupBy(wordGroups.id)
+        .orderBy(wordGroups.isDefault, wordGroups.name),
     ]);
 
     // Process exam tags
@@ -59,6 +69,12 @@ export const vocabStatsTool = tool({
       streakDays: streakResult,
       examTags: examTagDistribution,
       collinsDistribution,
+      groupDistribution: groupRows.map(g => ({
+        id: g.id,
+        name: g.name,
+        isDefault: g.isDefault === 1,
+        wordCount: g.wordCount,
+      })),
       proficiency,
       dailyStats: {
         reviewed: dailyStats.reviewed,

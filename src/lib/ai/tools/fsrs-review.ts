@@ -1,19 +1,38 @@
 import { tool } from 'ai';
 import { z } from 'zod';
 import { getDueWords, processReview, Rating } from '@/lib/fsrs/scheduler';
+import { db } from '@/lib/db';
+import { wordGroups } from '@/lib/db/schema';
+import { eq } from 'drizzle-orm';
 
 export const fsrsReviewTool = tool({
-  description: '获取待复习的单词列表，用于 FSRS 间隔重复复习',
+  description: '获取待复习的单词列表，用于 FSRS 间隔重复复习。可指定分组名只复习该分组的单词。',
   inputSchema: z.object({
     limit: z.number().optional().describe('获取的单词数量，默认 5'),
+    group: z.string().optional().describe('分组名称，如"四级"、"考研"。不指定则复习所有分组'),
   }),
-  execute: async ({ limit = 5 }) => {
-    const dueWords = await getDueWords(limit);
+  execute: async ({ limit = 5, group }) => {
+    // Resolve group name to groupId
+    let groupId: string | null | undefined = undefined;
+    if (group?.trim()) {
+      const g = await db
+        .select({ id: wordGroups.id })
+        .from(wordGroups)
+        .where(eq(wordGroups.name, group.trim()))
+        .limit(1);
+      if (g.length === 0) {
+        return { type: 'error', message: `分组"${group}"不存在` };
+      }
+      groupId = g[0].id;
+    }
+
+    const dueWords = await getDueWords(limit, groupId);
     if (dueWords.length === 0) {
-      return { type: 'no-due-words', message: '当前没有待复习的单词！' };
+      return { type: 'no-due-words', message: group ? `分组"${group}"中没有待复习的单词！` : '当前没有待复习的单词！' };
     }
     return {
       type: 'due-words',
+      group: group || null,
       words: dueWords.map(w => ({
         wordId: w.wordId,
         word: w.word,

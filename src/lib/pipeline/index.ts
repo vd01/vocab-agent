@@ -5,6 +5,7 @@ import { dailyStatsExtractor } from './extractors/daily-stats';
 import { vocabSummaryExtractor } from './extractors/vocab-summary';
 import { examTagsExtractor } from './extractors/exam-tags';
 import { collinsDistributionExtractor } from './extractors/collins-distribution';
+import { groupDistributionExtractor } from './extractors/group-distribution';
 
 // Register built-in extractors
 extractorRegistry.register(dueWordsExtractor);
@@ -13,5 +14,6 @@ extractorRegistry.register(dailyStatsExtractor);
 extractorRegistry.register(vocabSummaryExtractor);
 extractorRegistry.register(examTagsExtractor);
 extractorRegistry.register(collinsDistributionExtractor);
+extractorRegistry.register(groupDistributionExtractor);
 
 export { extractorRegistry } from './extractors/registry';

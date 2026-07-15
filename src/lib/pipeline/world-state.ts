@@ -9,6 +9,7 @@ export interface WorldState {
   recentWords: string[];
   examTagDistribution: Record<string, number>;
   collinsDistribution: Record<string, number>;
+  groups: Array<{ id: string; name: string; wordCount: number; isDefault: boolean }>;
 }
 
 /**
@@ -42,5 +43,6 @@ export async function buildWorldState(): Promise<WorldState> {
     recentWords: (merged.recentWords as string[]) ?? [],
     examTagDistribution: (merged.examTagDistribution as Record<string, number>) ?? {},
     collinsDistribution: (merged.collinsDistribution as Record<string, number>) ?? {},
+    groups: (merged.groups as WorldState['groups']) ?? [],
   };
 }

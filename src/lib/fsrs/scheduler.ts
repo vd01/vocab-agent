@@ -54,8 +54,11 @@ export interface DueWord {
  *
  * Uses raw SQL to avoid Drizzle timestamp deserialization issues
  * with subquery joins.
+ *
+ * @param limit Max number of words to return
+ * @param groupId Optional group ID to filter by (null/undefined = all groups)
  */
-export async function getDueWords(limit = 20): Promise<DueWord[]> {
+export async function getDueWords(limit = 20, groupId?: string | null): Promise<DueWord[]> {
   const nowSec = toUnixSec(new Date());
 
   // Exclude words actually reviewed in the last 5 minutes to prevent
@@ -83,13 +86,14 @@ export async function getDueWords(limit = 20): Promise<DueWord[]> {
       ) latest ON r.word_id = latest.word_id AND r.reviewed_at = latest.max_reviewed_at
       INNER JOIN words w ON r.word_id = w.id
       LEFT JOIN pinned_words pw ON pw.word_id = w.id
+      ${groupId ? 'INNER JOIN word_group_members wgm ON wgm.word_id = w.id AND wgm.group_id = ?' : ''}
       WHERE r.due <= ?
         AND (r.rating = 0 OR r.reviewed_at < ?)
       GROUP BY r.word_id
       ORDER BY MIN(r.due) DESC
       LIMIT ?
     `,
-    args: [nowSec, fiveMinAgoSec, limit],
+    args: groupId ? [groupId, nowSec, fiveMinAgoSec, limit] : [nowSec, fiveMinAgoSec, limit],
   });
 
   return result.rows.map((row: any) => ({
@@ -239,8 +243,10 @@ export async function initializeCard(wordId: string): Promise<Card> {
  * Uses raw SQL to avoid Drizzle timestamp deserialization issues.
  * For each word, only the latest review (by reviewedAt) determines its state.
  * Excludes initialization records (rating=0).
+ *
+ * @param groupId Optional group ID to filter by (null/undefined = all groups)
  */
-export async function getProficiencyDistribution(): Promise<{
+export async function getProficiencyDistribution(groupId?: string | null): Promise<{
   new: number;
   learning: number;
   review: number;
@@ -256,9 +262,10 @@ export async function getProficiencyDistribution(): Promise<{
         WHERE rating > 0
         GROUP BY word_id
       ) latest ON r.word_id = latest.word_id AND r.reviewed_at = latest.max_reviewed_at
+      ${groupId ? 'INNER JOIN word_group_members wgm ON wgm.word_id = r.word_id AND wgm.group_id = ?' : ''}
       GROUP BY r.state
     `,
-    args: [],
+    args: groupId ? [groupId] : [],
   });
 
   const distribution = { new: 0, learning: 0, review: 0, relearning: 0 };

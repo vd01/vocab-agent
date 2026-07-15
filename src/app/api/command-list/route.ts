@@ -2,10 +2,11 @@ import { db } from '@/lib/db';
 import { dynamicCommands } from '@/lib/db/schema';
 
 const BUILTIN_COMMANDS = [
-  { name: 'review', description: '开始 FSRS 复习' },
-  { name: 'add', description: '添加新单词 (如: /add ephemeral)' },
+  { name: 'review', description: '开始 FSRS 复习 (如: /review 5 四级)' },
+  { name: 'add', description: '添加新单词 (如: /add ephemeral 短暂的 四级)' },
   { name: 'pin', description: '置顶单词到侧边栏 (如: /pin ephemeral)' },
   { name: 'stats', description: '查看学习统计' },
+  { name: 'group', description: '管理分组 (如: /group, /group 四级, /group create 考研)' },
 ];
 
 export async function GET() {

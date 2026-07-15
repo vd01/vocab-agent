@@ -8,6 +8,7 @@ import { extractWordsTool } from './tools/extract-words';
 import { dictLookupTool } from './tools/dict-lookup';
 import { vocabStatsTool } from './tools/vocab-stats';
 import { pinWordTool, unpinWordTool } from './tools/pin-word';
+import { groupManageTool } from './tools/group-manage';
 import type { WorldState } from '@/lib/pipeline/world-state';
 
 // ── Teacher Tool Set ─────────────────────────────────────────────────────
@@ -22,6 +23,7 @@ export const teacherTools = {
   'vocab-stats': vocabStatsTool,
   'pin-word': pinWordTool,
   'unpin-word': unpinWordTool,
+  'group-manage': groupManageTool,
 } satisfies ToolSet;
 
 export type TeacherTools = typeof teacherTools;

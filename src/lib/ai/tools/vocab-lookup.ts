@@ -1,7 +1,7 @@
 import { tool } from 'ai';
 import { z } from 'zod';
 import { db } from '@/lib/db';
-import { words } from '@/lib/db/schema';
+import { words, wordGroups, wordGroupMembers } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
 import { lookupWord } from '@/lib/dictionary/lookup';
 
@@ -22,6 +22,14 @@ export const vocabLookupTool = tool({
 
     if (result.length > 0) {
       const w = result[0];
+
+      // Get group memberships
+      const groupRows = await db
+        .select({ name: wordGroups.name })
+        .from(wordGroupMembers)
+        .innerJoin(wordGroups, eq(wordGroupMembers.groupId, wordGroups.id))
+        .where(eq(wordGroupMembers.wordId, w.id));
+
       return {
         type: 'found',
         wordId: w.id,
@@ -35,6 +43,7 @@ export const vocabLookupTool = tool({
         collins: w.collins,
         bnc: w.bnc,
         exchange: w.exchange,
+        groups: groupRows.map(g => g.name),
       };
     }
 

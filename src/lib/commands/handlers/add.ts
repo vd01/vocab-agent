@@ -1,10 +1,15 @@
 /**
  * /add command — add a new word to the vocabulary.
  * Auto-fills phonetic/definition/examples from dictionary when available.
+ *
+ * Usage: /add <word> [definition] [分组名]
+ *   /add ephemeral
+ *   /add ephemeral 短暂的
+ *   /add ephemeral 短暂的 四级
  */
 
 import { db } from '@/lib/db';
-import { words } from '@/lib/db/schema';
+import { words, wordGroups, wordGroupMembers } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
 import { initializeCard } from '@/lib/fsrs/scheduler';
 import { lookupWord } from '@/lib/dictionary/lookup';
@@ -13,16 +18,34 @@ import type { CommandHandler, CommandResult } from '../executor';
 
 export const addHandler: CommandHandler = {
   name: 'add',
-  description: '添加新单词 (如: /add ephemeral 或 /add ephemeral 短暂的)',
-  usage: '/add <word> [definition]',
+  description: '添加新单词 (如: /add ephemeral 或 /add ephemeral 短暂的 四级)',
+  usage: '/add <word> [definition] [分组名]',
 
   async execute(args: string[]): Promise<CommandResult> {
     if (args.length === 0) {
-      return { type: 'invalid-args', message: '用法: /add <word> [definition]' };
+      return { type: 'invalid-args', message: '用法: /add <word> [definition] [分组名]' };
     }
 
     const wordText = args[0];
-    const manualDefinition = args.slice(1).join(' ') || null;
+    // Last arg could be a group name if it matches an existing group
+    let groupName: string | undefined;
+    let definitionArgs = args.slice(1);
+
+    // Check if the last arg is a known group name
+    if (definitionArgs.length > 0) {
+      const lastArg = definitionArgs[definitionArgs.length - 1];
+      const group = await db
+        .select({ id: wordGroups.id })
+        .from(wordGroups)
+        .where(eq(wordGroups.name, lastArg))
+        .limit(1);
+      if (group.length > 0) {
+        groupName = lastArg;
+        definitionArgs = definitionArgs.slice(0, -1);
+      }
+    }
+
+    const manualDefinition = definitionArgs.join(' ') || null;
     const normalized = wordText.toLowerCase();
 
     // Check if word already exists
@@ -46,6 +69,7 @@ export const addHandler: CommandHandler = {
 
     // Merge: manual input takes priority
     let finalPhonetic: string | null = null;
+    let finalAudioUrl: string | null = null;
     let finalDefinition = manualDefinition;
     let finalExamples: string[] | null = null;
     let finalTag: string | null = null;
@@ -56,6 +80,7 @@ export const addHandler: CommandHandler = {
 
     if (autoData) {
       if (autoData.phonetic) { finalPhonetic = autoData.phonetic; autoFilled = true; }
+      if (autoData.audioUrl) { finalAudioUrl = autoData.audioUrl; }
       if (autoData.translation) { finalDefinition = autoData.translation; autoFilled = true; }
       // Extract example sentences from API definitions
       if (autoData.definitions) {
@@ -87,6 +112,7 @@ export const addHandler: CommandHandler = {
       id: wordId,
       word: normalized,
       phonetic: finalPhonetic,
+      audioUrl: finalAudioUrl,
       definition: finalDefinition,
       examples: finalExamples ? JSON.stringify(finalExamples) : null,
       source: autoFilled ? 'ecdict' : 'manual',
@@ -101,17 +127,53 @@ export const addHandler: CommandHandler = {
     // Initialize FSRS card
     await initializeCard(wordId);
 
+    // Assign to group
+    const targetGroupName = groupName?.trim() || '日常';
+    let assignedGroup = targetGroupName;
+    try {
+      const targetGroup = await db
+        .select()
+        .from(wordGroups)
+        .where(eq(wordGroups.name, targetGroupName))
+        .limit(1);
+
+      let targetGroupId: string;
+      if (targetGroup.length > 0) {
+        targetGroupId = targetGroup[0].id;
+      } else {
+        targetGroupId = uuid();
+        await db.insert(wordGroups).values({
+          id: targetGroupId,
+          name: targetGroupName,
+          isDefault: 0,
+          createdAt: new Date(),
+        });
+      }
+
+      await db.insert(wordGroupMembers).values({
+        id: uuid(),
+        groupId: targetGroupId,
+        wordId,
+        addedAt: new Date(),
+      });
+    } catch (err) {
+      console.error('[add] Group assignment failed:', err);
+      assignedGroup = '日常';
+    }
+
     const fillInfo = autoFilled ? '（自动填充自词典）' : '';
     return {
       type: 'added',
       wordId,
       word: wordText,
       phonetic: finalPhonetic,
+      audioUrl: finalAudioUrl,
       definition: finalDefinition,
       examples: finalExamples,
       tag: finalTag,
       collins: finalCollins,
-      message: `已添加单词 "${wordText}" 到词库，复习卡片已初始化${fillInfo}`,
+      group: assignedGroup,
+      message: `已添加单词 "${wordText}" 到词库（分组：${assignedGroup}），复习卡片已初始化${fillInfo}`,
     };
   },
 };

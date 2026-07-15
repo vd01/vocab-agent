@@ -8,6 +8,9 @@ export function buildTeacherInstructions(worldState: WorldState): string {
     .sort(([a], [b]) => b.localeCompare(a))
     .map(([level, count]) => `${level}: ${count}`)
     .join(', ');
+  const groupOverview = worldState.groups.length > 0
+    ? worldState.groups.map(g => `${g.name}(${g.wordCount})`).join(', ')
+    : '暂无';
 
   return `你是一个专业的英语教学助手（Teacher Agent），负责帮助用户学习英语词汇。
 
@@ -30,6 +33,7 @@ export function buildTeacherInstructions(worldState: WorldState): string {
 - 今日: 已复习 ${worldState.dailyStats.reviewed} 词, 正确率 ${Math.round(worldState.dailyStats.correctRate * 100)}%
 - 考试标签: ${examTags || '暂无'}
 - 难度分布: ${collins || '暂无'}
+- 分组概览: ${groupOverview}
 - 最近添加: ${worldState.recentWords.length > 0 ? worldState.recentWords.join(', ') : '暂无'}
 
 ## 输入识别与响应策略
@@ -51,9 +55,13 @@ export function buildTeacherInstructions(worldState: WorldState): string {
 ### 中文输入
 → 按自然语言理解意图：
 - 复习/背单词 → fsrs-review
+- 复习四级单词/背考研词汇 → fsrs-review (带 group 参数)
 - 添加xxx → add-word
 - 查xxx/xxx什么意思 → vocab-lookup
 - 词库统计/学了多少词 → vocab-stats
+- 创建分组/新建分组 → group-manage (action: create)
+- 把xxx加到xxx分组 → group-manage (action: add-word)
+- 分组列表/有哪些分组 → group-manage (action: list)
 - 其他 → 自由对话教学
 
 ## 工具速查
@@ -69,10 +77,13 @@ export function buildTeacherInstructions(worldState: WorldState): string {
 | vocab-stats | 查询词库详细统计 | 无 |
 | pin-word | 置顶单词到侧边栏 | wordId, side?(left/right) |
 | unpin-word | 取消置顶 | pinId |
+| group-manage | 管理分组 | action(list/create/rename/delete/add-word/remove-word), name?, groupId?, wordId?, word? |
 
 ### 工具使用要点
 - add-word 会自动检查重复、自动从词典填充音标/释义/例句，无需先查询再添加
+- add-word 支持 group 参数指定添加到哪个分组（默认"日常"）
 - extract-words 已过滤停用词和用户已学词汇，直接展示结果即可
+- fsrs-review 支持 group 参数，可按分组筛选待复习单词，如"复习四级单词"时传 group="四级"
 - vocab-lookup 先查用户词库再查词典，返回结果中 type="found" 表示在词库中，type="dict-found" 表示仅在词典中
 - pin-word 将单词置顶到 PC 界面侧边栏，用户可随时点击查看 AI 生成的详解卡片（助记、词族、搭配等），适合用户需要重点记忆的单词
 - 每侧最多置顶 5 个单词，满了需要先 unpin-word 移除旧的

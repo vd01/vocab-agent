@@ -46,7 +46,7 @@ export const createCommandTool = tool({
     const now = new Date();
 
     // 1. Block built-in command names
-    const builtinNames = ['review', 'add', 'stats', 'dev', 'rate'];
+    const builtinNames = ['review', 'add', 'stats', 'dev', 'rate', 'group'];
     if (builtinNames.includes(name)) {
       // Suggest alternative names to help Agent avoid timeout loops
       const prefixes = ['my', 'learn', 'study', 'custom'];

@@ -187,6 +187,56 @@ async function migrate() {
     // Table might not exist yet, that's fine
   }
 
+  // ── Word Groups ──────────────────────────────────────────────────────────
+
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS word_groups (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL UNIQUE,
+      description TEXT,
+      is_default INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL
+    );
+  `);
+
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS word_group_members (
+      id TEXT PRIMARY KEY,
+      group_id TEXT NOT NULL REFERENCES word_groups(id),
+      word_id TEXT NOT NULL REFERENCES words(id),
+      added_at INTEGER NOT NULL
+    );
+  `);
+
+  await client.execute(`
+    CREATE INDEX IF NOT EXISTS idx_wgm_group_id ON word_group_members(group_id);
+  `);
+
+  await client.execute(`
+    CREATE INDEX IF NOT EXISTS idx_wgm_word_id ON word_group_members(word_id);
+  `);
+
+  await client.execute(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_wgm_unique ON word_group_members(group_id, word_id);
+  `);
+
+  // Seed default group "日常" and assign all existing words to it
+  const nowSec = Math.floor(Date.now() / 1000);
+  await client.execute({
+    sql: `INSERT OR IGNORE INTO word_groups (id, name, description, is_default, created_at) VALUES (?, ?, ?, ?, ?)`,
+    args: ['default-daily', '日常', '默认分组', 1, nowSec],
+  });
+
+  // Assign all existing words to the default group (idempotent via UNIQUE index)
+  await client.execute({
+    sql: `
+      INSERT OR IGNORE INTO word_group_members (id, group_id, word_id, added_at)
+      SELECT 'wgm-' || w.id, 'default-daily', w.id, ?
+      FROM words w
+    `,
+    args: [nowSec],
+  });
+
   console.log('Migrations complete!');
   process.exit(0);
 }

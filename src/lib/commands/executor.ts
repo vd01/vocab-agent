@@ -78,18 +78,20 @@ import { addHandler } from './handlers/add';
 import { statsHandler } from './handlers/stats';
 import { rateHandler } from './handlers/rate';
 import { pinHandler } from './handlers/pin';
+import { groupHandler } from './handlers/group';
 
 registerBuiltin(reviewHandler);
 registerBuiltin(addHandler);
 registerBuiltin(statsHandler);
 registerBuiltin(rateHandler);
 registerBuiltin(pinHandler);
+registerBuiltin(groupHandler);
 
 // ── Dynamic command sandbox ──────────────────────────────────────────────
 
-import { words, reviews, chatMessages, dynamicExtractors } from '@/lib/db/schema';
+import { words, reviews, chatMessages, dynamicExtractors, wordGroups, wordGroupMembers } from '@/lib/db/schema';
 
-const DB_TABLES = { words, reviews, chatMessages, dynamicCommands, dynamicExtractors };
+const DB_TABLES = { words, reviews, chatMessages, dynamicCommands, dynamicExtractors, wordGroups, wordGroupMembers };
 
 async function executeDynamicCommand(
   cmd: typeof dynamicCommands.$inferSelect,

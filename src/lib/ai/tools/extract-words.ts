@@ -69,8 +69,9 @@ export const extractWordsTool = tool({
   inputSchema: z.object({
     text: z.string().describe('要分析的英文文本'),
     maxWords: z.number().optional().describe('最多返回的生词数，默认 15'),
+    group: z.string().optional().describe('如果用户后续添加这些词，归入的分组名，如"四级"'),
   }),
-  execute: async ({ text, maxWords = 15 }) => {
+  execute: async ({ text, maxWords = 15, group }) => {
     // 1. Tokenize: extract English words, lowercase, deduplicate
     const matches = text.toLowerCase().match(/[a-z']+/g);
     const rawWords: string[] = matches
@@ -163,7 +164,8 @@ export const extractWordsTool = tool({
       total: limited.length,
       words: limited,
       knownCount,
-      message: `从文本中提取了 ${limited.length} 个生词（你已认识 ${knownCount} 个词）`,
+      group: group?.trim() || null,
+      message: `从文本中提取了 ${limited.length} 个生词（你已认识 ${knownCount} 个词）${group ? `，建议添加到"${group}"分组` : ''}`,
     };
   },
 });
