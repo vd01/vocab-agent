@@ -67,9 +67,7 @@ export function SettingsContent() {
 			setNotifInterval(
 				parseInt(s["notification.intervalMinutes"] ?? "30", 10) || 30,
 			);
-			setDailyNewLimit(
-				parseInt(s["review.dailyNewLimit"] ?? "10", 10) || 0,
-			);
+			setDailyNewLimit(parseInt(s["review.dailyNewLimit"] ?? "10", 10) || 0);
 			setDailyReviewLimit(
 				parseInt(s["review.dailyReviewLimit"] ?? "0", 10) || 0,
 			);
@@ -255,11 +253,7 @@ export function SettingsContent() {
 			onKeyDown={handleShortcutCapture}
 		>
 			<div className="flex items-center gap-3 mb-6">
-				<Button
-					variant="ghost"
-					size="sm"
-					onClick={() => window.history.back()}
-				>
+				<Button variant="ghost" size="sm" onClick={() => window.history.back()}>
 					← 返回
 				</Button>
 				<h1 className="text-lg font-semibold">设置</h1>
@@ -319,9 +313,7 @@ export function SettingsContent() {
 											type="number"
 											value={notifInterval}
 											onChange={(e) =>
-												setNotifInterval(
-													parseInt(e.target.value) || 30,
-												)
+												setNotifInterval(parseInt(e.target.value) || 30)
 											}
 											min={5}
 											max={480}
@@ -453,9 +445,7 @@ export function SettingsContent() {
 												<Input
 													type="password"
 													value={remotePassword}
-													onChange={(e) =>
-														setRemotePassword(e.target.value)
-													}
+													onChange={(e) => setRemotePassword(e.target.value)}
 													placeholder="输入密码"
 													className="flex-1"
 												/>
@@ -490,9 +480,7 @@ export function SettingsContent() {
 									onFocus={() => setCapturingShortcut(true)}
 									onBlur={() => setCapturingShortcut(false)}
 									placeholder={
-										capturingShortcut
-											? "按下组合键..."
-											: "点击输入快捷键"
+										capturingShortcut ? "按下组合键..." : "点击输入快捷键"
 									}
 									readOnly={capturingShortcut}
 									className="flex-1"
@@ -601,15 +589,10 @@ export function SettingsContent() {
 									onClick={handleEnvSaveAndRestart}
 									disabled={
 										envRestarting ||
-										(!envDirty &&
-											!envApiKey &&
-											!envBaseUrl &&
-											!envAuthPassword)
+										(!envDirty && !envApiKey && !envBaseUrl && !envAuthPassword)
 									}
 								>
-									{envRestarting
-										? "重启服务中..."
-										: "保存并重启服务"}
+									{envRestarting ? "重启服务中..." : "保存并重启服务"}
 								</Button>
 							</div>
 						</CardContent>
