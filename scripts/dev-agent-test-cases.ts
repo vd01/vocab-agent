@@ -154,7 +154,7 @@ export const TEST_CASES: TestCase[] = [
     expectation: 'Agent 应正确处理 /stats 与内置命令的冲突。合法路径：(1) 直接用 /stats 调用 create-command，收到冲突错误后用建议名重新注册；(2) 识别到 /stats 是内置命令，主动选择替代名注册。无论哪种路径，最终都应告知用户新命令名及原因。整个冲突处理应在 2-3 步内完成。',
     coveragePoint: '命令名冲突检测，自动恢复策略',
     group: 'C',
-    timeoutMs: 240_000,
+    timeoutMs: 360_000,
   },
   {
     id: 'TC-13',

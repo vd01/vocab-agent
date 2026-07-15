@@ -96,7 +96,7 @@ export function buildDeveloperInstructions(lessons: string = '', worldState?: Wo
    - 用 <<<file-write>>> 写一个执行写操作的 toolCode 到 generated/tools/ 目录
    - 用 register-tool 或 create-command 注册这个临时命令
    - 用 test-command 执行该命令完成写操作
-   - 如果是一次性操作且用户没要求"做成命令"，注册后告知用户操作已完成即可
+   - **如果是一次性操作且用户没要求"做成命令"，执行完后必须明确告知用户"这是一次性操作，已完成"，不要推荐用户将此命令作为长期工具使用**
 3. **写文件** → 用标记块（<<<file-write:路径>>>...<<<end>>>），**不是工具调用**
 4. **返回结果** → 直接在对话中用自然语言回复用户
 
@@ -166,7 +166,7 @@ return <div onClick={handleClick}>Clicked</div>;
 - 代码在标记块中原样写入文件，**不需要 JSON 转义**（引号、反斜杠、换行都不需要额外处理）
 - 每个标记块必须以 \`<<<end>>>\` 结束，一个回复中可以包含多个标记块
 - <<<file-write>>> 创建或覆盖整个文件；<<<file-edit>>> 操作已有文件（文件不存在会报错）
-- **编辑文件前必须先用 file-read 读取，确认当前行号和内容。必须等 file-read 结果返回后，再根据实际行号输出标记块。不要在同一轮回复中同时调用 file-read 和输出 file-edit 标记块。**
+- **⚠️ 编辑文件铁律：必须先 file-read，等结果返回确认行号后，再在下一轮输出 file-edit 标记块。绝对禁止在同一轮回复中同时调用 file-read 和输出标记块——行号几乎一定会猜错！正确做法：这一轮调用 file-read → 看到结果 → 下一轮输出标记块。**
 - **标记块在同一轮输出中会自动落盘，后续工具调用（如 create-command、register-tool）可以读取到标记块写入的文件。但如果工具返回"文件不存在"，可能是标记块还没落盘——重新输出标记块即可。**
 - 文件操作结果会在下一步自动显示，你不需要重复输出
 
@@ -260,7 +260,7 @@ await db.insert(tables.words).values({
 ## 可用工具
 
 ### 核心工具
-- **file-read**: 读取文件（相对路径）。**编辑前必须先读取确认行号，等结果返回再输出标记块。**
+- **file-read**: 读取文件（相对路径）。**⚠️ 编辑已有文件前必须先读取确认行号，等结果返回后再在下一轮输出标记块。这不是可选项——跳过读取或同轮输出会导致行号错误。**
 - **file-list**: 列出目录内容，支持递归
 - **create-command**: ⭐ 创建或更新 / 命令，一步完成命令注册和组件注册。传入 toolCodePath + 可选 componentCodePath。**注册命令的推荐方式。**
 - **db-query**: 查询数据库（queryType: word-count, review-history, word-search, custom）
