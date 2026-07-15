@@ -61,7 +61,12 @@ export const createCommandTool = tool({
     // 2. Flush any pending file blocks for the paths we need to read.
     //    标记块写入延迟到 prepareStep 才执行，但工具在同一 step 内调用，
     //    所以需要先 flush 确保文件已落盘。
-    await flushFileBlocks([toolCodePath, componentCodePath].filter(Boolean) as string[]);
+    try {
+      await flushFileBlocks([toolCodePath, componentCodePath].filter(Boolean) as string[]);
+    } catch (err) {
+      console.error('[create-command] flushFileBlocks failed:', err);
+      // Non-fatal: the file might already be on disk from a previous step
+    }
 
     // 3. Read toolCode from file
     const toolCodeFullPath = path.join(process.cwd(), toolCodePath);

@@ -305,9 +305,9 @@ async function judgeResult(
   result: TestResult,
   env: Record<string, string>,
 ): Promise<JudgeResult> {
-  const apiKey = env.OPENAI_API_KEY || process.env.OPENAI_API_KEY;
-  const baseUrl = env.OPENAI_BASE_URL || process.env.OPENAI_BASE_URL;
-  const judgeModel = env.TEACHER_MODEL || process.env.TEACHER_MODEL || 'deepseek-v4-flash';
+  const apiKey = env.JUDGE_API_KEY || env.OPENAI_API_KEY || process.env.OPENAI_API_KEY;
+  const baseUrl = env.JUDGE_BASE_URL || env.OPENAI_BASE_URL || process.env.OPENAI_BASE_URL;
+  const judgeModel = env.JUDGE_MODEL || process.env.JUDGE_MODEL || 'deepseek-v4-flash';
 
   if (!apiKey || !baseUrl) {
     return {
@@ -404,7 +404,7 @@ ${codeSummary}
           { role: 'user', content: userPrompt },
         ],
         temperature: 0.1,
-        max_tokens: 1024,
+        max_tokens: 8092,
         response_format: { type: 'json_object' },
       }),
       signal: controller.signal,
@@ -499,6 +499,33 @@ async function isServerUp(): Promise<boolean> {
   }
 }
 
+/**
+ * 等待服务器恢复可用。
+ * 当 Agent 生成的组件代码触发 Turbopack HMR 编译时，如果组件有语法错误，
+ * Next.js dev server 可能短暂不可用（返回 HTML 500 或连接失败）。
+ * 本函数轮询等待服务器恢复，避免后续测试用例因基础设施问题而失败。
+ *
+ * @param maxWaitMs 最大等待时间（默认 30s）
+ * @param intervalMs 轮询间隔（默认 3s）
+ * @returns 是否在超时前恢复
+ */
+async function waitForServerRecovery(maxWaitMs = 30_000, intervalMs = 3_000): Promise<boolean> {
+  const start = Date.now();
+  let attempt = 0;
+  while (Date.now() - start < maxWaitMs) {
+    attempt++;
+    if (await isServerUp()) {
+      if (attempt > 1) {
+        console.log(`     ✅ 服务器已恢复 (等待 ${((Date.now() - start) / 1000).toFixed(1)}s)`);
+      }
+      return true;
+    }
+    console.log(`     ⏳ 服务器不可用，等待恢复... (${attempt}次, ${((Date.now() - start) / 1000).toFixed(0)}s)`);
+    await sleep(intervalMs);
+  }
+  return false;
+}
+
 // ── 报告生成 ─────────────────────────────────────────────────────────────
 
 function generateReport(
@@ -508,6 +535,7 @@ function generateReport(
   const now = new Date();
   const timestamp = now.toISOString().replace('T', ' ').slice(0, 19);
   const model = env.DEVELOPER_MODEL || process.env.DEVELOPER_MODEL || 'deepseek-v4-pro';
+  const judgeModel = env.JUDGE_MODEL || process.env.JUDGE_MODEL || 'deepseek-v4-flash';
 
   const completed = allResults.filter(r => !r.result.error);
   const failed = allResults.filter(r => !!r.result.error);
@@ -543,6 +571,7 @@ function generateReport(
 
 > 运行时间: ${timestamp}
 > 模型: ${model}
+> 评判模型: ${judgeModel}
 > 服务器: ${BASE_URL}
 > 总测试: ${allResults.length} | 完成: ${completed.length} | 失败: ${failed.length}
 
@@ -738,8 +767,10 @@ async function main() {
     // 组间清理
     if (group.needsCleanup && !noClean) {
       await runCleanup();
-      // 等待清理生效
-      await sleep(2000);
+      // 等待清理生效 + Turbopack HMR 编译完成
+      // 清理会删除 generated/ 组件文件并重写 registry，触发 HMR
+      console.log('  ⏳ 等待 Turbopack HMR 处理清理变更...');
+      await waitForServerRecovery(15_000, 2_000);
     }
 
     // 顺序执行组内用例
@@ -783,8 +814,52 @@ async function main() {
       // 构造对话历史（如果有依赖，将前置对话包含进来）
       const history = buildConversationHistory(tc, resultMap);
 
-      const result = await sendDeveloperMessage(tc.prompt, tc.timeoutMs, history);
-      result.testCaseId = tc.id;
+      // 执行测试，支持 HTTP 500 自动重试
+      // 原因：Agent 生成的组件代码可能触发 Turbopack HMR 编译错误，
+      // 导致 Next.js dev server 短暂不可用，等待恢复后重试即可
+      const MAX_RETRIES = 2;
+      let result: TestResult;
+      let retryCount = 0;
+
+      for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+        // 每次尝试前检查服务器健康
+        if (attempt > 0 || !(await isServerUp())) {
+          if (attempt > 0) {
+            console.log(`     🔄 第 ${attempt + 1} 次重试...`);
+          }
+          const recovered = await waitForServerRecovery(30_000, 3_000);
+          if (!recovered) {
+            console.log(`     ❌ 服务器在 30s 内未恢复，跳过此用例`);
+            result = {
+              testCaseId: tc.id,
+              prompt: tc.prompt,
+              responseText: '',
+              toolCalls: [],
+              fileBlocks: [],
+              responseTimeMs: 0,
+              estimatedTokens: 0,
+              codeGenerated: '',
+              codeLineCount: 0,
+              toolCallCount: 0,
+              error: '服务器不可用（Turbopack HMR 编译错误可能导致 Next.js 崩溃）',
+            };
+            break;
+          }
+        }
+
+        result = await sendDeveloperMessage(tc.prompt, tc.timeoutMs, history);
+        result.testCaseId = tc.id;
+
+        // 如果是 HTTP 500 且还有重试次数，等待服务器恢复后重试
+        if (result.error?.startsWith('HTTP 500') && attempt < MAX_RETRIES) {
+          retryCount++;
+          console.log(`     ⚠️ HTTP 500（可能是 Turbopack 编译错误），等待恢复后重试...`);
+          continue;
+        }
+
+        // 其他情况（成功或非 500 错误），不再重试
+        break;
+      }
 
       if (result.error) {
         console.log(`     ❌ 失败: ${result.error}`);
@@ -795,6 +870,9 @@ async function main() {
         }
         if (result.fileBlocks.length > 0) {
           console.log(`     📝 标记块: ${result.fileBlocks.map(b => `${b.mode}:${b.filePath}`).join(', ')}`);
+        }
+        if (retryCount > 0) {
+          console.log(`     🔄 重试 ${retryCount} 次后成功`);
         }
       }
 

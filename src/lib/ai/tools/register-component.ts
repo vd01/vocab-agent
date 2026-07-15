@@ -24,7 +24,12 @@ export const registerComponentTool = tool({
   execute: async ({ name, code, codePath }) => {
     // Flush pending file blocks for codePath if provided
     if (codePath) {
-      await flushFileBlocks([codePath]);
+      try {
+        await flushFileBlocks([codePath]);
+      } catch (err) {
+        console.error('[register-component] flushFileBlocks failed:', err);
+        // Non-fatal: the file might already be on disk from a previous step
+      }
     }
 
     // Resolve code from either direct string or file path

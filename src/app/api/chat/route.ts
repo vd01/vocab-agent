@@ -240,51 +240,57 @@ export async function POST(req: Request) {
         }
       },
       prepareStep: async ({ messages }) => {
-        // Context compaction
-        const tokens = estimateMessagesTokens(messages);
-        if (tokens > COMPACTION_THRESHOLD) {
-          return {
-            messages: pruneMessages({
-              messages,
-              reasoning: 'all',
-              toolCalls: 'before-last-3-messages',
-              emptyMessages: 'remove',
-            }),
-          };
-        }
-
-        // Execute file blocks from assistant messages (only for developer agent)
-        if (agentType === 'developer') {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- AI SDK step messages type mismatch
-          const results = await parseAndExecuteFileBlocks(messages as any);
-          if (results.length > 0) {
-            const resultText = results.map(r =>
-              r.success
-                ? `✅ [file-${r.mode}] ${r.message}`
-                : `❌ [file-${r.mode}] ${r.message}`
-            ).join('\n');
+        try {
+          // Context compaction
+          const tokens = estimateMessagesTokens(messages);
+          if (tokens > COMPACTION_THRESHOLD) {
             return {
-              instructions: `${finalInstructions}\n\n[文件操作结果]\n${resultText}`,
+              messages: pruneMessages({
+                messages,
+                reasoning: 'all',
+                toolCalls: 'before-last-3-messages',
+                emptyMessages: 'remove',
+              }),
             };
           }
+
+          // Execute file blocks from assistant messages (only for developer agent)
+          if (agentType === 'developer') {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- AI SDK step messages type mismatch
+            const results = await parseAndExecuteFileBlocks(messages as any);
+            if (results.length > 0) {
+              const resultText = results.map(r =>
+                r.success
+                  ? `✅ [file-${r.mode}] ${r.message}`
+                  : `❌ [file-${r.mode}] ${r.message}`
+              ).join('\n');
+              return {
+                instructions: `${finalInstructions}\n\n[文件操作结果]\n${resultText}`,
+              };
+            }
+          }
+        } catch (err) {
+          // prepareStep errors must not crash the stream — log and continue
+          console.error('[Chat API] prepareStep error (recovered):', err);
         }
       },
       onStepFinish: async (stepResult) => {
-        stepCount++;
+        try {
+          stepCount++;
 
-        // Clear step text buffer (already parsed by tools via flushFileBlocks)
-        fileBlockStore.clearStepText();
+          // Clear step text buffer (already parsed by tools via flushFileBlocks)
+          fileBlockStore.clearStepText();
 
-        // Execute file blocks from step text (fallback for when prepareStep doesn't run)
-        if (agentType === 'developer' && stepResult.text) {
-          const blockCount = fileBlockStore.parseAndStore(stepResult.text);
-          if (blockCount > 0) {
-            console.log(`[Chat API] Parsed ${blockCount} file block(s) from step ${stepCount}`);
+          // Execute file blocks from step text (fallback for when prepareStep doesn't run)
+          if (agentType === 'developer' && stepResult.text) {
+            const blockCount = fileBlockStore.parseAndStore(stepResult.text);
+            if (blockCount > 0) {
+              console.log(`[Chat API] Parsed ${blockCount} file block(s) from step ${stepCount}`);
+            }
           }
-        }
 
-        // Capture debug info for this step (only when debug panel is enabled)
-        if (DEBUG_ENABLED) {
+          // Capture debug info for this step (only when debug panel is enabled)
+          if (DEBUG_ENABLED) {
           // Use request.messages from stepResult if available, otherwise fall back to snapshot
           const stepRequestMessages = (stepResult.request?.messages?.length)
             ? serializeMessagesForDebug(stepResult.request.messages)
@@ -335,6 +341,10 @@ export async function POST(req: Request) {
               console.error('[Chat API] Failed to store debug logs:', err);
             }
           }
+        }
+        } catch (err) {
+          // onStepFinish errors must not crash the stream — log and continue
+          console.error('[Chat API] onStepFinish error (recovered):', err);
         }
       },
     });
