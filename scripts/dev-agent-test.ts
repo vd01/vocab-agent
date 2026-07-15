@@ -298,6 +298,90 @@ function extractToolCallsFromEvents(events: any[]): ToolCallRecord[] {
   return Array.from(calls.values());
 }
 
+// ── 截断 JSON 修复 ───────────────────────────────────────────────────────
+
+/**
+ * 尝试修复被截断的 JSON 字符串。
+ * 常见场景：LLM 输出因 max_tokens 截断，导致 JSON 不完整。
+ * 策略：从后向前找到最后一个完整的值/数组/对象，然后补全缺失的括号。
+ */
+function tryRepairTruncatedJSON(jsonStr: string): any | null {
+  let s = jsonStr.trim();
+
+  // 策略 1: 找到最后一个完整的 key-value 对，截断后面的不完整部分
+  // 匹配模式: "key": value 后跟逗号或右括号
+  const lastCompleteKV = s.lastIndexOf('",');
+  const lastCompleteArray = s.lastIndexOf('",');
+
+  // 尝试在最后一个完整的逗号处截断
+  let cutIdx = -1;
+
+  // 找最后一个完整的字符串值（以 " 结尾，后跟 , 或 } 或 ]）
+  for (let i = s.length - 1; i >= 0; i--) {
+    if (s[i] === '"') {
+      // 检查后面是否是 , } ] 或字符串结尾
+      const after = s.slice(i + 1).trim();
+      if (after === '' || after.startsWith(',') || after.startsWith('}') || after.startsWith(']')) {
+        cutIdx = i + 1;
+        // 包含后面的逗号
+        if (after.startsWith(',')) cutIdx = i + 1 + after.indexOf(',') + 1;
+        break;
+      }
+    }
+  }
+
+  if (cutIdx > 0) {
+    s = s.slice(0, cutIdx).trimEnd();
+    // 移除末尾的逗号
+    if (s.endsWith(',')) s = s.slice(0, -1).trimEnd();
+  }
+
+  // 计算需要补全的括号
+  let openBraces = 0, openBrackets = 0;
+  let inString = false, escape = false;
+  for (const ch of s) {
+    if (escape) { escape = false; continue; }
+    if (ch === '\\') { escape = true; continue; }
+    if (ch === '"') { inString = !inString; continue; }
+    if (inString) continue;
+    if (ch === '{') openBraces++;
+    if (ch === '}') openBraces--;
+    if (ch === '[') openBrackets++;
+    if (ch === ']') openBrackets--;
+  }
+
+  // 补全缺失的括号
+  s += ']'.repeat(Math.max(0, openBrackets));
+  s += '}'.repeat(Math.max(0, openBraces));
+
+  try {
+    const parsed = JSON.parse(s);
+    // 验证至少有 score 字段
+    if (typeof parsed.score === 'number') {
+      return parsed;
+    }
+  } catch {
+    // 修复失败
+  }
+
+  // 策略 2: 用正则提取关键字段
+  const scoreMatch = s.match(/"score"\s*:\s*(\d+)/);
+  const complianceMatch = s.match(/"compliance"\s*:\s*(true|false)/);
+  const issuesMatch = s.match(/"issues"\s*:\s*\[([\s\S]*?)\]/);
+  const reasoningMatch = s.match(/"reasoning"\s*:\s*"([\s\S]*?)(?:"|$)/);
+
+  if (scoreMatch) {
+    return {
+      score: parseInt(scoreMatch[1], 10),
+      compliance: complianceMatch ? complianceMatch[1] === 'true' : (parseInt(scoreMatch[1], 10) >= 4),
+      issues: issuesMatch ? issuesMatch[1].split(',').map(s => s.trim().replace(/^"|"$/g, '')).filter(Boolean) : [],
+      reasoning: reasoningMatch ? reasoningMatch[1] : '(reasoning 被截断)',
+    };
+  }
+
+  return null;
+}
+
 // ── LLM 评判 ─────────────────────────────────────────────────────────────
 
 async function judgeResult(
@@ -346,18 +430,20 @@ async function judgeResult(
 
   const systemPrompt = `你是一个代码评审专家，负责评估 Developer Agent 的任务完成质量。
 
-你必须以 JSON 格式返回评估结果，包含以下字段：
+你必须以纯 JSON 格式返回评估结果（不要包含 markdown 代码块标记），包含以下字段：
 - score: 整数 1-5（1=完全错误, 2=重大问题, 3=部分正确, 4=小瑕疵, 5=完全正确）
 - compliance: 布尔值（核心预期行为是否达成）
 - issues: 字符串数组（具体问题，无问题则为空数组）
-- reasoning: 字符串（评分理由）
+- reasoning: 字符串（评分理由，控制在 200 字以内）
 
 评分标准：
 5: 完全满足预期行为 — 正确的工具调用、正确的方案、正确的输出格式
 4: 基本正确但有轻微偏差（如工具参数略有不同、多余步骤）
 3: 部分正确 — 方向对但有显著偏差（如调用了错误的工具变体、遗漏步骤）
 2: 重大问题 — 错误方案或缺失关键行为（如应拒绝但未拒绝、应用标记块但尝试调用工具）
-1: 完全失败 — 错误、错误的 Agent、或根本性不正确的响应`;
+1: 完全失败 — 错误、错误的 Agent、或根本性不正确的响应
+
+重要：直接输出 JSON 对象，不要用 \`\`\`json 包裹，不要添加任何额外文本。`;
 
   const userPrompt = `## 测试用例: ${testCase.id} — ${testCase.title}
 **分类:** ${testCase.category} | **复杂度:** ${testCase.complexity}
@@ -387,17 +473,14 @@ ${codeSummary}
 
 请评估 Agent 的输出是否符合预期行为。`;
 
-  try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 30_000);
+  const MAX_JUDGE_RETRIES = 2;
 
-    const res = await fetch(`${baseUrl}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
+  for (let attempt = 0; attempt <= MAX_JUDGE_RETRIES; attempt++) {
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 60_000);
+
+      const body: Record<string, any> = {
         model: judgeModel,
         messages: [
           { role: 'system', content: systemPrompt },
@@ -405,69 +488,112 @@ ${codeSummary}
         ],
         temperature: 0.1,
         max_tokens: 8092,
-        response_format: { type: 'json_object' },
-      }),
-      signal: controller.signal,
-    });
-
-    clearTimeout(timer);
-
-    if (!res.ok) {
-      const errText = await res.text().catch(() => '');
-      return {
-        testCaseId: testCase.id,
-        score: 0,
-        compliance: false,
-        issues: [`LLM 评判 API 错误: HTTP ${res.status}`],
-        reasoning: `API 调用失败: ${errText.slice(0, 300)}`,
-        error: 'api-error',
       };
-    }
 
-    const data = await res.json() as any;
-    const content = data.choices?.[0]?.message?.content || '';
-
-    // 解析 JSON 响应
-    let parsed: any;
-    try {
-      parsed = JSON.parse(content);
-    } catch {
-      // 尝试从文本中提取 JSON
-      const jsonMatch = content.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        try { parsed = JSON.parse(jsonMatch[0]); } catch { /* fall through */ }
+      // response_format 仅对支持 JSON mode 的 API 有效
+      // 讯飞 MaaS 等国产 API 可能不支持，先尝试带 response_format，
+      // 如果返回解析失败，下次不带 response_format 重试
+      if (attempt === 0) {
+        body.response_format = { type: 'json_object' };
       }
-    }
 
-    if (!parsed) {
+      const res = await fetch(`${baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
+
+      clearTimeout(timer);
+
+      if (!res.ok) {
+        const errText = await res.text().catch(() => '');
+        // API 错误不重试
+        return {
+          testCaseId: testCase.id,
+          score: 0,
+          compliance: false,
+          issues: [`LLM 评判 API 错误: HTTP ${res.status}`],
+          reasoning: `API 调用失败: ${errText.slice(0, 300)}`,
+          error: 'api-error',
+        };
+      }
+
+      const data = await res.json() as any;
+      const content = data.choices?.[0]?.message?.content || '';
+
+      // 解析 JSON 响应
+      let parsed: any;
+      // 先清理 markdown 代码块包裹
+      let cleanContent = content.trim();
+      if (cleanContent.startsWith('```')) {
+        cleanContent = cleanContent.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '');
+      }
+      try {
+        parsed = JSON.parse(cleanContent);
+      } catch {
+        // 尝试从文本中提取 JSON
+        const jsonMatch = cleanContent.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          try { parsed = JSON.parse(jsonMatch[0]); } catch {
+            // 尝试修复截断的 JSON
+            parsed = tryRepairTruncatedJSON(jsonMatch[0]);
+          }
+        }
+      }
+
+      if (!parsed) {
+        if (attempt < MAX_JUDGE_RETRIES) {
+          console.log(`     ⚠️ ${testCase.id} 评判 JSON 解析失败，第 ${attempt + 1} 次重试...`);
+          await sleep(1000);
+          continue;
+        }
+        return {
+          testCaseId: testCase.id,
+          score: 0,
+          compliance: false,
+          issues: ['LLM 评判返回非 JSON 格式'],
+          reasoning: content.slice(0, 500),
+          error: 'parse-error',
+        };
+      }
+
+      return {
+        testCaseId: testCase.id,
+        score: Math.max(1, Math.min(5, Math.round(parsed.score || 0))),
+        compliance: !!parsed.compliance,
+        issues: Array.isArray(parsed.issues) ? parsed.issues : [],
+        reasoning: parsed.reasoning || '',
+      };
+    } catch (err: any) {
+      const isTimeout = err.name === 'AbortError';
+      if (isTimeout && attempt < MAX_JUDGE_RETRIES) {
+        console.log(`     ⚠️ ${testCase.id} 评判超时，第 ${attempt + 1} 次重试...`);
+        continue;
+      }
       return {
         testCaseId: testCase.id,
         score: 0,
         compliance: false,
-        issues: ['LLM 评判返回非 JSON 格式'],
-        reasoning: content.slice(0, 500),
-        error: 'parse-error',
+        issues: [isTimeout ? 'LLM 评判超时' : `LLM 评判异常: ${String(err?.message || err).slice(0, 200)}`],
+        reasoning: isTimeout ? '评判请求超时 (60s)' : String(err?.message || err).slice(0, 300),
+        error: 'judge-error',
       };
     }
-
-    return {
-      testCaseId: testCase.id,
-      score: Math.max(1, Math.min(5, Math.round(parsed.score || 0))),
-      compliance: !!parsed.compliance,
-      issues: Array.isArray(parsed.issues) ? parsed.issues : [],
-      reasoning: parsed.reasoning || '',
-    };
-  } catch (err: any) {
-    const isTimeout = err.name === 'AbortError';
-    return {
-      testCaseId: testCase.id,
-      score: 0,
-      compliance: false,
-      issues: [isTimeout ? 'LLM 评判超时' : `LLM 评判异常: ${String(err?.message || err).slice(0, 200)}`],
-      reasoning: isTimeout ? '评判请求超时 (30s)' : String(err?.message || err).slice(0, 300),
-      error: 'judge-error',
-    };
   }
+
+  // 不应到达此处，但作为安全网
+  return {
+    testCaseId: testCase.id,
+    score: 0,
+    compliance: false,
+    issues: ['LLM 评判重试耗尽'],
+    reasoning: '多次重试后仍无法获得有效评判',
+    error: 'judge-exhausted',
+  };
 }
 
 // ── 清理 ─────────────────────────────────────────────────────────────────
@@ -490,10 +616,13 @@ async function runCleanup(): Promise<void> {
 
 async function isServerUp(): Promise<boolean> {
   try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 5000);
     const headers: Record<string, string> = {};
     if (authCookie) headers['Cookie'] = authCookie;
-    const res = await fetch(BASE_URL, { signal: AbortSignal.timeout(5000), headers });
-    return res.ok || res.status === 307; // 307 redirect is also OK (Next.js auth)
+    const res = await fetch(BASE_URL, { signal: controller.signal, headers });
+    clearTimeout(timer);
+    return res.ok || res.status === 307 || res.status === 302; // 307/302 redirect is also OK (Next.js auth)
   } catch {
     return false;
   }
@@ -817,7 +946,7 @@ async function main() {
       // 执行测试，支持 HTTP 500 自动重试
       // 原因：Agent 生成的组件代码可能触发 Turbopack HMR 编译错误，
       // 导致 Next.js dev server 短暂不可用，等待恢复后重试即可
-      const MAX_RETRIES = 2;
+      const MAX_RETRIES = 3;
       let result: TestResult;
       let retryCount = 0;
 
@@ -827,9 +956,9 @@ async function main() {
           if (attempt > 0) {
             console.log(`     🔄 第 ${attempt + 1} 次重试...`);
           }
-          const recovered = await waitForServerRecovery(30_000, 3_000);
+          const recovered = await waitForServerRecovery(60_000, 3_000);
           if (!recovered) {
-            console.log(`     ❌ 服务器在 30s 内未恢复，跳过此用例`);
+            console.log(`     ❌ 服务器在 60s 内未恢复，跳过此用例`);
             result = {
               testCaseId: tc.id,
               prompt: tc.prompt,
@@ -884,6 +1013,16 @@ async function main() {
         result,
         judge: { testCaseId: tc.id, score: 0, compliance: false, issues: [], reasoning: '' }, // 占位，后面评判时替换
       });
+
+      // 如果生成了代码（标记块），等待 Turbopack HMR 编译完成
+      // 避免下一个测试用例因编译错误导致服务器不可用
+      if (!result.error && result.fileBlocks.length > 0) {
+        const hasComponent = result.fileBlocks.some(b => b.filePath.includes('component'));
+        if (hasComponent) {
+          console.log('     ⏳ 等待 Turbopack HMR 编译组件代码...');
+          await waitForServerRecovery(30_000, 2_000);
+        }
+      }
 
       // 请求间短暂间隔，避免过快
       await sleep(1000);

@@ -103,6 +103,19 @@ export function buildDeveloperInstructions(lessons: string = '', worldState?: Wo
 - 组件必须导出为默认导出
 - 组件接收 props 作为数据输入
 - 使用 shadcn/ui 组件库（从 @/components/ui 导入）
+- **⚠️ 只能使用以下已有的 UI 组件，不要引用不存在的组件**：
+  - @/components/ui/card — Card, CardContent, CardHeader, CardTitle
+  - @/components/ui/badge — Badge
+  - @/components/ui/button — Button
+  - @/components/ui/dialog — Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger
+  - @/components/ui/input — Input
+  - @/components/ui/label — Label
+  - @/components/ui/progress — Progress
+  - @/components/ui/scroll-area — ScrollArea
+  - @/components/ui/separator — Separator
+  - @/components/ui/switch — Switch
+  - @/components/ui/tabs — Tabs, TabsContent, TabsList, TabsTrigger
+- 如果需要其他 UI 效果，用原生 HTML + Tailwind CSS 实现，不要 import 不存在的组件
 
 ## ⭐ 文件操作：标记块（重要！）
 
