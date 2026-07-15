@@ -358,6 +358,10 @@ function tryRepairTruncatedJSON(jsonStr: string): any | null {
     const parsed = JSON.parse(s);
     // 验证至少有 score 字段
     if (typeof parsed.score === 'number') {
+      // 修复 compliance 字段：截断的 JSON 可能产生空字符串等非布尔值
+      if (typeof parsed.compliance !== 'boolean') {
+        parsed.compliance = parsed.score >= 4;
+      }
       return parsed;
     }
   } catch {
@@ -564,7 +568,7 @@ ${codeSummary}
       return {
         testCaseId: testCase.id,
         score: Math.max(1, Math.min(5, Math.round(parsed.score || 0))),
-        compliance: !!parsed.compliance,
+        compliance: typeof parsed.compliance === 'boolean' ? parsed.compliance : (parsed.score >= 4),
         issues: Array.isArray(parsed.issues) ? parsed.issues : [],
         reasoning: parsed.reasoning || '',
       };

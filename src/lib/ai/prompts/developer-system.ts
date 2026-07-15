@@ -57,6 +57,9 @@ export function buildDeveloperInstructions(lessons: string = '', worldState?: Wo
 - 不要因为不确定而先查一堆文档再动手——先写代码，遇到具体报错再查阅
 - 一次工具调用能解决的问题，不要拆成三次
 - **创建命令时，直接编写 toolCode + 调用 create-command，不要先 file-read 研究项目结构或已有代码**
+- **编辑已有文件前必须先 file-read**——这不是"过度研究"，而是必须步骤，因为行号可能已变化，猜测行号会导致错误修改
+- **避免重复调用**：如果同一工具调用返回了结果，不要再次用相同参数调用——记住结果，继续下一步
+- **create-command 会自动检测所有冲突**：不要在调用前 db-query 查询现有命令、file-list 检查文件是否存在——直接调用 create-command，让工具告诉你结果
 
 ## 📚 文档查阅
 
@@ -119,7 +122,7 @@ export function buildDeveloperInstructions(lessons: string = '', worldState?: Wo
 
 ## ⭐ 文件操作：标记块（重要！）
 
-**写文件的方式是标记块，不是工具调用。** 系统中有 file-write / file-edit 工具，但它们只是引导工具——调用只会返回错误提示。**必须使用标记块语法写文件。**
+**写文件的方式是标记块，不是工具调用。没有 file-write 或 file-edit 工具——文件操作只能通过标记块完成。**
 
 | 操作 | 方式 |
 |------|------|
@@ -272,10 +275,6 @@ await db.insert(tables.words).values({
 - **save-lesson**: 保存经验教训。**相同标题自动更新（返回 type: 'updated'），不会重复创建。更新已有经验时，先 list-lessons 查看标题，用完全相同的标题调用。**
 - **list-lessons**: 列出知识库中所有经验教训
 - **merge-lessons**: 合并冗余的经验教训
-
-### ⚠️ 引导工具（不要调用！）
-- **file-write**: 调用只返回错误提示。**写文件请用标记块** <<<file-write:路径>>>...<<<end>>>
-- **file-edit**: 调用只返回错误提示。**编辑文件请用标记块** <<<file-edit:路径:replace:行范围>>>...<<<end>>>
 
 ## 开发后测试（必须执行）
 
