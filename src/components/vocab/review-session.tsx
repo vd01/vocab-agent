@@ -207,7 +207,7 @@ export function ReviewSession({ words, queueInfo }: ReviewSessionProps) {
     const reviewResults = results.length - newResults.length;
 
     return (
-      <div className="space-y-3">
+      <div className="space-y-3 overflow-x-hidden">
         <div className="text-sm font-medium text-foreground">
           复习完成！共 {results.length} 个单词
           {newResults.length > 0 && reviewResults > 0 && (
@@ -262,7 +262,7 @@ export function ReviewSession({ words, queueInfo }: ReviewSessionProps) {
   const currentIsNew = currentWord.isNew;
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-2 overflow-x-hidden">
       <div className="flex items-center justify-between text-xs text-muted-foreground h-4">
         <span className="flex items-center gap-2">
           <span>{currentIndex + 1} / {words.length}</span>
@@ -292,7 +292,7 @@ export function ReviewSession({ words, queueInfo }: ReviewSessionProps) {
           )}
         </span>
       </div>
-      <div className="relative mx-auto" style={{ width: '400px' }}>
+      <div className="relative w-full max-w-[400px] sm:mx-auto px-1" style={{ perspective: '600px' }}>
         <WordCard
           key={currentWord.wordId}
           wordId={currentWord.wordId}
@@ -307,7 +307,6 @@ export function ReviewSession({ words, queueInfo }: ReviewSessionProps) {
           }}
           pronounceRef={pronounceRef}
           fixedHeight="280px"
-          fixedWidth="400px"
         />
         <div className={`absolute top-2 right-2 z-10 transition-opacity duration-200 ${flipDone ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}>
           <PinButton ref={pinButtonRef} key={currentWord.wordId} wordId={currentWord.wordId} word={currentWord.word} initialPinned={currentWord.pinned} />
@@ -324,14 +323,14 @@ export function ReviewSession({ words, queueInfo }: ReviewSessionProps) {
         pendingRating={rating}
         disabled={!flipped}
       />
-      <div className="h-4">
+      <div className="sm:h-4">
         {!flipped && (
-          <p className="text-xs text-muted-foreground text-center">
+          <p className="text-xs text-muted-foreground text-center hidden sm:block">
             按空格键翻转卡片，P 朗读，翻转后按 A/S/D/F 评分
           </p>
         )}
         {flipped && rating === null && (
-          <p className="text-xs text-muted-foreground text-center">
+          <p className="text-xs text-muted-foreground text-center hidden sm:block">
             按 A/S/D/F 评分，T 置顶，P 朗读
           </p>
         )}

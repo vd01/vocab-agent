@@ -68,7 +68,7 @@ export function WordCard({ wordId, word, phonetic, audioUrl, definition, example
       tabIndex={0}
       className="cursor-pointer select-none focus:outline-none relative"
       onClick={handleFlip}
-      style={{ perspective: '600px', ...(fixedWidth ? { width: fixedWidth } : {}) }}
+      style={{ ...(fixedWidth ? { width: fixedWidth, maxWidth: '100%' } : {}) }}
     >
       {topRightSlot && (
         <div className="absolute top-2 right-2 z-10" onClick={(e) => e.stopPropagation()}>

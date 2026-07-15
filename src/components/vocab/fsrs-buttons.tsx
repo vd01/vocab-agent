@@ -18,20 +18,20 @@ const RATING_CONFIG = [
 
 export function FsrsButtons({ wordId, onRate, pendingRating, disabled = false }: FsrsButtonsProps) {
   return (
-    <div className="flex gap-2 mt-2">
+    <div className="grid grid-cols-4 gap-1.5 mt-2 min-w-0">
       {RATING_CONFIG.map(({ value, label, shortcut, color, disabledColor }) => (
         <Button
           key={value}
           size="sm"
           disabled={disabled}
-          className={`flex-1 ${disabled ? disabledColor + ' cursor-not-allowed' : color} ${!disabled && pendingRating === value ? 'ring-2 ring-offset-2 ring-primary' : ''}`}
+          className={`flex-1 min-w-0 text-xs sm:text-sm ${disabled ? disabledColor + ' cursor-not-allowed' : color} ${!disabled && pendingRating === value ? 'ring-2 ring-offset-2 ring-primary' : ''}`}
           onClick={(e) => {
             e.stopPropagation();
             if (!disabled) onRate(wordId, value);
           }}
         >
           <span>{label}</span>
-          <kbd className={`ml-1 text-xs ${disabled ? 'opacity-30' : 'opacity-70'}`}>({shortcut})</kbd>
+          <kbd className={`ml-0.5 text-[10px] hidden sm:inline ${disabled ? 'opacity-30' : 'opacity-70'}`}>({shortcut})</kbd>
         </Button>
       ))}
     </div>
