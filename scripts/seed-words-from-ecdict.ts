@@ -255,6 +255,63 @@ async function seedWords() {
 
   console.log(`\n✅ 完成！已添加 ${inserted} 个单词到词库\n`);
 
+  // ── 初始化 FSRS review 记录 ──────────────────────────────────────────
+  // Words without review records are invisible to the review system.
+  // Create initial review cards (rating=0, queued) for all new words.
+  const QUEUE_DUE_SEC = Math.floor(new Date('2099-12-31T23:59:59').getTime() / 1000);
+  const nowSec = Math.floor(Date.now() / 1000);
+
+  const orphans = await vocabClient.execute(`
+    SELECT w.id FROM words w
+    LEFT JOIN reviews r ON r.word_id = w.id
+    WHERE r.id IS NULL
+  `);
+
+  if (orphans.rows.length > 0) {
+    // Check daily new limit: if unlimited (0), release immediately; otherwise queue
+    const settingResult = await vocabClient.execute(
+      "SELECT value FROM user_settings WHERE key = 'review.dailyNewLimit'"
+    );
+    const dailyNewLimit = parseInt((settingResult.rows[0] as any)?.value || '10', 10);
+    const dueSec = dailyNewLimit > 0 ? QUEUE_DUE_SEC : nowSec;
+
+    let reviewInserted = 0;
+    await vocabClient.execute('BEGIN TRANSACTION');
+    try {
+      for (const row of orphans.rows) {
+        const wordId = row.id as string;
+        const id = crypto.randomUUID();
+        await vocabClient.execute({
+          sql: `INSERT INTO reviews (id, word_id, rating, state, due, stability, difficulty, elapsed_days, scheduled_days, reps, lapses, last_review, reviewed_at)
+                VALUES (?, ?, 0, 0, ?, 0, 0, 0, 0, 0, 0, ?, ?)`,
+          args: [id, wordId, dueSec, nowSec, nowSec],
+        });
+        reviewInserted++;
+      }
+      await vocabClient.execute('COMMIT');
+    } catch {
+      await vocabClient.execute('ROLLBACK');
+    }
+    console.log(`✅ Created ${reviewInserted} FSRS review records`);
+
+    // Release first batch if daily limit is set
+    if (dailyNewLimit > 0) {
+      const releaseResult = await vocabClient.execute({
+        sql: `UPDATE reviews SET due = ?
+              WHERE rowid IN (
+                SELECT r.rowid FROM reviews r
+                WHERE r.rating = 0 AND r.due >= ?
+                ORDER BY r.reviewed_at ASC
+                LIMIT ?
+              )`,
+        args: [nowSec, QUEUE_DUE_SEC - 86400, dailyNewLimit],
+      });
+      console.log(`✅ Released ${releaseResult.rowsAffected} words for today's review (dailyNewLimit=${dailyNewLimit})`);
+    }
+  } else {
+    console.log('✅ All words already have review records');
+  }
+
   // ── 验证统计 ──────────────────────────────────────────────────────────
 
   const finalResult = await vocabClient.execute('SELECT COUNT(*) as cnt FROM words');
