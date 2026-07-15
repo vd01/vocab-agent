@@ -103,7 +103,7 @@ export const TEST_CASES: TestCase[] = [
     category: '标记块文件操作',
     complexity: 'medium',
     prompt: '把 generated/tools/hello.js 里的消息改成 "Hello, World!"，另外加一行 console.log',
-    expectation: '必须先调用 file-read 读取文件，等待结果返回确认行号后，再输出 <<<file-edit:generated/tools/hello.js:replace:N-M>>> 标记块替换对应行。不允许在同一轮回复中同时调用 file-read 和输出标记块。',
+    expectation: '编辑已有文件时，必须调用 file-read 读取文件确认内容和行号，然后使用 <<<file-edit:generated/tools/hello.js:replace:N-M>>> 标记块替换对应行。行号应基于 file-read 返回的实际内容，而非猜测。',
     coveragePoint: 'file-read + <<<file-edit:replace>>> 标记块，编辑前先读取的规范',
     group: 'B',
     dependsOn: ['TC-07'],
