@@ -26,14 +26,7 @@ export const fileWriteGuidanceTool = tool({
     return {
       type: 'error',
       errorType: 'guidance',
-      message: `❌ file-write 不是工具调用！请使用标记块语法写文件。
-
-正确方式——直接在回复文本中输出以下标记块：
-
-${blockSyntax}
-
-标记块会自动写入文件，不需要调用任何工具。
-记住：写文件 = 标记块，不是工具调用。`,
+      message: `❌ 请用标记块写文件，不要调用此工具。正确方式：\n\n${blockSyntax}\n\n标记块会自动写入文件。`,
     };
   },
 });

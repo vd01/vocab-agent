@@ -17,7 +17,7 @@ export const registerComponentTool = tool({
 		1. code: 直接传入简短的组件代码字符串（适合几行以内的简单组件）
 		2. codePath: 传入组件代码文件路径（推荐！适合复杂组件代码，避免 JSON 转义问题）`,
   inputSchema: z.object({
-    name: z.string().describe('组件名称，如 "word-stats-panel"。必须与命令返回的 type 字段匹配才能自动渲染。'),
+    name: z.string().describe('命令名称（必须与已有命令名完全一致，不加 -panel/-card 等后缀）。如 /word-stats 命令对应 name="word-stats"，不是 "word-stats-panel"。'),
     code: z.string().optional().describe('简短的 React 组件代码（与 codePath 二选一）。必须包含默认导出，使用 Tailwind CSS 样式。'),
     codePath: z.string().optional().describe('组件代码文件路径（与 code 二选一，推荐用于复杂组件）。如 "generated/components/word-match-panel.tsx"'),
   }),

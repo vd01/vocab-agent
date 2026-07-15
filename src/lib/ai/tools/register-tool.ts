@@ -27,7 +27,9 @@ export const registerToolTool = tool({
     // Block names that conflict with built-in commands
     const builtinNames = ['review', 'add', 'stats', 'dev', 'rate'];
     if (builtinNames.includes(name)) {
-      return { type: 'error', name, message: `命令 /${name} 与内置命令冲突，请换一个名称` };
+      const prefixes = ['my', 'learn', 'study', 'custom'];
+      const suggestions = prefixes.map(p => `${p}-${name}`).filter(s => !builtinNames.includes(s));
+      return { type: 'error', name, message: `命令 /${name} 与内置命令冲突，请换一个名称`, suggestions };
     }
 
     // Resolve toolCode from either direct string or file path

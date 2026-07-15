@@ -9,6 +9,7 @@ import path from 'path';
 
 /**
  * Parse an Error object into a structured format with line/column info.
+ * Adds Chinese hints for common SQLite errors to help the LLM self-repair.
  */
 function parseErrorDetail(err: unknown): {
   errorType: string;
@@ -16,6 +17,7 @@ function parseErrorDetail(err: unknown): {
   line?: number;
   column?: number;
   stack?: string;
+  hint?: string;
 } {
   if (!(err instanceof Error)) {
     return { errorType: 'unknown', errorMessage: String(err) };
@@ -40,12 +42,30 @@ function parseErrorDetail(err: unknown): {
     }
   }
 
+  // Add Chinese hints for common SQLite errors
+  let hint: string | undefined;
+  const msgLower = msg.toLowerCase();
+  if (msgLower.includes('unique constraint')) {
+    hint = '数据已存在（UNIQUE 约束冲突），可能是重复插入。检查是否已存在相同数据，或先删除再插入。';
+  } else if (msgLower.includes('not null constraint')) {
+    hint = '必填字段缺失（NOT NULL 约束）。检查 id 等必填字段是否都已提供。插入单词时 id 必须用 uuidv4() 生成。';
+  } else if (msgLower.includes('no column named') || msgLower.includes('table has no column')) {
+    hint = '字段名不存在。检查 tables 中的字段名是否正确（如 tables.words.word, tables.words.source）。';
+  } else if (msgLower.includes('failed query') || msgLower.includes('insert into')) {
+    hint = 'SQL 插入/查询失败。检查：1) id 字段是否用 uuidv4() 生成 2) definition/examples 是否用 JSON.stringify() 3) 字段名是否正确。';
+  } else if (msgLower.includes('syntaxerror') || msgLower.includes('unexpected token')) {
+    hint = 'JavaScript 语法错误。检查 toolCode 中的括号、引号、分号是否匹配。';
+  } else if (msgLower.includes('referenceerror')) {
+    hint = '引用了未定义的变量。检查是否使用了沙盒未注入的变量（沙盒注入: db, client, tables, dql, fsrs, args, console）。';
+  }
+
   return {
     errorType: name,
     errorMessage: msg,
     ...(line != null && { line }),
     ...(column != null && { column }),
     stack: err.stack,
+    ...(hint && { hint }),
   };
 }
 

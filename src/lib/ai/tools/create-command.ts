@@ -48,7 +48,14 @@ export const createCommandTool = tool({
     // 1. Block built-in command names
     const builtinNames = ['review', 'add', 'stats', 'dev', 'rate'];
     if (builtinNames.includes(name)) {
-      return { type: 'error', message: `命令 /${name} 与内置命令冲突，请换一个名称` };
+      // Suggest alternative names to help Agent avoid timeout loops
+      const prefixes = ['my', 'learn', 'study', 'custom'];
+      const suggestions = prefixes.map(p => `${p}-${name}`).filter(s => !builtinNames.includes(s));
+      return {
+        type: 'error',
+        message: `命令 /${name} 与内置命令冲突，请换一个名称`,
+        suggestions,
+      };
     }
 
     // 2. Flush any pending file blocks for the paths we need to read.

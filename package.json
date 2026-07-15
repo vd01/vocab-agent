@@ -16,6 +16,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "vitest run --config vitest.e2e.config.ts",
+    "test:dev-agent": "npx tsx scripts/dev-agent-test.ts",
     "electron:compile": "tsc -p electron/tsconfig.json",
     "electron:dev": "npm run electron:compile && cross-env ELECTRON_DEV=1 electron dist-electron/main.js",
     "electron:preview": "npm run build && npm run electron:compile && cross-env ELECTRON_PREVIEW=1 electron dist-electron/main.js",

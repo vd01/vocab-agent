@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { db, client } from '@/lib/db';
 import { words, reviews } from '@/lib/db/schema';
 import { eq, sql, and, desc } from 'drizzle-orm';
+import { getDueWords, getProficiencyDistribution } from '@/lib/fsrs/scheduler';
 
 // Tables that are forbidden in custom SQL queries (security/sensitivity)
 const FORBIDDEN_TABLES = ['sqlite_master', 'sqlite_sequence', 'dynamic_commands', 'developer_lessons'];
@@ -45,7 +46,23 @@ export const dbQueryTool = tool({
       switch (queryType) {
         case 'word-count': {
           const result = await db.select({ count: sql<number>`count(*)` }).from(words);
-          return { type: 'word-count', count: result[0].count };
+          // Also fetch due count and proficiency distribution to avoid Agent
+          // fabricating data from worldState in the system prompt
+          let dueCount = 0;
+          let proficiency: Record<string, number> | null = null;
+          try {
+            const dueWords = await getDueWords(99999);
+            dueCount = dueWords.length;
+          } catch { /* fsrs may fail if no reviews exist */ }
+          try {
+            proficiency = await getProficiencyDistribution();
+          } catch { /* fsrs may fail if no reviews exist */ }
+          return {
+            type: 'word-count',
+            count: result[0].count,
+            dueCount,
+            ...(proficiency && { proficiency }),
+          };
         }
 
         case 'review-history': {
