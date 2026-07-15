@@ -5,6 +5,7 @@ import { type UIMessage } from 'ai';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { WordCard } from '@/components/vocab/word-card';
+import { PronounceButton } from '@/components/vocab/pronounce-button';
 import { ReviewSession } from '@/components/vocab/review-session';
 import { DynamicRenderer } from '@/components/generative/dynamic-renderer';
 import { componentRegistry } from '@/components/generative/component-registry';
@@ -360,7 +361,7 @@ function UserTextBubble({ text }: { text: string }) {
 
 // ── Batch added words (collapsed) ──────────────────────────────────────────
 
-function BatchAddedWords({ items }: { items: Array<{ word: string; phonetic: string | null; definition: string | null; wordId: string; examples: any; tag: string | null; collins: number | null; message: string }> }) {
+function BatchAddedWords({ items }: { items: Array<{ word: string; phonetic: string | null; audioUrl: string | null; definition: string | null; wordId: string; examples: any; tag: string | null; collins: number | null; message: string }> }) {
   const [expanded, setExpanded] = useState(false);
 
   return (
@@ -411,6 +412,7 @@ function BatchAddedWords({ items }: { items: Array<{ word: string; phonetic: str
                 <div className="flex items-baseline gap-1.5 flex-wrap">
                   <span className="font-semibold text-sm">{item.word}</span>
                   {item.phonetic && <span className="text-muted-foreground">{item.phonetic}</span>}
+                  <PronounceButton word={item.word} audioUrl={item.audioUrl} />
                   {item.collins && (
                     <span className="text-amber-500 text-[10px]">{'★'.repeat(item.collins)}</span>
                   )}
@@ -481,6 +483,7 @@ function renderToolOutput(key: number, toolName: string, output: any, isLastRevi
           wordId={output.wordId}
           word={output.word}
           phonetic={output.phonetic}
+          audioUrl={output.audioUrl}
           definition={output.definition}
           examples={output.examples ? (typeof output.examples === 'string' ? output.examples : JSON.stringify(output.examples)) : null}
           topRightSlot={<PinButton wordId={output.wordId} word={output.word} />}
@@ -504,6 +507,7 @@ function renderToolOutput(key: number, toolName: string, output: any, isLastRevi
           wordId={output.wordId}
           word={output.word}
           phonetic={output.phonetic}
+          audioUrl={output.audioUrl}
           definition={output.definition}
           examples={output.examples}
           topRightSlot={<PinButton wordId={output.wordId} word={output.word} />}
@@ -527,6 +531,7 @@ function renderToolOutput(key: number, toolName: string, output: any, isLastRevi
         <div className="flex items-baseline gap-2">
           <span className="text-base font-bold">{output.word}</span>
           {output.phonetic && <span className="text-xs text-muted-foreground">{output.phonetic}</span>}
+          <PronounceButton word={output.word} audioUrl={output.audioUrl} size="md" />
           {output.collins && (
             <span className="text-xs text-amber-500">{'★'.repeat(output.collins)}</span>
           )}
@@ -630,6 +635,7 @@ function renderToolOutput(key: number, toolName: string, output: any, isLastRevi
             wordId={output.wordId}
             word={output.word}
             phonetic={output.phonetic || null}
+            audioUrl={output.audioUrl ?? null}
             definition={output.definition}
             examples={null}
             topRightSlot={<PinButton wordId={output.wordId} word={output.word} />}
@@ -898,7 +904,7 @@ type MergedPart =
   | { type: 'text'; text: string }
   | { type: 'reasoning'; text: string }
   | { type: 'tool'; toolCallId: string; toolName: string; state: string; input: any; output: any; errorText?: string }
-  | { type: 'batch-added'; items: Array<{ word: string; phonetic: string | null; definition: string | null; wordId: string; examples: any; tag: string | null; collins: number | null; message: string }> };
+  | { type: 'batch-added'; items: Array<{ word: string; phonetic: string | null; audioUrl: string | null; definition: string | null; wordId: string; examples: any; tag: string | null; collins: number | null; message: string }> };
 
 function mergeReasoningParts(parts: any[]): MergedPart[] {
   const result: MergedPart[] = [];
@@ -935,7 +941,7 @@ function mergeReasoningParts(parts: any[]): MergedPart[] {
 
   // Merge consecutive 'added' tool outputs into a single 'batch-added' group
   const merged: MergedPart[] = [];
-  let batch: Array<{ word: string; phonetic: string | null; definition: string | null; wordId: string; examples: any; tag: string | null; collins: number | null; message: string }> = [];
+  let batch: Array<{ word: string; phonetic: string | null; audioUrl: string | null; definition: string | null; wordId: string; examples: any; tag: string | null; collins: number | null; message: string }> = [];
 
   const flushBatch = () => {
     if (batch.length === 0) return;
@@ -953,6 +959,7 @@ function mergeReasoningParts(parts: any[]): MergedPart[] {
           wordId: item.wordId,
           word: item.word,
           phonetic: item.phonetic,
+          audioUrl: item.audioUrl,
           definition: item.definition,
           examples: item.examples,
           tag: item.tag,
@@ -971,6 +978,7 @@ function mergeReasoningParts(parts: any[]): MergedPart[] {
       batch.push({
         word: part.output.word,
         phonetic: part.output.phonetic ?? null,
+        audioUrl: part.output.audioUrl ?? null,
         definition: part.output.definition ?? null,
         wordId: part.output.wordId,
         examples: part.output.examples,

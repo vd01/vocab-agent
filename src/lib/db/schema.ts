@@ -5,6 +5,7 @@ export const words = sqliteTable('words', {
   id: text('id').primaryKey(),
   word: text('word').notNull().unique(),
   phonetic: text('phonetic'),
+  audioUrl: text('audio_url'),                 // 真人发音 MP3 URL（来自 Free Dictionary API）
   definition: text('definition').notNull(), // JSON string, supports multiple meanings
   examples: text('examples'),               // JSON array of example sentences
   source: text('source'),                   // "manual" | "reading" | "ecdict"
@@ -75,6 +76,7 @@ export const pinnedWords = sqliteTable('pinned_words', {
   wordId: text('word_id').notNull().references(() => words.id),
   word: text('word').notNull(),
   phonetic: text('phonetic'),
+  audioUrl: text('audio_url'),                 // 真人发音 MP3 URL（denormalized from words）
   definition: text('definition'),
   position: integer('position').notNull(),       // 排序位置，越小越靠前
   side: text('side').notNull(),                   // "left" | "right" — 放在哪一侧

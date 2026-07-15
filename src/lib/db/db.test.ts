@@ -31,6 +31,7 @@ beforeAll(async () => {
       id TEXT PRIMARY KEY,
       word TEXT NOT NULL UNIQUE,
       phonetic TEXT,
+      audio_url TEXT,
       definition TEXT NOT NULL,
       examples TEXT,
       source TEXT,
@@ -148,6 +149,38 @@ describe('Words CRUD', () => {
   it('should count total words', async () => {
     const result = await client.execute('SELECT COUNT(*) as cnt FROM words');
     expect(Number(result.rows[0].cnt)).toBeGreaterThanOrEqual(1);
+  });
+
+  it('should persist and read back audio_url', async () => {
+    const id = uuid();
+    const now = Date.now();
+    const audioUrl = 'https://api.dictionaryapi.dev/media/pronunciations/en/test-us.mp3';
+    await client.execute({
+      sql: 'INSERT INTO words (id, word, phonetic, audio_url, definition, examples, source, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      args: [id, 'audio_test_word', null, audioUrl, '测试', null, 'manual', now],
+    });
+
+    const result = await client.execute({
+      sql: 'SELECT audio_url FROM words WHERE id = ?',
+      args: [id],
+    });
+    expect(result.rows.length).toBe(1);
+    expect(result.rows[0].audio_url).toBe(audioUrl);
+  });
+
+  it('should allow null audio_url', async () => {
+    const id = uuid();
+    const now = Date.now();
+    await client.execute({
+      sql: 'INSERT INTO words (id, word, phonetic, audio_url, definition, examples, source, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      args: [id, 'null_audio_word', null, null, '测试', null, 'manual', now],
+    });
+
+    const result = await client.execute({
+      sql: 'SELECT audio_url FROM words WHERE id = ?',
+      args: [id],
+    });
+    expect(result.rows[0].audio_url).toBeNull();
   });
 });
 

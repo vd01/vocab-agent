@@ -128,6 +128,7 @@ export async function POST(req: Request) {
       wordId,
       word: w.word,
       phonetic: w.phonetic,
+      audioUrl: w.audioUrl,
       definition: w.definition,
       position: maxPos + 1,
       side,

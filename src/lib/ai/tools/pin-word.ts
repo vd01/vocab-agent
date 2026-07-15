@@ -33,6 +33,7 @@ export const pinWordTool = tool({
       } else {
         const autoData = await lookupWord(normalized);
         let finalPhonetic: string | null = null;
+        let finalAudioUrl: string | null = null;
         let finalDefinition = '(暂无释义)';
         let finalExamples: string[] | null = null;
         let finalTag: string | null = null;
@@ -43,6 +44,7 @@ export const pinWordTool = tool({
 
         if (autoData) {
           if (autoData.phonetic) finalPhonetic = autoData.phonetic;
+          if (autoData.audioUrl) finalAudioUrl = autoData.audioUrl;
           if (autoData.translation) finalDefinition = autoData.translation;
           if (autoData.definitions) {
             const exs: string[] = [];
@@ -65,6 +67,7 @@ export const pinWordTool = tool({
           id: newId,
           word: normalized,
           phonetic: finalPhonetic,
+          audioUrl: finalAudioUrl,
           definition: finalDefinition,
           examples: finalExamples ? JSON.stringify(finalExamples) : null,
           source: autoData ? 'ecdict' : 'manual',
@@ -128,6 +131,7 @@ export const pinWordTool = tool({
           wordId: w.id,
           word: w.word,
           phonetic: w.phonetic,
+          audioUrl: w.audioUrl,
           definition: w.definition,
           side,
           message: `已将 "${w.word}" 从归档恢复并置顶到${side === 'left' ? '左' : '右'}侧栏`,
@@ -177,6 +181,7 @@ async function pinToSide(w: typeof words.$inferSelect, side: 'left' | 'right', s
     wordId: w.id,
     word: w.word,
     phonetic: w.phonetic,
+    audioUrl: w.audioUrl,
     definition: w.definition,
     position: maxPos + 1,
     side,
@@ -190,6 +195,7 @@ async function pinToSide(w: typeof words.$inferSelect, side: 'left' | 'right', s
     wordId: w.id,
     word: w.word,
     phonetic: w.phonetic,
+    audioUrl: w.audioUrl,
     definition: w.definition,
     side,
     message: autoAdded

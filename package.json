@@ -13,6 +13,7 @@
     "clean:dynamic": "npx tsx scripts/clean-dynamic.ts",
     "clean:messages": "npx tsx scripts/clean-messages.ts",
     "import-ecdict": "npx tsx src/lib/dictionary/import-ecdict.ts",
+    "backfill-audio": "npx tsx src/lib/dictionary/backfill-audio.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "vitest run --config vitest.e2e.config.ts",

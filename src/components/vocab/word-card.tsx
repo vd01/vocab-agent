@@ -1,13 +1,15 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, type Ref } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { PronounceButton, type PronounceButtonHandle } from '@/components/vocab/pronounce-button';
 
 interface WordCardProps {
   wordId: string;
   word: string;
   phonetic: string | null;
+  audioUrl?: string | null;
   definition: string;
   examples: string | null;
   flipped?: boolean;
@@ -15,9 +17,11 @@ interface WordCardProps {
   fixedHeight?: string;
   fixedWidth?: string;
   topRightSlot?: React.ReactNode;
+  /** Optional ref to the front-face pronunciation button (e.g. for keyboard hotkey). */
+  pronounceRef?: Ref<PronounceButtonHandle>;
 }
 
-export function WordCard({ wordId, word, phonetic, definition, examples, flipped: controlledFlipped, onFlip, fixedHeight, fixedWidth, topRightSlot }: WordCardProps) {
+export function WordCard({ wordId, word, phonetic, audioUrl, definition, examples, flipped: controlledFlipped, onFlip, fixedHeight, fixedWidth, topRightSlot, pronounceRef }: WordCardProps) {
   const [internalFlipped, setInternalFlipped] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
 
@@ -92,7 +96,15 @@ export function WordCard({ wordId, word, phonetic, definition, examples, flipped
             <div className="text-center py-4">
               <h3 className="text-2xl font-bold text-foreground">{word}</h3>
               {phonetic && (
-                <p className="text-sm text-muted-foreground mt-1">{phonetic}</p>
+                <div className="flex items-center justify-center gap-1 mt-1">
+                  <p className="text-sm text-muted-foreground">{phonetic}</p>
+                  <PronounceButton ref={pronounceRef} word={word} audioUrl={audioUrl} />
+                </div>
+              )}
+              {!phonetic && (
+                <div className="flex items-center justify-center mt-1">
+                  <PronounceButton ref={pronounceRef} word={word} audioUrl={audioUrl} />
+                </div>
               )}
               <p className="text-xs text-muted-foreground mt-4">
                 点击或按空格键翻转查看释义
@@ -117,6 +129,7 @@ export function WordCard({ wordId, word, phonetic, definition, examples, flipped
                 {phonetic && (
                   <Badge variant="secondary" className="text-xs">{phonetic}</Badge>
                 )}
+                <PronounceButton word={word} audioUrl={audioUrl} />
               </div>
               <div className="text-sm text-foreground leading-relaxed whitespace-pre-wrap break-words">
                 {parsedDefinition}

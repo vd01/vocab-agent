@@ -4,11 +4,13 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { WordCard } from '@/components/vocab/word-card';
 import { FsrsButtons } from '@/components/vocab/fsrs-buttons';
 import { PinButton, PinButtonRef } from '@/components/pinned/pin-button';
+import type { PronounceButtonHandle } from '@/components/vocab/pronounce-button';
 
 interface ReviewWord {
   wordId: string;
   word: string;
   phonetic: string | null;
+  audioUrl: string | null;
   definition: string;
   examples: string | null;
   pinned: boolean;
@@ -44,6 +46,7 @@ export function ReviewSession({ words }: ReviewSessionProps) {
   const [flipped, setFlipped] = useState(false);
   const [flipDone, setFlipDone] = useState(false);
   const pinButtonRef = useRef<PinButtonRef>(null);
+  const pronounceRef = useRef<PronounceButtonHandle>(null);
 
   // Each instance gets a unique id; only the latest one handles keys
   // Use mountedRef to ensure ++activeSessionId runs exactly once per instance
@@ -167,6 +170,12 @@ export function ReviewSession({ words }: ReviewSessionProps) {
           pinButtonRef.current?.toggle();
         }
       }
+
+      // P → pronounce current word (works in both flip states)
+      if (e.key.toLowerCase() === 'p') {
+        e.preventDefault();
+        pronounceRef.current?.play();
+      }
     }
 
     window.addEventListener('keydown', handleKeyDown);
@@ -226,12 +235,14 @@ export function ReviewSession({ words }: ReviewSessionProps) {
           wordId={currentWord.wordId}
           word={currentWord.word}
           phonetic={currentWord.phonetic}
+          audioUrl={currentWord.audioUrl}
           definition={currentWord.definition}
           examples={currentWord.examples}
           flipped={flipped}
           onFlip={() => {
             if (rating === null) setFlipped(f => !f);
           }}
+          pronounceRef={pronounceRef}
           fixedHeight="280px"
           fixedWidth="400px"
         />
@@ -253,12 +264,12 @@ export function ReviewSession({ words }: ReviewSessionProps) {
       <div className="h-4">
         {!flipped && (
           <p className="text-xs text-muted-foreground text-center">
-            按空格键翻转卡片，翻转后按 A/S/D/F 评分
+            按空格键翻转卡片，P 朗读，翻转后按 A/S/D/F 评分
           </p>
         )}
         {flipped && rating === null && (
           <p className="text-xs text-muted-foreground text-center">
-            按 A/S/D/F 评分，T 置顶
+            按 A/S/D/F 评分，T 置顶，P 朗读
           </p>
         )}
       </div>

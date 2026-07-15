@@ -41,6 +41,7 @@ export const addWordTool = tool({
 
     // Merge: manual input takes priority, auto-fill fills gaps
     let finalPhonetic = phonetic ?? null;
+    let finalAudioUrl: string | null = null;
     let finalDefinition = definition ?? null;
     let finalExamples = examples ?? null;
     let finalTag: string | null = null;
@@ -53,6 +54,9 @@ export const addWordTool = tool({
       if (!finalPhonetic && autoData.phonetic) {
         finalPhonetic = autoData.phonetic;
         autoFilled = true;
+      }
+      if (autoData.audioUrl) {
+        finalAudioUrl = autoData.audioUrl;
       }
       if (!finalDefinition && autoData.translation) {
         // Use Chinese translation from ECDICT
@@ -96,6 +100,7 @@ export const addWordTool = tool({
       id: wordId,
       word: normalized,
       phonetic: finalPhonetic,
+      audioUrl: finalAudioUrl,
       definition: finalDefinition,
       examples: finalExamples ? JSON.stringify(finalExamples) : null,
       source: source ?? (autoFilled ? 'ecdict' : 'manual'),
@@ -116,6 +121,7 @@ export const addWordTool = tool({
       wordId,
       word: wordText,
       phonetic: finalPhonetic,
+      audioUrl: finalAudioUrl,
       definition: finalDefinition,
       examples: finalExamples,
       tag: finalTag,

@@ -27,6 +27,7 @@ export const vocabLookupTool = tool({
         wordId: w.id,
         word: w.word,
         phonetic: w.phonetic,
+        audioUrl: w.audioUrl,
         definition: w.definition,
         examples: w.examples,
         source: w.source,

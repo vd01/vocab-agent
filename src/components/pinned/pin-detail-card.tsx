@@ -5,6 +5,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { PronounceButton } from '@/components/vocab/pronounce-button';
 import {
   Dialog,
   DialogContent,
@@ -31,6 +32,7 @@ interface PinDetailCardProps {
     id: string;
     word: string;
     phonetic: string | null;
+    audioUrl: string | null;
     definition: string | null;
     createdAt: string;
     archivedAt: string | null;
@@ -114,6 +116,7 @@ export function PinDetailCard({ pin, onUnpin, onArchive, onUnarchive, isArchived
                       {pin.phonetic}
                     </Badge>
                   )}
+                  <PronounceButton word={pin.word} audioUrl={pin.audioUrl} />
                 </div>
                 {parsedDefinition && (
                   <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2 leading-relaxed">
@@ -187,6 +190,7 @@ export function PinDetailCard({ pin, onUnpin, onArchive, onUnarchive, isArchived
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <span>{pin.word}</span>
+              <PronounceButton word={pin.word} audioUrl={pin.audioUrl} size="md" />
               {pin.phonetic && (
                 <Badge variant="secondary" className="text-xs font-normal">
                   {pin.phonetic}

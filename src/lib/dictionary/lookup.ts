@@ -62,6 +62,19 @@ function cacheSet(word: string, entry: DictEntry): void {
 
 // ── Merge logic ──────────────────────────────────────────────────────────
 
+/**
+ * Pick the preferred pronunciation audio URL from a list of MP3 URLs.
+ * Preference order: US variant -> UK variant -> any other.
+ * Free Dictionary API URLs look like:
+ *   .../en/<word>-us.mp3, .../en/<word>-uk.mp3, .../en/<word>-au.mp3
+ */
+function pickPreferredAudio(audios: string[]): string | null {
+  if (audios.length === 0) return null;
+  return audios.find(a => a.includes('-us'))
+    ?? audios.find(a => a.includes('-uk'))
+    ?? audios[0];
+}
+
 function mergeEntries(word: string, ecdict: EcdictEntry | null, api: FreeDictEntry | null): DictEntry | null {
   // Both null = not found
   if (!ecdict && !api) return null;
@@ -79,8 +92,10 @@ function mergeEntries(word: string, ecdict: EcdictEntry | null, api: FreeDictEnt
     phonetic = ecdict.phonetic;
   }
 
-  // Audio URL from API
-  const audioUrl = api?.phonetics?.find(p => p.audio)?.audio ?? null;
+  // Audio URL from API - prefer US pronunciation, then UK, then any available
+  const audioUrl = api?.phonetics?.find(p => p.audio)?.audio
+    ? pickPreferredAudio(api.phonetics.map(p => p.audio).filter((a): a is string => !!a))
+    : null;
 
   // English definitions from API (with examples)
   const definitions: DefGroup[] = [];

@@ -43,6 +43,17 @@ async function migrate() {
     );
   `);
 
+  // Add audio_url column to existing words table (真人发音 MP3 URL)
+  try {
+    const cols = await client.execute(`PRAGMA table_info(words)`);
+    const hasAudioUrl = cols.rows.some((r: any) => r.name === 'audio_url');
+    if (!hasAudioUrl) {
+      await client.execute(`ALTER TABLE words ADD COLUMN audio_url TEXT`);
+    }
+  } catch {
+    // Table might not exist yet, that's fine
+  }
+
   await client.execute(`
     CREATE TABLE IF NOT EXISTS reviews (
       id TEXT PRIMARY KEY,
@@ -166,6 +177,11 @@ async function migrate() {
     const hasArchivedAt = cols.rows.some((r: any) => r.name === 'archived_at');
     if (!hasArchivedAt) {
       await client.execute(`ALTER TABLE pinned_words ADD COLUMN archived_at INTEGER`);
+    }
+    // Add audio_url column to existing pinned_words table (denormalized from words)
+    const hasAudioUrl = cols.rows.some((r: any) => r.name === 'audio_url');
+    if (!hasAudioUrl) {
+      await client.execute(`ALTER TABLE pinned_words ADD COLUMN audio_url TEXT`);
     }
   } catch {
     // Table might not exist yet, that's fine

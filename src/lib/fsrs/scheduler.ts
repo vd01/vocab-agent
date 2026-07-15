@@ -38,6 +38,7 @@ export interface DueWord {
   wordId: string;
   word: string;
   phonetic: string | null;
+  audioUrl: string | null;
   definition: string;
   examples: string | null;
   pinned: boolean;
@@ -71,6 +72,7 @@ export async function getDueWords(limit = 20): Promise<DueWord[]> {
         r.id, r.word_id, r.state, r.due, r.stability, r.difficulty,
         r.elapsed_days, r.scheduled_days, r.reps, r.lapses,
         w.id as w_id, w.word as w_word, w.phonetic as w_phonetic,
+        w.audio_url as w_audio_url,
         w.definition as w_definition, w.examples as w_examples,
         CASE WHEN pw.id IS NOT NULL THEN 1 ELSE 0 END as w_pinned
       FROM reviews r
@@ -94,6 +96,7 @@ export async function getDueWords(limit = 20): Promise<DueWord[]> {
     wordId: row.w_id as string,
     word: row.w_word as string,
     phonetic: row.w_phonetic as string | null,
+    audioUrl: (row.w_audio_url as string | null) ?? null,
     definition: row.w_definition as string,
     examples: row.w_examples as string | null,
     pinned: Number(row.w_pinned) === 1,

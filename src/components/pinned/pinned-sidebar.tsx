@@ -11,6 +11,7 @@ interface Pin {
   wordId: string;
   word: string;
   phonetic: string | null;
+  audioUrl: string | null;
   definition: string | null;
   position: number;
   side: 'left' | 'right';
