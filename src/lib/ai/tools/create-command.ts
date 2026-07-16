@@ -6,7 +6,7 @@ import { db } from '@/lib/db';
 import { dynamicCommands } from '@/lib/db/schema';
 import { v4 as uuid } from 'uuid';
 import { eq } from 'drizzle-orm';
-import { flushFileBlocks } from './file-block-flush';
+// file-block-flush removed — pi SDK writes files directly
 
 const GENERATED_SRC_DIR = path.join(process.cwd(), 'src', 'components', 'generated');
 
@@ -58,15 +58,8 @@ export const createCommandTool = tool({
       };
     }
 
-    // 2. Flush any pending file blocks for the paths we need to read.
-    //    标记块写入延迟到 prepareStep 才执行，但工具在同一 step 内调用，
-    //    所以需要先 flush 确保文件已落盘。
-    try {
-      await flushFileBlocks([toolCodePath, componentCodePath].filter(Boolean) as string[]);
-    } catch (err) {
-      console.error('[create-command] flushFileBlocks failed:', err);
-      // Non-fatal: the file might already be on disk from a previous step
-    }
+	// 2. In pi SDK mode, files are written directly by pi built-in write tool.
+	//    No need to flush file blocks — the file is already on disk.
 
     // 3. Read toolCode from file
     const toolCodeFullPath = path.join(process.cwd(), toolCodePath);

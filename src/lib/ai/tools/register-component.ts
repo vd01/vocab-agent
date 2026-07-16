@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { promises as fs } from 'fs';
 import path from 'path';
 import { updateRegistryFile, GENERATED_SRC_DIR } from './registry-utils';
-import { flushFileBlocks } from './file-block-flush';
+// file-block-flush removed — pi SDK writes files directly
 import { db } from '@/lib/db';
 import { dynamicCommands } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
@@ -22,15 +22,8 @@ export const registerComponentTool = tool({
     codePath: z.string().optional().describe('组件代码文件路径（与 code 二选一，推荐用于复杂组件）。如 "generated/components/word-match-panel.tsx"'),
   }),
   execute: async ({ name, code, codePath }) => {
-    // Flush pending file blocks for codePath if provided
-    if (codePath) {
-      try {
-        await flushFileBlocks([codePath]);
-      } catch (err) {
-        console.error('[register-component] flushFileBlocks failed:', err);
-        // Non-fatal: the file might already be on disk from a previous step
-      }
-    }
+	// In pi SDK mode, files are written directly by pi built-in write tool.
+	// No need to flush file blocks.
 
     // Resolve code from either direct string or file path
     let componentCode: string;

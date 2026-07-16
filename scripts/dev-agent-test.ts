@@ -1,8 +1,13 @@
 /**
- * Developer Agent 自动化测试脚本
+ * Developer Agent 自动化测试脚本 (pi SDK 版本)
  *
- * 遍历 20 个测试用例，向 Developer Agent 发送 prompt，
+ * 遍历测试用例，向 Developer Agent 发送 prompt，
  * 收集效率指标，用 LLM 判断需求符合度，生成汇总报告。
+ *
+ * 与旧版的区别：
+ * - 使用 pi SDK SSE 事件格式（text-delta, tool-start, tool-result）
+ * - 文件操作通过 pi 内置 write/edit 工具（不再有标记块）
+ * - 请求格式: { message, mode: "develop" }
  *
  * 运行方式: npx tsx scripts/dev-agent-test.ts [--group A|B|C|D] [--no-judge] [--no-clean]
  * 前提条件: 开发服务器必须已在运行 (npm run dev -- --turbopack --port 3088)
@@ -29,7 +34,6 @@ const COOKIE_NAME = 'vocab-auth';
 const AUTH_SALT = 'vocab-agent-2024';
 let authCookie: string = '';
 
-/** 生成认证 token: sha256(password + salt) */
 async function generateAuthToken(password: string): Promise<string> {
   const data = new TextEncoder().encode(password + AUTH_SALT);
   const hashBuffer = await crypto.subtle.digest('SHA-256', data);
@@ -37,7 +41,6 @@ async function generateAuthToken(password: string): Promise<string> {
   return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
-/** 初始化认证 cookie */
 async function initAuth(env: Record<string, string>): Promise<void> {
   const password = env.AUTH_PASSWORD || process.env.AUTH_PASSWORD;
   if (password) {
@@ -49,9 +52,8 @@ async function initAuth(env: Record<string, string>): Promise<void> {
   }
 }
 
-// ── 内联工具函数（避免 @/ 路径别名问题）──────────────────────────────────
+// ── 内联工具函数 ─────────────────────────────────────────────────────────
 
-/** CJK 字符范围检测 */
 const CJK_RANGES = [
   [0x4e00, 0x9fff], [0x3400, 0x4dbf], [0x20000, 0x2a6df],
   [0x3000, 0x303f], [0x3040, 0x309f], [0x30a0, 0x30ff],
@@ -62,7 +64,6 @@ function isCJK(cp: number): boolean {
   return CJK_RANGES.some(([s, e]) => cp >= s && cp <= e);
 }
 
-/** 估算文本 token 数（中英文混合） */
 function estimateTokens(text: string): number {
   if (!text) return 0;
   let cjk = 0, nonCjk = 0;
@@ -71,40 +72,6 @@ function estimateTokens(text: string): number {
     if (isCJK(cp)) cjk++; else nonCjk++;
   }
   return Math.ceil(cjk * 1.5 + nonCjk / 4);
-}
-
-// ── 标记块解析（内联，避免路径别名）──────────────────────────────────────
-
-interface FileBlockRecord {
-  filePath: string;
-  mode: 'write' | 'insert' | 'replace';
-  content: string;
-  startLine?: number;
-  endLine?: number;
-}
-
-const FILE_WRITE_RE = /<<<file-write:(.+?)>>>\n?([\s\S]*?)\n?<<<end>>>/g;
-const FILE_EDIT_INSERT_RE = /<<<file-edit:(.+?):insert:(\d+)>>>\n?([\s\S]*?)\n?<<<end>>>/g;
-const FILE_EDIT_REPLACE_RE = /<<<file-edit:(.+?):replace:(\d+)-(\d+)>>>\n?([\s\S]*?)\n?<<<end>>>/g;
-
-function parseFileBlocks(text: string): FileBlockRecord[] {
-  const blocks: FileBlockRecord[] = [];
-  const norm = (p: string) => p.replace(/\\/g, '/');
-  let m: RegExpExecArray | null;
-
-  FILE_WRITE_RE.lastIndex = 0;
-  while ((m = FILE_WRITE_RE.exec(text)) !== null) {
-    blocks.push({ filePath: norm(m[1].trim()), mode: 'write', content: m[2] });
-  }
-  FILE_EDIT_INSERT_RE.lastIndex = 0;
-  while ((m = FILE_EDIT_INSERT_RE.exec(text)) !== null) {
-    blocks.push({ filePath: norm(m[1].trim()), mode: 'insert', content: m[3], startLine: parseInt(m[2], 10) });
-  }
-  FILE_EDIT_REPLACE_RE.lastIndex = 0;
-  while ((m = FILE_EDIT_REPLACE_RE.exec(text)) !== null) {
-    blocks.push({ filePath: norm(m[1].trim()), mode: 'replace', content: m[4], startLine: parseInt(m[2], 10), endLine: parseInt(m[3], 10) });
-  }
-  return blocks;
 }
 
 // ── 环境变量加载 ─────────────────────────────────────────────────────────
@@ -129,16 +96,26 @@ function loadEnvFile(filePath: string): Record<string, string> {
 
 interface ToolCallRecord {
   toolName: string;
+  toolCallId: string;
   input: any;
   output: any;
+  isError: boolean;
+}
+
+interface FileOperation {
+  tool: string;       // 'readSeek_write' | 'readSeek_edit' | 'write' | 'edit'
+  filePath: string;
+  content?: string;   // for write operations
+  description: string;
 }
 
 interface TestResult {
   testCaseId: string;
   prompt: string;
   responseText: string;
+  reasoningText: string;
   toolCalls: ToolCallRecord[];
-  fileBlocks: FileBlockRecord[];
+  fileOperations: FileOperation[];
   responseTimeMs: number;
   estimatedTokens: number;
   codeGenerated: string;
@@ -156,35 +133,36 @@ interface JudgeResult {
   error?: string;
 }
 
-// ── SSE 流解析 ───────────────────────────────────────────────────────────
+// ── SSE 流解析 (pi SDK format) ───────────────────────────────────────────
 
-/** 发送消息给 Developer Agent 并收集完整响应 */
+/**
+ * 发送消息给 Developer Agent 并收集完整响应。
+ * 使用 pi SDK SSE 事件格式：
+ *   text-delta     → 流式文本
+ *   thinking-delta → 推理文本
+ *   tool-start     → 工具开始执行
+ *   tool-result    → 工具执行结果
+ *   agent-start    → Agent 开始
+ *   agent-end      → Agent 结束
+ *   error          → 错误
+ */
 async function sendDeveloperMessage(
   prompt: string,
   timeoutMs: number,
-  conversationHistory: Array<{ role: string; parts: Array<{ type: string; text?: string; toolName?: string; toolCallId?: string; state?: string; input?: any; output?: any }> }> = [],
 ): Promise<TestResult> {
   const startTime = Date.now();
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    // 构造 UIMessage 格式
-    const userMessage = {
-      id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      role: 'user',
-      parts: [{ type: 'text', text: prompt }],
-    };
-
-    const messages = [...conversationHistory, userMessage];
-
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     if (authCookie) headers['Cookie'] = authCookie;
 
+    // pi SDK request format: { message, mode }
     const res = await fetch(`${BASE_URL}/api/chat`, {
       method: 'POST',
       headers,
-      body: JSON.stringify({ messages, mode: 'develop' }),
+      body: JSON.stringify({ message: prompt, mode: 'develop' }),
       signal: controller.signal,
     });
 
@@ -194,8 +172,9 @@ async function sendDeveloperMessage(
         testCaseId: '',
         prompt,
         responseText: '',
+        reasoningText: '',
         toolCalls: [],
-        fileBlocks: [],
+        fileOperations: [],
         responseTimeMs: Date.now() - startTime,
         estimatedTokens: 0,
         codeGenerated: '',
@@ -205,34 +184,127 @@ async function sendDeveloperMessage(
       };
     }
 
-    // 读取完整 SSE 响应
-    const rawText = await res.text();
-    const events = parseSSEEvents(rawText);
+    // Read SSE stream and collect events
+    const reader = res.body?.getReader();
+    if (!reader) {
+      return {
+        testCaseId: '',
+        prompt,
+        responseText: '',
+        reasoningText: '',
+        toolCalls: [],
+        fileOperations: [],
+        responseTimeMs: Date.now() - startTime,
+        estimatedTokens: 0,
+        codeGenerated: '',
+        codeLineCount: 0,
+        toolCallCount: 0,
+        error: 'No response body',
+      };
+    }
 
-    // 提取文本
-    const responseText = extractTextFromEvents(events);
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let textAccum = '';
+    let reasoningAccum = '';
+    const toolCalls = new Map<string, ToolCallRecord>();
+    const fileOperations: FileOperation[] = [];
 
-    // 提取工具调用
-    const toolCalls = extractToolCallsFromEvents(events);
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
 
-    // 提取标记块
-    const fileBlocks = parseFileBlocks(responseText);
+      buffer += decoder.decode(value, { stream: true });
 
-    // 代码统计
-    const codeGenerated = fileBlocks.map(b => b.content).join('\n');
+      // Process complete SSE messages (separated by \n\n)
+      const parts = buffer.split('\n\n');
+      buffer = parts.pop() ?? '';
+
+      for (const part of parts) {
+        for (const line of part.split('\n')) {
+          if (!line.startsWith('data: ')) continue;
+          const jsonStr = line.slice(6).trim();
+          if (!jsonStr) continue;
+          try {
+            const event = JSON.parse(jsonStr);
+            if (event.type === 'text-delta') {
+              textAccum += event.delta ?? '';
+            } else if (event.type === 'thinking-delta') {
+              reasoningAccum += event.delta ?? '';
+            } else if (event.type === 'tool-start') {
+              toolCalls.set(event.toolCallId, {
+                toolName: event.toolName,
+                toolCallId: event.toolCallId,
+                input: {},
+                output: null,
+                isError: false,
+              });
+            } else if (event.type === 'tool-result') {
+              const existing = toolCalls.get(event.toolCallId);
+              const isError = event.isError === true;
+              const output = event.uiData ?? event.textContent ?? null;
+              if (existing) {
+                existing.output = output;
+                existing.isError = isError;
+              } else {
+                toolCalls.set(event.toolCallId, {
+                  toolName: event.toolName,
+                  toolCallId: event.toolCallId,
+                  input: {},
+                  output,
+                  isError,
+                });
+              }
+              // Detect file operations
+              if (isFileWriteTool(event.toolName)) {
+                const filePath = extractFilePath(event.toolName, output);
+                const content = extractFileContent(event.toolName, output);
+                if (filePath) {
+                  fileOperations.push({
+                    tool: event.toolName,
+                    filePath,
+                    content: content ?? undefined,
+                    description: `${event.toolName}: ${filePath}`,
+                  });
+                }
+              }
+            }
+          } catch {}
+        }
+      }
+    }
+
+    // Process remaining buffer
+    if (buffer.includes('data: ')) {
+      for (const line of buffer.split('\n')) {
+        if (!line.startsWith('data: ')) continue;
+        try {
+          const event = JSON.parse(line.slice(6));
+          if (event.type === 'text-delta') textAccum += event.delta ?? '';
+          else if (event.type === 'thinking-delta') reasoningAccum += event.delta ?? '';
+        } catch {}
+      }
+    }
+
+    // Extract file operation content for code stats
+    const codeGenerated = fileOperations
+      .filter(fo => fo.content && (fo.tool.includes('write') || fo.tool.includes('edit')))
+      .map(fo => fo.content!)
+      .join('\n');
     const codeLineCount = codeGenerated ? codeGenerated.split('\n').length : 0;
 
     return {
       testCaseId: '',
       prompt,
-      responseText,
-      toolCalls,
-      fileBlocks,
+      responseText: textAccum,
+      reasoningText: reasoningAccum,
+      toolCalls: Array.from(toolCalls.values()),
+      fileOperations,
       responseTimeMs: Date.now() - startTime,
-      estimatedTokens: estimateTokens(responseText),
+      estimatedTokens: estimateTokens(textAccum + reasoningAccum),
       codeGenerated,
       codeLineCount,
-      toolCallCount: toolCalls.length,
+      toolCallCount: Array.from(toolCalls.values()).length,
     };
   } catch (err: any) {
     const isTimeout = err.name === 'AbortError';
@@ -240,8 +312,9 @@ async function sendDeveloperMessage(
       testCaseId: '',
       prompt,
       responseText: '',
+      reasoningText: '',
       toolCalls: [],
-      fileBlocks: [],
+      fileOperations: [],
       responseTimeMs: Date.now() - startTime,
       estimatedTokens: 0,
       codeGenerated: '',
@@ -254,76 +327,49 @@ async function sendDeveloperMessage(
   }
 }
 
-/** 解析 SSE 原始文本为事件数组 */
-function parseSSEEvents(rawText: string): any[] {
-  return rawText
-    .split('\n')
-    .filter(line => line.startsWith('data: '))
-    .map(line => {
-      try {
-        return JSON.parse(line.slice(6));
-      } catch {
-        return null;
-      }
-    })
-    .filter(Boolean);
+/** Check if a tool is a file write/edit tool */
+function isFileWriteTool(toolName: string): boolean {
+  return [
+    'readSeek_write', 'readSeek_edit',
+    'write', 'edit',
+    'file-write', 'file-edit',
+  ].includes(toolName);
 }
 
-/** 从事件中提取文本 */
-function extractTextFromEvents(events: any[]): string {
-  return events
-    .filter(e => e.type === 'text-delta' && (e.delta || e.textDelta))
-    .map(e => e.delta || e.textDelta || '')
-    .join('');
-}
-
-/** 从事件中提取工具调用 */
-function extractToolCallsFromEvents(events: any[]): ToolCallRecord[] {
-  const calls: Map<string, ToolCallRecord> = new Map();
-
-  for (const e of events) {
-    if (e.type === 'tool-input-available' && e.toolCallId) {
-      const existing = calls.get(e.toolCallId) || { toolName: e.toolName || '', input: null, output: null };
-      existing.toolName = e.toolName || existing.toolName;
-      existing.input = e.input;
-      calls.set(e.toolCallId, existing);
-    }
-    if (e.type === 'tool-output-available' && e.toolCallId) {
-      const existing = calls.get(e.toolCallId) || { toolName: '', input: null, output: null };
-      existing.output = e.output;
-      calls.set(e.toolCallId, existing);
-    }
+/** Extract file path from tool output */
+function extractFilePath(toolName: string, output: any): string | null {
+  if (!output) return null;
+  if (typeof output === 'string') {
+    // Try to extract path from string output
+    const pathMatch = output.match(/(?:wrote|edited|created|updated|file):\s*`?([^\s`]+\.\w+)`?/i);
+    return pathMatch?.[1] ?? null;
   }
+  if (typeof output === 'object') {
+    return output.path ?? output.filePath ?? output.file_path ?? null;
+  }
+  return null;
+}
 
-  return Array.from(calls.values());
+/** Extract file content from tool output */
+function extractFileContent(toolName: string, output: any): string | null {
+  if (!output) return null;
+  if (typeof output === 'object') {
+    return output.content ?? output.text ?? null;
+  }
+  return null;
 }
 
 // ── 截断 JSON 修复 ───────────────────────────────────────────────────────
 
-/**
- * 尝试修复被截断的 JSON 字符串。
- * 常见场景：LLM 输出因 max_tokens 截断，导致 JSON 不完整。
- * 策略：从后向前找到最后一个完整的值/数组/对象，然后补全缺失的括号。
- */
 function tryRepairTruncatedJSON(jsonStr: string): any | null {
   let s = jsonStr.trim();
 
-  // 策略 1: 找到最后一个完整的 key-value 对，截断后面的不完整部分
-  // 匹配模式: "key": value 后跟逗号或右括号
-  const lastCompleteKV = s.lastIndexOf('",');
-  const lastCompleteArray = s.lastIndexOf('",');
-
-  // 尝试在最后一个完整的逗号处截断
   let cutIdx = -1;
-
-  // 找最后一个完整的字符串值（以 " 结尾，后跟 , 或 } 或 ]）
   for (let i = s.length - 1; i >= 0; i--) {
     if (s[i] === '"') {
-      // 检查后面是否是 , } ] 或字符串结尾
       const after = s.slice(i + 1).trim();
       if (after === '' || after.startsWith(',') || after.startsWith('}') || after.startsWith(']')) {
         cutIdx = i + 1;
-        // 包含后面的逗号
         if (after.startsWith(',')) cutIdx = i + 1 + after.indexOf(',') + 1;
         break;
       }
@@ -332,11 +378,9 @@ function tryRepairTruncatedJSON(jsonStr: string): any | null {
 
   if (cutIdx > 0) {
     s = s.slice(0, cutIdx).trimEnd();
-    // 移除末尾的逗号
     if (s.endsWith(',')) s = s.slice(0, -1).trimEnd();
   }
 
-  // 计算需要补全的括号
   let openBraces = 0, openBrackets = 0;
   let inString = false, escape = false;
   for (const ch of s) {
@@ -350,25 +394,19 @@ function tryRepairTruncatedJSON(jsonStr: string): any | null {
     if (ch === ']') openBrackets--;
   }
 
-  // 补全缺失的括号
   s += ']'.repeat(Math.max(0, openBrackets));
   s += '}'.repeat(Math.max(0, openBraces));
 
   try {
     const parsed = JSON.parse(s);
-    // 验证至少有 score 字段
     if (typeof parsed.score === 'number') {
-      // 修复 compliance 字段：截断的 JSON 可能产生空字符串等非布尔值
       if (typeof parsed.compliance !== 'boolean') {
         parsed.compliance = parsed.score >= 4;
       }
       return parsed;
     }
-  } catch {
-    // 修复失败
-  }
+  } catch {}
 
-  // 策略 2: 用正则提取关键字段
   const scoreMatch = s.match(/"score"\s*:\s*(\d+)/);
   const complianceMatch = s.match(/"compliance"\s*:\s*(true|false)/);
   const issuesMatch = s.match(/"issues"\s*:\s*\[([\s\S]*?)\]/);
@@ -408,7 +446,7 @@ async function judgeResult(
     };
   }
 
-  // 构造工具调用摘要
+  // Tool calls summary
   const toolCallsSummary = result.toolCalls.length > 0
     ? result.toolCalls.map(tc => {
         const inputStr = JSON.stringify(tc.input).slice(0, 200);
@@ -419,15 +457,16 @@ async function judgeResult(
       }).join('\n')
     : '(无工具调用)';
 
-  // 构造代码摘要
-  const codeSummary = result.fileBlocks.length > 0
-    ? result.fileBlocks.map(b => {
-        const content = b.content.length > 500 ? b.content.slice(0, 500) + '...' : b.content;
-        return `### ${b.mode}: ${b.filePath}${b.startLine ? ` (line ${b.startLine}${b.endLine ? `-${b.endLine}` : ''})` : ''}\n\`\`\`\n${content}\n\`\`\``;
+  // File operations summary (replaces file blocks)
+  const fileOpsSummary = result.fileOperations.length > 0
+    ? result.fileOperations.map(fo => {
+        const content = fo.content && fo.content.length > 500
+          ? fo.content.slice(0, 500) + '...'
+          : (fo.content ?? '(无内容)');
+        return `### ${fo.tool}: ${fo.filePath}\n\`\`\`\n${content}\n\`\`\``;
       }).join('\n\n')
-    : '(无代码生成)';
+    : '(无文件操作)';
 
-  // 截断过长的响应文本
   const truncatedText = result.responseText.length > 3000
     ? result.responseText.slice(0, 3000) + '\n... (截断)'
     : result.responseText;
@@ -444,7 +483,7 @@ async function judgeResult(
 5: 完全满足预期行为 — 正确的工具调用、正确的方案、正确的输出格式
 4: 基本正确但有轻微偏差（如工具参数略有不同、多余步骤）
 3: 部分正确 — 方向对但有显著偏差（如调用了错误的工具变体、遗漏步骤）
-2: 重大问题 — 错误方案或缺失关键行为（如应拒绝但未拒绝、应用标记块但尝试调用工具）
+2: 重大问题 — 错误方案或缺失关键行为（如应拒绝但未拒绝、应用工具但未调用）
 1: 完全失败 — 错误、错误的 Agent、或根本性不正确的响应
 
 重要：直接输出 JSON 对象，不要用 \`\`\`json 包裹，不要添加任何额外文本。`;
@@ -468,8 +507,8 @@ ${truncatedText}
 **工具调用:**
 ${toolCallsSummary}
 
-**生成的代码:**
-${codeSummary}
+**文件操作:**
+${fileOpsSummary}
 
 **效率指标:** 耗时 ${result.responseTimeMs}ms | 估算 token ${result.estimatedTokens} | 工具调用 ${result.toolCallCount} 次 | 代码 ${result.codeLineCount} 行
 
@@ -494,9 +533,6 @@ ${codeSummary}
         max_tokens: 8092,
       };
 
-      // response_format 仅对支持 JSON mode 的 API 有效
-      // 讯飞 MaaS 等国产 API 可能不支持，先尝试带 response_format，
-      // 如果返回解析失败，下次不带 response_format 重试
       if (attempt === 0) {
         body.response_format = { type: 'json_object' };
       }
@@ -515,7 +551,6 @@ ${codeSummary}
 
       if (!res.ok) {
         const errText = await res.text().catch(() => '');
-        // API 错误不重试
         return {
           testCaseId: testCase.id,
           score: 0,
@@ -529,9 +564,7 @@ ${codeSummary}
       const data = await res.json() as any;
       const content = data.choices?.[0]?.message?.content || '';
 
-      // 解析 JSON 响应
       let parsed: any;
-      // 先清理 markdown 代码块包裹
       let cleanContent = content.trim();
       if (cleanContent.startsWith('```')) {
         cleanContent = cleanContent.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '');
@@ -539,11 +572,9 @@ ${codeSummary}
       try {
         parsed = JSON.parse(cleanContent);
       } catch {
-        // 尝试从文本中提取 JSON
         const jsonMatch = cleanContent.match(/\{[\s\S]*\}/);
         if (jsonMatch) {
           try { parsed = JSON.parse(jsonMatch[0]); } catch {
-            // 尝试修复截断的 JSON
             parsed = tryRepairTruncatedJSON(jsonMatch[0]);
           }
         }
@@ -589,7 +620,6 @@ ${codeSummary}
     }
   }
 
-  // 不应到达此处，但作为安全网
   return {
     testCaseId: testCase.id,
     score: 0,
@@ -626,22 +656,12 @@ async function isServerUp(): Promise<boolean> {
     if (authCookie) headers['Cookie'] = authCookie;
     const res = await fetch(BASE_URL, { signal: controller.signal, headers });
     clearTimeout(timer);
-    return res.ok || res.status === 307 || res.status === 302; // 307/302 redirect is also OK (Next.js auth)
+    return res.ok || res.status === 307 || res.status === 302;
   } catch {
     return false;
   }
 }
 
-/**
- * 等待服务器恢复可用。
- * 当 Agent 生成的组件代码触发 Turbopack HMR 编译时，如果组件有语法错误，
- * Next.js dev server 可能短暂不可用（返回 HTML 500 或连接失败）。
- * 本函数轮询等待服务器恢复，避免后续测试用例因基础设施问题而失败。
- *
- * @param maxWaitMs 最大等待时间（默认 30s）
- * @param intervalMs 轮询间隔（默认 3s）
- * @returns 是否在超时前恢复
- */
 async function waitForServerRecovery(maxWaitMs = 30_000, intervalMs = 3_000): Promise<boolean> {
   const start = Date.now();
   let attempt = 0;
@@ -673,7 +693,6 @@ function generateReport(
   const completed = allResults.filter(r => !r.result.error);
   const failed = allResults.filter(r => !!r.result.error);
 
-  // 效率统计
   const avgTime = completed.length > 0
     ? Math.round(completed.reduce((s, r) => s + r.result.responseTimeMs, 0) / completed.length)
     : 0;
@@ -687,7 +706,6 @@ function generateReport(
     ? Math.round(completed.reduce((s, r) => s + r.result.codeLineCount, 0) / completed.length)
     : 0;
 
-  // 质量统计
   const judged = allResults.filter(r => r.judge.score > 0);
   const avgScore = judged.length > 0
     ? (judged.reduce((s, r) => s + r.judge.score, 0) / judged.length).toFixed(1)
@@ -700,19 +718,20 @@ function generateReport(
 
   const complexityIcon = (c: string) => c === 'simple' ? '🟢' : c === 'medium' ? '🟡' : '🔴';
 
-  let md = `# Developer Agent 测试报告
+  let md = `# Developer Agent 测试报告 (pi SDK)
 
 > 运行时间: ${timestamp}
 > 模型: ${model}
 > 评判模型: ${judgeModel}
 > 服务器: ${BASE_URL}
+> 后端: pi SDK
 > 总测试: ${allResults.length} | 完成: ${completed.length} | 失败: ${failed.length}
 
 ---
 
 ## 效率总览
 
-| TC | 复杂度 | 耗时(s) | 输出token | 代码行数 | 工具调用数 | 标记块数 |
+| TC | 复杂度 | 耗时(s) | 输出token | 代码行数 | 工具调用数 | 文件操作数 |
 |----|--------|---------|-----------|----------|-----------|---------|
 `;
 
@@ -721,8 +740,8 @@ function generateReport(
     const tokens = r.error ? '-' : String(r.estimatedTokens);
     const codeLines = r.error ? '-' : String(r.codeLineCount);
     const toolCalls = r.error ? '-' : String(r.toolCallCount);
-    const blocks = r.error ? '-' : String(r.fileBlocks.length);
-    md += `| ${tc.id} | ${complexityIcon(tc.complexity)} ${tc.complexity} | ${time} | ${tokens} | ${codeLines} | ${toolCalls} | ${blocks} |\n`;
+    const fileOps = r.error ? '-' : String(r.fileOperations.length);
+    md += `| ${tc.id} | ${complexityIcon(tc.complexity)} ${tc.complexity} | ${time} | ${tokens} | ${codeLines} | ${toolCalls} | ${fileOps} |\n`;
   }
 
   md += `
@@ -778,16 +797,16 @@ ${truncatedResponse}
       md += `**工具调用:**\n`;
       for (const tc2 of r.toolCalls) {
         const inputStr = JSON.stringify(tc2.input).slice(0, 150);
-        md += `- \`${tc2.toolName}\`(${inputStr})\n`;
+        md += `- \`${tc2.toolName}\`(${inputStr})${tc2.isError ? ' ❌' : ''}\n`;
       }
       md += '\n';
     }
 
-    if (r.fileBlocks.length > 0) {
-      md += `**标记块:**\n`;
-      for (const b of r.fileBlocks) {
-        const content = b.content || '';
-        md += `- ${b.mode}: \`${b.filePath}\`${b.startLine ? ` (line ${b.startLine}${b.endLine ? `-${b.endLine}` : ''})` : ''} — ${content.split('\n').length} 行\n`;
+    if (r.fileOperations.length > 0) {
+      md += `**文件操作:**\n`;
+      for (const fo of r.fileOperations) {
+        const content = fo.content ?? '';
+        md += `- ${fo.tool}: \`${fo.filePath}\` — ${content.split('\n').length} 行\n`;
       }
       md += '\n';
     }
@@ -810,9 +829,9 @@ ${truncatedResponse}
 
 - **整体效率:** 平均响应 ${avgTime / 1000}s，平均 ${avgTokens} tokens，平均 ${avgToolCalls} 次工具调用
 - **整体质量:** 平均得分 ${avgScore}/5.0，${judged.length > 0 ? Math.round(complianceCount / judged.length * 100) : 0}% 符合需求
+- **后端:** pi SDK (替换 AI SDK)
 `;
 
-  // 优势与不足
   const highScore = allResults.filter(r => r.judge.score >= 4);
   const lowScore = allResults.filter(r => r.judge.score > 0 && r.judge.score <= 2);
 
@@ -823,7 +842,6 @@ ${truncatedResponse}
     md += `\n**薄弱领域:** ${lowScore.map(r => `${r.testCase.id}(${r.testCase.category})`).join('、')}\n`;
   }
 
-  // 常见问题
   const allIssues = allResults.flatMap(r => r.judge.issues);
   if (allIssues.length > 0) {
     md += `\n**常见问题:**\n`;
@@ -844,7 +862,6 @@ ${truncatedResponse}
 // ── 主流程 ───────────────────────────────────────────────────────────────
 
 async function main() {
-  // 解析命令行参数
   const args = process.argv.slice(2);
   const groupFilter = args.find(a => a.startsWith('--group='))?.split('=')[1]
     || args[args.indexOf('--group') + 1];
@@ -852,7 +869,7 @@ async function main() {
   const noClean = args.includes('--no-clean');
 
   console.log('═══════════════════════════════════════════════════');
-  console.log('  Developer Agent 自动化测试');
+  console.log('  Developer Agent 自动化测试 (pi SDK)');
   console.log('═══════════════════════════════════════════════════');
   console.log(`  服务器: ${BASE_URL}`);
   console.log(`  测试用例: ${TEST_CASES.length} 个`);
@@ -889,28 +906,22 @@ async function main() {
   }
 
   const allResults: Array<{ testCase: TestCase; result: TestResult; judge: JudgeResult }> = [];
-  const resultMap = new Map<string, TestResult>();
 
-  // 遍历测试组
   for (const group of groups) {
     const cases = getTestCasesByGroup(group.name);
     console.log(`\n📦 Group ${group.name}: ${group.label} (${cases.length} 个用例)`);
     console.log('─'.repeat(50));
 
-    // 组间清理
     if (group.needsCleanup && !noClean) {
       await runCleanup();
-      // 等待清理生效 + Turbopack HMR 编译完成
-      // 清理会删除 generated/ 组件文件并重写 registry，触发 HMR
       console.log('  ⏳ 等待 Turbopack HMR 处理清理变更...');
       await waitForServerRecovery(15_000, 2_000);
     }
 
-    // 顺序执行组内用例
     for (const tc of cases) {
-      // 检查依赖
+      // Check dependencies
       if (tc.dependsOn) {
-        const unmet = tc.dependsOn.filter(dep => !resultMap.has(dep));
+        const unmet = tc.dependsOn.filter(dep => !allResults.some(r => r.testCase.id === dep && !r.result.error));
         if (unmet.length > 0) {
           console.log(`  ⏭️  ${tc.id}: 跳过（依赖 ${unmet.join(', ')} 未完成）`);
           allResults.push({
@@ -919,8 +930,9 @@ async function main() {
               testCaseId: tc.id,
               prompt: tc.prompt,
               responseText: '',
+              reasoningText: '',
               toolCalls: [],
-              fileBlocks: [],
+              fileOperations: [],
               responseTimeMs: 0,
               estimatedTokens: 0,
               codeGenerated: '',
@@ -944,54 +956,63 @@ async function main() {
       console.log(`  🔄 ${tc.id}: ${tc.title}`);
       console.log(`     输入: "${tc.prompt.slice(0, 60)}${tc.prompt.length > 60 ? '...' : ''}"`);
 
-      // 构造对话历史（如果有依赖，将前置对话包含进来）
-      const history = buildConversationHistory(tc, resultMap);
-
-      // 执行测试，支持 HTTP 500 自动重试
-      // 原因：Agent 生成的组件代码可能触发 Turbopack HMR 编译错误，
-      // 导致 Next.js dev server 短暂不可用，等待恢复后重试即可
+      console.log(`     输入: "${tc.prompt.slice(0, 60)}${tc.prompt.length > 60 ? '...' : ''}"`);
       const MAX_RETRIES = 3;
-      let result: TestResult;
+      let result: TestResult | undefined;
       let retryCount = 0;
 
       for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-        // 每次尝试前检查服务器健康
         if (attempt > 0 || !(await isServerUp())) {
           if (attempt > 0) {
             console.log(`     🔄 第 ${attempt + 1} 次重试...`);
           }
           const recovered = await waitForServerRecovery(60_000, 3_000);
           if (!recovered) {
-            console.log(`     ❌ 服务器在 60s 内未恢复，跳过此用例`);
             result = {
               testCaseId: tc.id,
               prompt: tc.prompt,
               responseText: '',
+              reasoningText: '',
               toolCalls: [],
-              fileBlocks: [],
+              fileOperations: [],
               responseTimeMs: 0,
               estimatedTokens: 0,
               codeGenerated: '',
               codeLineCount: 0,
               toolCallCount: 0,
-              error: '服务器不可用（Turbopack HMR 编译错误可能导致 Next.js 崩溃）',
+              error: '服务器不可用',
             };
             break;
           }
         }
 
-        result = await sendDeveloperMessage(tc.prompt, tc.timeoutMs, history);
+        result = await sendDeveloperMessage(tc.prompt, tc.timeoutMs);
         result.testCaseId = tc.id;
 
-        // 如果是 HTTP 500 且还有重试次数，等待服务器恢复后重试
         if (result.error?.startsWith('HTTP 500') && attempt < MAX_RETRIES) {
           retryCount++;
-          console.log(`     ⚠️ HTTP 500（可能是 Turbopack 编译错误），等待恢复后重试...`);
+          console.log(`     ⚠️ HTTP 500，等待恢复后重试...`);
           continue;
         }
 
-        // 其他情况（成功或非 500 错误），不再重试
         break;
+      }
+
+      if (!result) {
+        result = {
+          testCaseId: tc.id,
+          prompt: tc.prompt,
+          responseText: '',
+          reasoningText: '',
+          toolCalls: [],
+          fileOperations: [],
+          responseTimeMs: 0,
+          estimatedTokens: 0,
+          codeGenerated: '',
+          codeLineCount: 0,
+          toolCallCount: 0,
+          error: '未获取到结果',
+        };
       }
 
       if (result.error) {
@@ -1001,34 +1022,26 @@ async function main() {
         if (result.toolCalls.length > 0) {
           console.log(`     🔧 工具: ${result.toolCalls.map(tc2 => tc2.toolName).join(', ')}`);
         }
-        if (result.fileBlocks.length > 0) {
-          console.log(`     📝 标记块: ${result.fileBlocks.map(b => `${b.mode}:${b.filePath}`).join(', ')}`);
+        if (result.fileOperations.length > 0) {
+          console.log(`     📁 文件: ${result.fileOperations.map(fo => `${fo.tool}:${fo.filePath}`).join(', ')}`);
         }
         if (retryCount > 0) {
           console.log(`     🔄 重试 ${retryCount} 次后成功`);
         }
       }
 
-      resultMap.set(tc.id, result);
-
-      // 记录结果
       allResults.push({
         testCase: tc,
         result,
-        judge: { testCaseId: tc.id, score: 0, compliance: false, issues: [], reasoning: '' }, // 占位，后面评判时替换
+        judge: { testCaseId: tc.id, score: 0, compliance: false, issues: [], reasoning: '' },
       });
 
-      // 如果生成了代码（标记块），等待 Turbopack HMR 编译完成
-      // 避免下一个测试用例因编译错误导致服务器不可用
-      if (!result.error && result.fileBlocks.length > 0) {
-        const hasComponent = result.fileBlocks.some(b => b.filePath.includes('component'));
-        if (hasComponent) {
-          console.log('     ⏳ 等待 Turbopack HMR 编译组件代码...');
-          await waitForServerRecovery(30_000, 2_000);
-        }
+      // Wait for HMR if component files were generated
+      if (!result.error && result.fileOperations.some(fo => fo.filePath.includes('component'))) {
+        console.log('     ⏳ 等待 Turbopack HMR 编译组件代码...');
+        await waitForServerRecovery(30_000, 2_000);
       }
 
-      // 请求间短暂间隔，避免过快
       await sleep(1000);
     }
   }
@@ -1043,33 +1056,24 @@ async function main() {
     for (const { testCase, result } of allResults) {
       if (result.error) {
         console.log(`  ⏭️  ${testCase.id}: 跳过评判（测试失败）`);
+        judgeResults.push({
+          testCaseId: testCase.id,
+          score: 0,
+          compliance: false,
+          issues: ['测试执行失败，无法评判'],
+          reasoning: `执行错误: ${result.error}`,
+          error: 'test-failed',
+        });
       } else {
         console.log(`  🧑‍⚖️ ${testCase.id}: 评判中...`);
-      }
-
-      const judge = result.error
-        ? {
-            testCaseId: testCase.id,
-            score: 0,
-            compliance: false,
-            issues: ['测试执行失败，无法评判'],
-            reasoning: `执行错误: ${result.error}`,
-            error: 'test-failed',
-          }
-        : await judgeResult(testCase, result, env);
-
-      judgeResults.push(judge);
-
-      if (!result.error) {
+        const judge = await judgeResult(testCase, result, env);
+        judgeResults.push(judge);
         console.log(`     得分: ${judge.score}/5 ${judge.compliance ? '✅' : '❌'} — ${judge.reasoning.slice(0, 80)}`);
+        await sleep(500);
       }
-
-      // 评判间短暂间隔
-      await sleep(500);
     }
   } else {
-    // 不评判时，填充默认值
-    for (const { testCase, result } of allResults) {
+    for (const { testCase } of allResults) {
       judgeResults.push({
         testCaseId: testCase.id,
         score: 0,
@@ -1081,7 +1085,6 @@ async function main() {
     }
   }
 
-  // 合并结果
   const finalResults = allResults.map((item, i) => ({
     ...item,
     judge: judgeResults[i],
@@ -1091,13 +1094,11 @@ async function main() {
   console.log('\n📝 生成报告...');
   const report = generateReport(finalResults, env);
 
-  // 保存报告
   fs.mkdirSync(REPORTS_DIR, { recursive: true });
   const reportTimestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
   const reportPath = path.join(REPORTS_DIR, `dev-agent-test-${reportTimestamp}.md`);
   fs.writeFileSync(reportPath, report, 'utf-8');
 
-  // 同时保存一份 latest
   const latestPath = path.join(REPORTS_DIR, 'dev-agent-test-latest.md');
   fs.writeFileSync(latestPath, report, 'utf-8');
 
@@ -1115,7 +1116,7 @@ async function main() {
     : 0;
 
   console.log('\n═══════════════════════════════════════════════════');
-  console.log('  测试摘要');
+  console.log('  测试摘要 (pi SDK)');
   console.log('═══════════════════════════════════════════════════');
   console.log(`  完成: ${completed.length}/${finalResults.length}`);
   console.log(`  失败: ${finalResults.length - completed.length}`);
@@ -1124,46 +1125,9 @@ async function main() {
   console.log('═══════════════════════════════════════════════════');
 }
 
-/** 构造对话历史（用于有依赖的测试用例） */
-function buildConversationHistory(
-  tc: TestCase,
-  resultMap: Map<string, TestResult>,
-): Array<{ role: string; parts: Array<{ type: string; text?: string }> }> {
-  if (!tc.dependsOn || tc.dependsOn.length === 0) return [];
-
-  const history: Array<{ role: string; parts: Array<{ type: string; text?: string }> }> = [];
-
-  for (const depId of tc.dependsOn) {
-    const depResult = resultMap.get(depId);
-    if (!depResult) continue;
-
-    // 添加前置用户消息
-    const depCase = TEST_CASES.find(t => t.id === depId);
-    if (depCase) {
-      history.push({
-        role: 'user',
-        parts: [{ type: 'text', text: depCase.prompt }],
-      });
-    }
-
-    // 添加前置助手回复（截断以避免过长）
-    const replyText = depResult.responseText.slice(0, 2000);
-    if (replyText) {
-      history.push({
-        role: 'assistant',
-        parts: [{ type: 'text', text: replyText }],
-      });
-    }
-  }
-
-  return history;
-}
-
 function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
-
-// ── 入口 ─────────────────────────────────────────────────────────────────
 
 main().catch(err => {
   console.error('❌ 测试脚本异常:', err);

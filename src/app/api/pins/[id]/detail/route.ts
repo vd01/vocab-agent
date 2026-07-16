@@ -2,8 +2,6 @@ import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { pinnedWords } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
-import { generateText } from 'ai';
-import { teacherModel } from '@/lib/ai/models';
 import { lookupWord } from '@/lib/dictionary/lookup';
 
 export async function GET(
@@ -62,11 +60,37 @@ ${dictInfo}
 - contextSentences 的例句要地道、实用，不要太长
 - 只输出 JSON，不要有其他文字`;
 
-    const { text: resultText } = await generateText({
-      model: teacherModel,
-      prompt,
-      maxOutputTokens: 1000,
+    // Direct API call (replaces AI SDK generateText)
+    const apiKey = process.env.OPENAI_API_KEY;
+    const baseUrl = process.env.OPENAI_BASE_URL;
+    const model = process.env.TEACHER_MODEL || 'gpt-4o-mini';
+
+    if (!apiKey || !baseUrl) {
+      return NextResponse.json({ error: 'LLM not configured' }, { status: 500 });
+    }
+
+    const res = await fetch(`${baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model,
+        messages: [{ role: 'user', content: prompt }],
+        max_tokens: 1000,
+        temperature: 0.7,
+      }),
     });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error('[Pin Detail API] LLM error:', res.status, errText.slice(0, 200));
+      return NextResponse.json({ error: 'LLM call failed' }, { status: 502 });
+    }
+
+    const data = await res.json() as any;
+    const resultText = data.choices?.[0]?.message?.content || '';
 
     let richContent;
     try {
