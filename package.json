@@ -24,7 +24,8 @@
     "electron:preview": "npm run build && npm run electron:compile && cross-env ELECTRON_PREVIEW=1 electron dist-electron/main.js",
     "electron:build": "node scripts/electron-build.js",
     "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build"
+    "tauri:build": "tauri build",
+    "postinstall": "node scripts/postinstall-patch-jiti.js"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",

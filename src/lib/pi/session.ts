@@ -73,6 +73,7 @@ export async function getPiSessionResult(): Promise<CreateAgentSessionResult> {
 
 async function initSession(): Promise<CreateAgentSessionResult> {
 	ensureAgentDir();
+	// jiti @/ aliases are patched via scripts/postinstall-patch-jiti.js
 
 	const cwd = process.cwd();
 

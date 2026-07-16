@@ -57,7 +57,7 @@ export default function vocabAgentExtension(pi: ExtensionAPI) {
 		if (isDeveloper) {
 			try {
 				const { buildDeveloperInstructions } = await import(
-					"@/lib/ai/prompts/developer-system"
+					"../../src/lib/ai/prompts/developer-system"
 				);
 				systemPrompt = buildDeveloperInstructions("", undefined);
 			} catch (err) {
@@ -65,9 +65,9 @@ export default function vocabAgentExtension(pi: ExtensionAPI) {
 			}
 		} else {
 			try {
-				const { buildWorldState } = await import("@/lib/pipeline/world-state");
+				const { buildWorldState } = await import("../../src/lib/pipeline/world-state");
 				const { buildTeacherInstructions } = await import(
-					"@/lib/ai/prompts/teacher-system"
+					"../../src/lib/ai/prompts/teacher-system"
 				);
 				const worldState = await buildWorldState();
 				systemPrompt = buildTeacherInstructions(worldState);
@@ -106,7 +106,7 @@ export default function vocabAgentExtension(pi: ExtensionAPI) {
 			group: Type.Optional(Type.String({ description: "分组名称，如 四级、考研" })),
 		}),
 		async execute(_toolCallId, params) {
-			const { fsrsReviewTool } = await import("@/lib/ai/tools/fsrs-review");
+			const { fsrsReviewTool } = await import("../../src/lib/ai/tools/fsrs-review");
 			const result = await fsrsReviewTool.execute!(
 				{ limit: params.limit, group: params.group },
 				{ toolCallId: "pi", messages: [], abortSignal: undefined },
@@ -141,7 +141,7 @@ export default function vocabAgentExtension(pi: ExtensionAPI) {
 			rating: Type.Number({ description: "评分 1-4" }),
 		}),
 		async execute(_toolCallId, params) {
-			const { fsrsRateTool } = await import("@/lib/ai/tools/fsrs-review");
+			const { fsrsRateTool } = await import("../../src/lib/ai/tools/fsrs-review");
 			const result = await fsrsRateTool.execute!(
 				{ wordId: params.wordId, rating: params.rating },
 				{ toolCallId: "pi", messages: [], abortSignal: undefined },
@@ -174,7 +174,7 @@ export default function vocabAgentExtension(pi: ExtensionAPI) {
 			word: Type.String({ description: "要查询的单词" }),
 		}),
 		async execute(_toolCallId, params) {
-			const { vocabLookupTool } = await import("@/lib/ai/tools/vocab-lookup");
+			const { vocabLookupTool } = await import("../../src/lib/ai/tools/vocab-lookup");
 			const result = await vocabLookupTool.execute!(
 				{ word: params.word },
 				{ toolCallId: "pi", messages: [], abortSignal: undefined },
@@ -213,7 +213,7 @@ export default function vocabAgentExtension(pi: ExtensionAPI) {
 			group: Type.Optional(Type.String({ description: "添加到指定分组" })),
 		}),
 		async execute(_toolCallId, params) {
-			const { addWordTool } = await import("@/lib/ai/tools/add-word");
+			const { addWordTool } = await import("../../src/lib/ai/tools/add-word");
 			const result = await addWordTool.execute!(
 				{ word: params.word, definition: params.definition, group: params.group },
 				{ toolCallId: "pi", messages: [], abortSignal: undefined },
@@ -253,7 +253,7 @@ export default function vocabAgentExtension(pi: ExtensionAPI) {
 			group: Type.Optional(Type.String({ description: "建议添加到的分组名" })),
 		}),
 		async execute(_toolCallId, params) {
-			const { extractWordsTool } = await import("@/lib/ai/tools/extract-words");
+			const { extractWordsTool } = await import("../../src/lib/ai/tools/extract-words");
 			const result = await extractWordsTool.execute!(
 				{ text: params.text, maxWords: params.maxWords, group: params.group },
 				{ toolCallId: "pi", messages: [], abortSignal: undefined },
@@ -289,7 +289,7 @@ export default function vocabAgentExtension(pi: ExtensionAPI) {
 			word: Type.String({ description: "要查询的单词" }),
 		}),
 		async execute(_toolCallId, params) {
-			const { dictLookupTool } = await import("@/lib/ai/tools/dict-lookup");
+			const { dictLookupTool } = await import("../../src/lib/ai/tools/dict-lookup");
 			const result = await dictLookupTool.execute!(
 				{ word: params.word },
 				{ toolCallId: "pi", messages: [], abortSignal: undefined },
@@ -324,7 +324,7 @@ export default function vocabAgentExtension(pi: ExtensionAPI) {
 			detail: Type.Optional(Type.Boolean({ description: "是否显示详细信息" })),
 		}),
 		async execute(_toolCallId, params) {
-			const { vocabStatsTool } = await import("@/lib/ai/tools/vocab-stats");
+			const { vocabStatsTool } = await import("../../src/lib/ai/tools/vocab-stats");
 			const result = await vocabStatsTool.execute!(
 				{ detail: params.detail },
 				{ toolCallId: "pi", messages: [], abortSignal: undefined },
@@ -359,7 +359,7 @@ export default function vocabAgentExtension(pi: ExtensionAPI) {
 			side: Type.Optional(StringEnum(["left", "right"] as const)),
 		}),
 		async execute(_toolCallId, params) {
-			const { pinWordTool } = await import("@/lib/ai/tools/pin-word");
+			const { pinWordTool } = await import("../../src/lib/ai/tools/pin-word");
 			const result = await pinWordTool.execute!(
 				{ wordId: params.wordId, word: params.word, side: params.side },
 				{ toolCallId: "pi", messages: [], abortSignal: undefined },
@@ -392,7 +392,7 @@ export default function vocabAgentExtension(pi: ExtensionAPI) {
 			pinId: Type.String({ description: "置顶记录 ID" }),
 		}),
 		async execute(_toolCallId, params) {
-			const { unpinWordTool } = await import("@/lib/ai/tools/pin-word");
+			const { unpinWordTool } = await import("../../src/lib/ai/tools/pin-word");
 			const result = await unpinWordTool.execute!(
 				{ pinId: params.pinId },
 				{ toolCallId: "pi", messages: [], abortSignal: undefined },
@@ -433,7 +433,7 @@ export default function vocabAgentExtension(pi: ExtensionAPI) {
 			word: Type.Optional(Type.String({ description: "单词" })),
 		}),
 		async execute(_toolCallId, params) {
-			const { groupManageTool } = await import("@/lib/ai/tools/group-manage");
+			const { groupManageTool } = await import("../../src/lib/ai/tools/group-manage");
 			const result = await groupManageTool.execute!(
 				{
 					action: params.action,
@@ -481,7 +481,7 @@ export default function vocabAgentExtension(pi: ExtensionAPI) {
 			componentCodePath: Type.Optional(Type.String({ description: "组件代码文件路径" })),
 		}),
 		async execute(_toolCallId, params) {
-			const { createCommandTool } = await import("@/lib/ai/tools/create-command");
+			const { createCommandTool } = await import("../../src/lib/ai/tools/create-command");
 			const result = await createCommandTool.execute!(
 				{
 					name: params.name,
@@ -513,7 +513,7 @@ export default function vocabAgentExtension(pi: ExtensionAPI) {
 			codePath: Type.Optional(Type.String({ description: "组件代码文件路径" })),
 		}),
 		async execute(_toolCallId, params) {
-			const { registerComponentTool } = await import("@/lib/ai/tools/register-component");
+			const { registerComponentTool } = await import("../../src/lib/ai/tools/register-component");
 			const result = await registerComponentTool.execute!(
 				{ name: params.name, code: params.code, codePath: params.codePath },
 				{ toolCallId: "pi", messages: [], abortSignal: undefined },
@@ -537,7 +537,7 @@ export default function vocabAgentExtension(pi: ExtensionAPI) {
 			name: Type.String({ description: "命令名称" }),
 		}),
 		async execute(_toolCallId, params) {
-			const { unregisterComponentTool } = await import("@/lib/ai/tools/unregister-component");
+			const { unregisterComponentTool } = await import("../../src/lib/ai/tools/unregister-component");
 			const result = await unregisterComponentTool.execute!(
 				{ name: params.name },
 				{ toolCallId: "pi", messages: [], abortSignal: undefined },
@@ -565,7 +565,7 @@ export default function vocabAgentExtension(pi: ExtensionAPI) {
 			sql: Type.Optional(Type.String({ description: "自定义 SQL (仅 SELECT)" })),
 		}),
 		async execute(_toolCallId, params) {
-			const { dbQueryTool } = await import("@/lib/ai/tools/db-query");
+			const { dbQueryTool } = await import("../../src/lib/ai/tools/db-query");
 			const result = await dbQueryTool.execute!(
 				{
 					queryType: params.queryType,
@@ -600,7 +600,7 @@ export default function vocabAgentExtension(pi: ExtensionAPI) {
 			content: Type.String({ description: "经验内容" }),
 		}),
 		async execute(_toolCallId, params) {
-			const { saveLessonTool } = await import("@/lib/ai/tools/save-lesson");
+			const { saveLessonTool } = await import("../../src/lib/ai/tools/save-lesson");
 			const result = await saveLessonTool.execute!(
 				{ title: params.title, content: params.content },
 				{ toolCallId: "pi", messages: [], abortSignal: undefined },
@@ -622,7 +622,7 @@ export default function vocabAgentExtension(pi: ExtensionAPI) {
 		promptSnippet: "列出经验教训",
 		parameters: Type.Object({}),
 		async execute(_toolCallId, _params) {
-			const { listLessonsTool } = await import("@/lib/ai/tools/list-lessons");
+			const { listLessonsTool } = await import("../../src/lib/ai/tools/list-lessons");
 			const result = await listLessonsTool.execute!(
 				{},
 				{ toolCallId: "pi", messages: [], abortSignal: undefined },
@@ -652,7 +652,7 @@ export default function vocabAgentExtension(pi: ExtensionAPI) {
 			removeTitles: Type.String({ description: "要合并的标题（逗号分隔）" }),
 		}),
 		async execute(_toolCallId, params) {
-			const { mergeLessonsTool } = await import("@/lib/ai/tools/merge-lessons");
+			const { mergeLessonsTool } = await import("../../src/lib/ai/tools/merge-lessons");
 			const result = await mergeLessonsTool.execute!(
 				{ keepTitle: params.keepTitle, removeTitles: params.removeTitles },
 				{ toolCallId: "pi", messages: [], abortSignal: undefined },
@@ -677,7 +677,7 @@ export default function vocabAgentExtension(pi: ExtensionAPI) {
 			args: Type.Optional(Type.String({ description: "命令参数" })),
 		}),
 		async execute(_toolCallId, params) {
-			const { testCommandTool } = await import("@/lib/ai/tools/test-command");
+			const { testCommandTool } = await import("../../src/lib/ai/tools/test-command");
 			const result = await testCommandTool.execute!(
 				{ name: params.name, args: params.args },
 				{ toolCallId: "pi", messages: [], abortSignal: undefined },

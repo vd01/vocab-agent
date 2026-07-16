@@ -8,10 +8,17 @@
       "models": [
         {
           "id": "xminimaxm25",
-          "name": "Teacher",
+          "name": "Teacher (xminimaxm25)",
           "reasoning": false,
           "contextWindow": 128000,
           "maxTokens": 4096
+        },
+        {
+          "id": "xopglm5",
+          "name": "Developer (xopglm5)",
+          "reasoning": true,
+          "contextWindow": 128000,
+          "maxTokens": 16384
         }
       ]
     }
