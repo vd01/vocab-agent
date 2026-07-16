@@ -37,7 +37,9 @@ export async function POST(req: Request) {
 
 		// Store mode context for the vocab-agent extension to read
 		// (The extension reads this in before_agent_start to switch tools/prompts)
-		setCurrentMode(mode ?? "teach", {
+		const resolvedMode = mode ?? "teach";
+		console.log(`[Chat API] Setting mode: ${resolvedMode}, modeSwitched: ${modeSwitched}`);
+		setCurrentMode(resolvedMode, {
 			modeSwitched: modeSwitched === true,
 			activeGroup: activeGroup ?? null,
 		});
@@ -72,7 +74,11 @@ export interface ModeContext {
 	activeGroup: string | null;
 }
 
-let currentModeContext: ModeContext = {
+// Use globalThis to share across module instances
+// (jiti and Turbopack load separate instances of the same module)
+const GLOBAL_KEY = "__vocab_mode_context__" as const;
+
+const defaultModeContext: ModeContext = {
 	mode: "teach",
 	modeSwitched: false,
 	activeGroup: null,
@@ -82,15 +88,16 @@ function setCurrentMode(
 	mode: string,
 	extra: { modeSwitched: boolean; activeGroup: string | null },
 ) {
-	currentModeContext = {
+	const ctx: ModeContext = {
 		mode: mode === "develop" ? "develop" : "teach",
 		...extra,
 	};
+	(globalThis as any)[GLOBAL_KEY] = ctx;
 }
 
 /** Read by vocab-agent extension to determine active mode */
 export function getCurrentModeContext(): ModeContext {
-	return currentModeContext;
+	return (globalThis as any)[GLOBAL_KEY] ?? defaultModeContext;
 }
 
 // ── SSE Stream Builder ───────────────────────────────────────────────────

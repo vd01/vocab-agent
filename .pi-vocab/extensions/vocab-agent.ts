@@ -22,11 +22,13 @@ export default function vocabAgentExtension(pi: ExtensionAPI) {
 
 	pi.on("before_agent_start", async (event) => {
 		// Read mode context set by the chat API route
-		const { getCurrentModeContext } = await import(
-			"@/app/api/chat/pi-route"
-		);
-		const modeCtx = getCurrentModeContext();
-		const isDeveloper = modeCtx.mode === "develop";
+		try {
+			const { getCurrentModeContext } = await import(
+				"../../src/app/api/chat/route"
+			);
+			const modeCtx = getCurrentModeContext();
+			const isDeveloper = modeCtx.mode === "develop";
+			console.log(`[vocab-agent] before_agent_start: mode=${modeCtx.mode}, isDeveloper=${isDeveloper}`);
 
 		// ── Switch tool set ───────────────────────────────────────────────
 		if (isDeveloper) {
@@ -84,6 +86,10 @@ export default function vocabAgentExtension(pi: ExtensionAPI) {
 		}
 
 		return { systemPrompt };
+		} catch (err) {
+			console.error("[vocab-agent] before_agent_start error:", err);
+			return {};
+		}
 	});
 
 	// ═══════════════════════════════════════════════════════════════════════
