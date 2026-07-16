@@ -1,4 +1,4 @@
-import { tool } from 'ai';
+import { defineTool } from './types';
 import { z } from 'zod';
 import { executeCommand } from '@/lib/commands/executor';
 import { db } from '@/lib/db';
@@ -148,7 +148,7 @@ async function checkComponentStatus(cmdName: string, resultType: string): Promis
   return warnings;
 }
 
-export const testCommandTool = tool({
+export const testCommandTool = defineTool({
   description: '测试已注册的 / 命令是否正常工作。直接调用命令执行器，返回执行结果。用于验证新注册的命令是否正确。',
   inputSchema: z.object({
     command: z.string().describe('要测试的完整命令，如 "word-stats" 或 "prefix-search app"（不含 / 前缀）'),

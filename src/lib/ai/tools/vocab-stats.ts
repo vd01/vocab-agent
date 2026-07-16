@@ -1,4 +1,4 @@
-import { tool } from 'ai';
+import { defineTool } from './types';
 import { z } from 'zod';
 import { db, client } from '@/lib/db';
 import { words, wordGroups, wordGroupMembers } from '@/lib/db/schema';
@@ -9,7 +9,7 @@ import { getProficiencyDistribution, getDailyStats } from '@/lib/fsrs/scheduler'
  * Vocab stats tool — returns detailed statistics about the user's vocabulary library.
  * Called when the user asks "我学了多少词", "词库统计", etc.
  */
-export const vocabStatsTool = tool({
+export const vocabStatsTool = defineTool({
   description: '查询用户词库的详细统计信息，包括总量、考试标签分布、Collins星级分布、熟练度、学习天数等。当用户问"我学了多少词"、"词库统计"、"学习进度"时调用。',
   inputSchema: z.object({
     detail: z.boolean().optional().describe('是否显示详细信息，默认 false'),

@@ -1,10 +1,10 @@
-import { tool } from 'ai';
+import { defineTool } from './types';
 import { z } from 'zod';
 import { db } from '@/lib/db';
 import { developerLessons } from '@/lib/db/schema';
 import { desc } from 'drizzle-orm';
 
-export const listLessonsTool = tool({
+export const listLessonsTool = defineTool({
   description: '列出知识库中所有经验教训，用于检查冗余和合并机会。当你需要了解当前知识库内容、判断是否有重复经验时调用。',
   inputSchema: z.object({}),
   execute: async () => {

@@ -1,11 +1,11 @@
-import { tool } from 'ai';
+import { defineTool } from './types';
 import { z } from 'zod';
 import { getDueWords, processReview, Rating } from '@/lib/fsrs/scheduler';
 import { db } from '@/lib/db';
 import { wordGroups } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
 
-export const fsrsReviewTool = tool({
+export const fsrsReviewTool = defineTool({
   description: '获取待复习的单词列表，用于 FSRS 间隔重复复习。可指定分组名只复习该分组的单词。',
   inputSchema: z.object({
     limit: z.number().optional().describe('获取的单词数量，默认 5'),
@@ -77,7 +77,7 @@ export const fsrsReviewTool = tool({
   },
 });
 
-export const fsrsRateTool = tool({
+export const fsrsRateTool = defineTool({
   description: '对单词进行 FSRS 评分，更新复习调度',
   inputSchema: z.object({
     wordId: z.string().describe('单词 ID'),

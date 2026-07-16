@@ -1,4 +1,4 @@
-import { tool } from 'ai';
+import { defineTool } from './types';
 import { z } from 'zod';
 import { db, client } from '@/lib/db';
 import { words, reviews } from '@/lib/db/schema';
@@ -28,7 +28,7 @@ function validateCustomSql(customSql: string): string | null {
   return null;
 }
 
-export const dbQueryTool = tool({
+export const dbQueryTool = defineTool({
   description: '查询数据库中的词汇和复习数据。必须指定 queryType 参数。',
   inputSchema: z.object({
     queryType: z.enum([

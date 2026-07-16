@@ -1,4 +1,4 @@
-import { tool } from 'ai';
+import { defineTool } from './types';
 import { z } from 'zod';
 import { db } from '@/lib/db';
 import { developerLessons } from '@/lib/db/schema';
@@ -6,7 +6,7 @@ import { v4 as uuid } from 'uuid';
 import { eq, desc } from 'drizzle-orm';
 import { estimateTokens } from '../utils/token-estimate';
 
-export const saveLessonTool = tool({
+export const saveLessonTool = defineTool({
   description: '保存经验教训到知识库，供未来开发任务参考。在完成开发任务后，主动总结并保存你学到的经验。',
   inputSchema: z.object({
     category: z.enum(['pattern', 'anti-pattern', 'tip', 'pitfall']).describe(

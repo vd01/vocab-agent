@@ -1,11 +1,11 @@
-import { tool } from 'ai';
+import { defineTool } from './types';
 import { z } from 'zod';
 import { db } from '@/lib/db';
 import { words, wordGroups, wordGroupMembers } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
 import { lookupWord } from '@/lib/dictionary/lookup';
 
-export const vocabLookupTool = tool({
+export const vocabLookupTool = defineTool({
   description: '查询单词详情。先查用户词库，未找到则自动查词典（ECDICT + 在线词典），返回音标、释义、例句等丰富信息。',
   inputSchema: z.object({
     word: z.string().describe('要查询的单词'),

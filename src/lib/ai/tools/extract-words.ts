@@ -1,4 +1,4 @@
-import { tool } from 'ai';
+import { defineTool } from './types';
 import { z } from 'zod';
 import { db } from '@/lib/db';
 import { words } from '@/lib/db/schema';
@@ -64,7 +64,7 @@ const STOP_WORDS = new Set([
  * that are NOT in the user's vocab library.
  * Returns each unknown word with its dictionary info.
  */
-export const extractWordsTool = tool({
+export const extractWordsTool = defineTool({
   description: '从英文文本中提取用户词库中不存在的生词，返回每个词的释义、音标、考试标签、Collins星级。用于阅读辅助场景。',
   inputSchema: z.object({
     text: z.string().describe('要分析的英文文本'),

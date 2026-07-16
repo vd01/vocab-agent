@@ -1,4 +1,4 @@
-import { tool } from 'ai';
+import { defineTool } from './types';
 import { z } from 'zod';
 import { promises as fs } from 'fs';
 import path from 'path';
@@ -7,7 +7,7 @@ import { db } from '@/lib/db';
 import { dynamicCommands } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
 
-export const unregisterComponentTool = tool({
+export const unregisterComponentTool = defineTool({
   description: `删除一个 / 命令及其关联的 UI 组件。会执行以下操作：
 1. 删除 src/components/generated/ 下的组件文件
 2. 删除 generated/tools/ 下的 toolCode 文件

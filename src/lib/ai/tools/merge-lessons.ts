@@ -1,10 +1,10 @@
-import { tool } from 'ai';
+import { defineTool } from './types';
 import { z } from 'zod';
 import { db } from '@/lib/db';
 import { developerLessons } from '@/lib/db/schema';
 import { eq, inArray } from 'drizzle-orm';
 
-export const mergeLessonsTool = tool({
+export const mergeLessonsTool = defineTool({
   description: '合并冗余的经验教训。当你发现知识库中有多条语义重复或高度相关的经验时，调用此工具将它们合并为一条更精炼的经验。合并后会删除被合并的旧条目。',
   inputSchema: z.object({
     keepId: z.string().describe('保留的教训 ID（合并后的主记录）'),

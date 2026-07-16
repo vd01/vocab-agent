@@ -1,4 +1,4 @@
-import { tool } from 'ai';
+import { defineTool } from './types';
 import { z } from 'zod';
 import { lookupWord } from '@/lib/dictionary/lookup';
 
@@ -7,7 +7,7 @@ import { lookupWord } from '@/lib/dictionary/lookup';
  * Does NOT interact with the user's vocab library.
  * Use vocab-lookup if you need to check the user's library.
  */
-export const dictLookupTool = tool({
+export const dictLookupTool = defineTool({
   description: '查词典获取单词的详细信息（音标、中英文释义、例句、同义词、词频、考试标签等）。不涉及用户词库，纯词典查询。',
   inputSchema: z.object({
     word: z.string().describe('要查询的单词'),

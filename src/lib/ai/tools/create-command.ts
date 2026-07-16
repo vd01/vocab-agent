@@ -1,4 +1,4 @@
-import { tool } from 'ai';
+import { defineTool } from './types';
 import { z } from 'zod';
 import { promises as fs } from 'fs';
 import path from 'path';
@@ -10,7 +10,7 @@ import { validateComponentCode, dryRunRender } from './component-validator';
 
 const GENERATED_SRC_DIR = path.join(process.cwd(), 'src', 'components', 'generated');
 
-export const createCommandTool = tool({
+export const createCommandTool = defineTool({
   description: `创建或更新一个 / 命令，一步完成命令注册和 UI 组件注册。
 
 	**重要：代码必须先写入文件，然后通过路径引用。这是避免 JSON 转义问题的唯一可靠方式。**

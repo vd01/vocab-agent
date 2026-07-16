@@ -1,4 +1,4 @@
-import { tool } from 'ai';
+import { defineTool } from './types';
 import { z } from 'zod';
 import { promises as fs } from 'fs';
 import path from 'path';
@@ -8,7 +8,7 @@ import { db } from '@/lib/db';
 import { dynamicCommands } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
 
-export const registerComponentTool = tool({
+export const registerComponentTool = defineTool({
   description: `注册新的 UI 组件到动态组件注册表，立即生效（无需重启）。同时更新 DB 中的 component_code。
 
 		**推荐使用 create-command 代替本工具**，它一步完成命令注册和组件注册。

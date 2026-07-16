@@ -1,4 +1,4 @@
-import { tool } from 'ai';
+import { defineTool } from './types';
 import { z } from 'zod';
 import { db } from '@/lib/db';
 import { wordGroups, wordGroupMembers, words } from '@/lib/db/schema';
@@ -9,7 +9,7 @@ import { v4 as uuid } from 'uuid';
  * Group management tool — allows the Teacher Agent to create, list, rename,
  * delete groups, and add/remove words from groups.
  */
-export const groupManageTool = tool({
+export const groupManageTool = defineTool({
   description: '管理单词分组。支持创建、列出、重命名、删除分组，以及添加/移除分组中的单词。当用户提到"分组"、"创建分组"、"把xxx加到xxx分组"时调用。',
   inputSchema: z.object({
     action: z.enum(['list', 'create', 'rename', 'delete', 'add-word', 'remove-word']).describe('操作类型'),

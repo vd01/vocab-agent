@@ -1,4 +1,4 @@
-import { tool } from 'ai';
+import { defineTool } from './types';
 import { z } from 'zod';
 import { db } from '@/lib/db';
 import { words, wordGroups, wordGroupMembers } from '@/lib/db/schema';
@@ -7,7 +7,7 @@ import { initializeCard } from '@/lib/fsrs/scheduler';
 import { lookupWord } from '@/lib/dictionary/lookup';
 import { v4 as uuid } from 'uuid';
 
-export const addWordTool = tool({
+export const addWordTool = defineTool({
   description: '添加新单词到词库，并初始化 FSRS 复习卡片。只需提供 word，音标、释义、例句会自动从词典填充。也可手动覆盖任何字段。',
   inputSchema: z.object({
     word: z.string().describe('英语单词'),

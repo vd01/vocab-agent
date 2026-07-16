@@ -1,4 +1,4 @@
-import { tool } from 'ai';
+import { defineTool } from './types';
 import { z } from 'zod';
 import { db } from '@/lib/db';
 import { pinnedWords, words } from '@/lib/db/schema';
@@ -9,7 +9,7 @@ import { initializeCard } from '@/lib/fsrs/scheduler';
 
 const MAX_PINS_PER_SIDE = 5;
 
-export const pinWordTool = tool({
+export const pinWordTool = defineTool({
   description: '将单词置顶到侧边栏，方便用户随时查看和复习。置顶的单词会显示在 PC 界面两侧，点击可展开 AI 生成的详解卡片（助记、词族、搭配、例句等）。如果单词不在词库中，会自动添加。',
   inputSchema: z.object({
     wordId: z.string().optional().describe('要置顶的单词 ID（如果已在词库中）'),
@@ -204,7 +204,7 @@ async function pinToSide(w: typeof words.$inferSelect, side: 'left' | 'right', s
   };
 }
 
-export const unpinWordTool = tool({
+export const unpinWordTool = defineTool({
   description: '取消单词的置顶状态，从侧边栏移除。',
   inputSchema: z.object({
     pinId: z.string().describe('置顶记录 ID（来自 pin-word 返回的 pinId）'),
