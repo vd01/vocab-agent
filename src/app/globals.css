@@ -4,6 +4,14 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* Theme toggle transition */
+html, body {
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+html *, body * {
+  transition: background-color 0.3s ease, border-color 0.3s ease, color 0.3s ease;
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -162,4 +170,13 @@
 }
 .dark .scrollbar-thin:hover::-webkit-scrollbar-thumb {
   background-color: oklch(0.6 0 0 / 50%);
+}
+
+/* Theme toggle button animation */
+.theme-toggle-spin {
+  animation: theme-spin 0.5s ease;
+}
+@keyframes theme-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }

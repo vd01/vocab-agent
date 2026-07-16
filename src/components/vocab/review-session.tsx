@@ -292,7 +292,7 @@ export function ReviewSession({ words, queueInfo }: ReviewSessionProps) {
           )}
         </span>
       </div>
-      <div className="relative w-full max-w-[400px] sm:mx-auto px-1" style={{ perspective: '600px' }}>
+      <div className="relative w-full min-w-[260px] sm:min-w-[500px] px-2 sm:px-0" style={{ perspective: '600px' }}>
         <WordCard
           key={currentWord.wordId}
           wordId={currentWord.wordId}

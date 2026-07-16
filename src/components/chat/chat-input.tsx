@@ -178,7 +178,7 @@ export function ChatInput({
           onClick={() => debouncedAction(() => onReview?.())}
           disabled={isLoading}
           className="inline-flex items-center gap-1.5 rounded-full border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed"
-          title="开始复习 (Alt+R)"
+          title="开始复习"
         >
           <svg className="size-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 4v-5h-.581m0 0a8.003 8.003 0 01-15.357 2m15.357-2H15" />
@@ -189,9 +189,6 @@ export function ChatInput({
               {dueCount > 99 ? '99+' : dueCount}
             </span>
           )}
-          <kbd className="hidden lg:inline-flex items-center rounded bg-muted px-1 py-0.5 text-[10px] font-mono text-muted-foreground">
-            Alt+R
-          </kbd>
         </button>
         <div className="hidden sm:block">
           <ReviewReminderToggle
@@ -204,15 +201,12 @@ export function ChatInput({
           onClick={() => debouncedAction(() => onStats?.())}
           disabled={isLoading}
           className="inline-flex items-center gap-1.5 rounded-full border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed"
-          title="统计 (Alt+S)"
+          title="统计"
         >
           <svg className="size-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z" />
           </svg>
           <span className="hidden sm:inline">统计</span>
-          <kbd className="hidden lg:inline-flex items-center rounded bg-muted px-1 py-0.5 text-[10px] font-mono text-muted-foreground">
-            Alt+S
-          </kbd>
         </button>
         {/* Dev mode switch — right-aligned, disabled during streaming */}
         <div className="ml-auto flex items-center gap-1">
@@ -266,6 +260,10 @@ export function ChatInput({
             </Button>
           )}
         </form>
+        {/* 底部提示 */}
+        <p className="text-[10px] text-muted-foreground/60 text-center mt-1.5">
+          按 Enter 发送，Shift+Enter 换行
+        </p>
       </div>
     </div>
   );

@@ -600,7 +600,7 @@ function renderToolOutput(
 	if (output.type === "due-words" && output.words) {
 		if (isLastReview) {
 			return (
-				<div key={key} className="mt-2 -mr-8 sm:mr-0">
+				<div key={key} className="mt-2">
 					<ReviewSession words={output.words} queueInfo={output.queueInfo} />
 				</div>
 			);
