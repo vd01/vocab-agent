@@ -172,7 +172,7 @@ export function ChatInput({
   return (
     <div className="relative border-t bg-background">
       {/* Quick action buttons */}
-      <div className="flex items-center gap-1.5 px-4 pt-4 pb-2">
+      <div className="flex items-center gap-1.5 px-3 sm:px-4 pt-2 sm:pt-4 pb-1.5 sm:pb-2">
         <button
           type="button"
           onClick={() => debouncedAction(() => onReview?.())}
@@ -183,20 +183,22 @@ export function ChatInput({
           <svg className="size-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 4v-5h-.581m0 0a8.003 8.003 0 01-15.357 2m15.357-2H15" />
           </svg>
-          复习
+          <span className="hidden sm:inline">复习</span>
           {dueCount !== undefined && dueCount > 0 && (
             <span className="inline-flex items-center justify-center min-w-[16px] h-4 rounded-full bg-red-500 text-white text-[10px] font-bold px-1">
               {dueCount > 99 ? '99+' : dueCount}
             </span>
           )}
-          <kbd className="hidden sm:inline-flex items-center rounded bg-muted px-1 py-0.5 text-[10px] font-mono text-muted-foreground">
+          <kbd className="hidden lg:inline-flex items-center rounded bg-muted px-1 py-0.5 text-[10px] font-mono text-muted-foreground">
             Alt+R
           </kbd>
         </button>
-        <ReviewReminderToggle
-          onReviewFromNotification={() => onReview?.()}
-          dueCount={dueCount}
-        />
+        <div className="hidden sm:block">
+          <ReviewReminderToggle
+            onReviewFromNotification={() => onReview?.()}
+            dueCount={dueCount}
+          />
+        </div>
         <button
           type="button"
           onClick={() => debouncedAction(() => onStats?.())}
@@ -207,13 +209,13 @@ export function ChatInput({
           <svg className="size-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z" />
           </svg>
-          统计
-          <kbd className="hidden sm:inline-flex items-center rounded bg-muted px-1 py-0.5 text-[10px] font-mono text-muted-foreground">
+          <span className="hidden sm:inline">统计</span>
+          <kbd className="hidden lg:inline-flex items-center rounded bg-muted px-1 py-0.5 text-[10px] font-mono text-muted-foreground">
             Alt+S
           </kbd>
         </button>
         {/* Dev mode switch — right-aligned, disabled during streaming */}
-        <div className="ml-auto flex items-center gap-1.5">
+        <div className="ml-auto flex items-center gap-1">
           <Switch
             size="sm"
             checked={devMode}
@@ -221,12 +223,12 @@ export function ChatInput({
             disabled={isLoading}
             className={devMode ? 'bg-orange-500 dark:bg-orange-500' : ''}
           />
-          <span className={`text-xs font-medium ${devMode ? 'text-orange-600 dark:text-orange-400' : isLoading ? 'text-muted-foreground/50' : 'text-muted-foreground'}`}>
+          <span className={`hidden sm:inline text-xs font-medium ${devMode ? 'text-orange-600 dark:text-orange-400' : isLoading ? 'text-muted-foreground/50' : 'text-muted-foreground'}`}>
             {devMode ? '开发中' : '开发'}
           </span>
         </div>
       </div>
-      <div className="relative px-4 pb-5">
+      <div className="relative px-3 sm:px-4 pb-3 sm:pb-5">
         {showCommands && (
           <CommandSuggestions
             filter={commandFilter}
@@ -244,7 +246,7 @@ export function ChatInput({
               requestAnimationFrame(() => adjustHeight());
             }}
             onKeyDown={handleKeyDown}
-            placeholder={devMode ? '描述你想添加或修改的功能... (Shift+Enter 换行)' : '输入消息或 / 命令... (Shift+Enter 换行, Ctrl+/ 聚焦, Esc 清空)'}
+            placeholder={devMode ? '描述你想添加或修改的功能...' : '输入消息或 / 命令...'}
             disabled={isLoading}
             autoComplete="off"
             rows={1}

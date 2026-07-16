@@ -69,7 +69,7 @@ export function MessageItem({
 
 	return (
 		<div
-			className={`flex ${isUser ? "justify-end" : "justify-start"} px-4 py-3`}
+			className={`flex ${isUser ? "justify-end" : "justify-start"} px-3 sm:px-4 py-2 sm:py-3`}
 		>
 			<div
 				className={`flex gap-3 max-w-3xl w-full ${isUser ? "justify-end" : ""}`}
@@ -856,29 +856,32 @@ function renderToolOutput(
 	if (output.type === "stats") {
 		return (
 			<div key={key} className="mt-2 space-y-2">
-				<div className="text-sm font-medium">
+				<div className="text-sm font-medium flex items-center gap-1.5">
+					<svg className="size-3.5 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+						<path strokeLinecap="round" strokeLinejoin="round" d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z" />
+					</svg>
 					学习统计{output.group ? ` — ${output.group}` : ""}
 				</div>
-				<div className="grid grid-cols-2 gap-2 text-xs">
-					<div className="bg-muted rounded-lg p-2">
-						<div className="text-muted-foreground">总词汇量</div>
-						<div className="text-lg font-bold">{output.totalWords}</div>
+				<div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3 text-xs">
+					<div className="rounded-xl border border-border bg-card p-3 sm:p-4 flex flex-col">
+						<div className="text-muted-foreground text-[10px] sm:text-xs mb-1">总词汇量</div>
+						<div className="text-xl sm:text-2xl font-bold text-foreground">{output.totalWords}</div>
 					</div>
-					<div className="bg-muted rounded-lg p-2">
-						<div className="text-muted-foreground">今日复习</div>
-						<div className="text-lg font-bold">
+					<div className="rounded-xl border border-border bg-card p-3 sm:p-4 flex flex-col">
+						<div className="text-muted-foreground text-[10px] sm:text-xs mb-1">今日复习</div>
+						<div className="text-xl sm:text-2xl font-bold text-foreground">
 							{output.daily?.reviewed ?? 0}
 						</div>
 					</div>
-					<div className="bg-muted rounded-lg p-2">
-						<div className="text-muted-foreground">今日正确率</div>
-						<div className="text-lg font-bold">
+					<div className="rounded-xl border border-border bg-card p-3 sm:p-4 flex flex-col">
+						<div className="text-muted-foreground text-[10px] sm:text-xs mb-1">今日正确率</div>
+						<div className="text-xl sm:text-2xl font-bold text-foreground">
 							{output.daily?.correctRate ?? 0}%
 						</div>
 					</div>
-					<div className="bg-muted rounded-lg p-2">
-						<div className="text-muted-foreground">学习中</div>
-						<div className="text-lg font-bold">
+					<div className="rounded-xl border border-border bg-card p-3 sm:p-4 flex flex-col">
+						<div className="text-muted-foreground text-[10px] sm:text-xs mb-1">学习中</div>
+						<div className="text-xl sm:text-2xl font-bold text-foreground">
 							{output.distribution?.learning ?? 0}
 						</div>
 					</div>
@@ -938,18 +941,9 @@ function renderToolOutput(
 		);
 	}
 
+// Command error / unknown / invalid-args
+
 	// Command error / unknown / invalid-args
-	if (
-		output.type === "unknown-command" ||
-		output.type === "invalid-args" ||
-		output.type === "command-error"
-	) {
-		return (
-			<div key={key} className="mt-2 text-xs text-yellow-600">
-				{output.message}
-			</div>
-		);
-	}
 
 	// Developer tools: file operations & shell — compact collapsed display
 	const devToolNames = new Set([
@@ -1132,6 +1126,19 @@ function AgentStatus({
 	isStreaming: boolean;
 }) {
 	const phase = detectPhase(message, isStreaming);
+
+	// For command results (stats, review, etc.) that have no text content,
+	// don't show "已完成" — the result card itself is self-explanatory
+	const hasTextContent = message.parts?.some(
+		(p) => p.type === "text" && p.text && p.text.trim().length > 0,
+	);
+	const hasToolOutput = message.parts?.some(
+		(p) => isToolPartWithState(p, "output-available"),
+	);
+	// If this message only has tool output and no text, suppress the "done" status
+	if (phase === "done" && hasToolOutput && !hasTextContent) {
+		return null;
+	}
 
 	// Idle — no content yet, don't show anything (MessageList's "思考中..." handles this)
 	if (phase === "idle") return null;
@@ -1396,3 +1403,4 @@ function PinChangeNotifier() {
 	}, []);
 	return null;
 }
+
