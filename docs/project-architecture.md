@@ -5,26 +5,30 @@
 ## 1. 双 Agent 架构
 
 ```
-用户消息 → routeAgent() → Teacher Agent (deepseek-chat)
-                      → Developer Agent (deepseek-reasoner)
+用户消息 → Chat API Route → pi SDK session
+  → before_agent_start 事件 → 根据模式切换工具集 + system prompt
+  → Teacher 模式：10 个教学工具
+  → Developer 模式：8 个开发工具 + pi 内置文件工具 + pi-readseek
 ```
 
 ### Teacher Agent
-- 模型: `deepseek-chat`
+- 模型: `TEACHER_MODEL` 环境变量
 - 职责: 日常对话、单词查询、复习引导
-- 工具: fsrs-review, add-word, vocab-lookup, dict-lookup, extract-words, vocab-stats
+- 工具: fsrs-review, fsrs-rate, vocab-lookup, add-word, extract-words, dict-lookup, vocab-stats, pin-word, unpin-word, group-manage
 - 不需要注册命令，直接用工具完成任务
 
 ### Developer Agent
-- 模型: `deepseek-reasoner`（返回 reasoning stream parts）
+- 模型: `DEVELOPER_MODEL` 环境变量
 - 职责: 创建命令、写代码、扩展系统
-- 工具: file-write, file-read, file-edit, file-list, create-command, register-tool, register-component, db-query, test-command, save-lesson
-- 返回 reasoning 部分前端会折叠显示
+- 工具:
+  - **pi 内置**: read, write, edit, bash
+  - **pi-readseek**: readSeek_read, readSeek_edit, readSeek_grep, readSeek_search, readSeek_refs, readSeek_rename, readSeek_hover, readSeek_def, readSeek_check, readSeek_write
+  - **vocab 开发工具**: create-command, register-component, unregister-component, db-query, save-lesson, list-lessons, merge-lessons, test-command
 
-### 路由规则 (`src/lib/ai/agent-router.ts`)
-- 以 `/dev` 开头 → Developer
-- 包含"帮我实现"/"添加功能"/"创建命令"等关键词 → Developer
-- 其他 → Teacher
+### 模式路由
+- 聊天面板有"开发模式"开关，状态通过 `globalThis.__vocab_mode_context__` 传递
+- `before_agent_start` 事件中根据模式调用 `pi.setActiveTools()` 切换工具集
+- 同时注入对应的 system prompt（teacher-system.ts 或 developer-system.ts）
 
 ## 2. 命令系统
 
@@ -33,11 +37,13 @@
 - `/add <word>` — 添加单词，返回 `{ type: 'added', wordId, word, ... }`
 - `/stats` — 学习统计，返回 `{ type: 'stats', totalWords, daily, distribution }`
 - `/rate <wordId> <1-4>` — 提交评分，返回 `{ type: 'review-result', rating, scheduledDays }`
+- `/group` — 分组管理
 
 ### 动态命令 (`dynamic_commands` 表)
 - 由 Developer Agent 通过 `create-command` 工具注册
 - toolCode 存在 DB 中，运行时通过 `new Function()` 沙盒执行
-- 沙盒注入: `db`, `tables`, `fsrs`, `args`, `console`
+- 沙盒注入: `db`, `client`, `tables`, `dql`, `fsrs`, `args`, `console`
+- toolCode 必须是**纯 JavaScript**（不能有 TypeScript 类型注解）
 - 如果 toolCode 返回的 `type` 有对应注册组件，前端自动渲染该组件
 
 ### 命令执行流程
@@ -67,13 +73,13 @@ create-command({ name, toolCodePath, componentCodePath })
 ### component-registry.ts 机制
 - 文件路径: `src/components/generative/component-registry.ts`
 - 使用静态 import + `componentRegistry.register()` 注册所有组件
-- 每次 register-component/create-command 调用时自动重写此文件
+- 每次 register-component/create-command 调用时**自动重写**此文件
 - Turbopack HMR 自动热更新，无需重启
+- **不要手动编辑此文件**——改动会被下次注册覆盖
 
 ### 组件命名规则
 - 组件文件名: kebab-case（如 `word-stats-panel.tsx`）
-- import 变量名: PascalCase（如 `WordStatsPanel`）
-- 注册名: kebab-case（如 `'word-stats-panel'`）
+- 注册名: kebab-case，与命令名一致（如 `'word-stats'`，不加 -panel 后缀）
 - toolCode 返回的 `type` 必须与注册名完全一致
 
 ### DynamicRenderer
@@ -137,7 +143,7 @@ reviewed_at INTEGER NOT NULL   -- Unix timestamp
 id TEXT PRIMARY KEY,
 name TEXT NOT NULL UNIQUE,
 description TEXT NOT NULL,
-tool_code TEXT NOT NULL,       -- async 函数表达式字符串
+tool_code TEXT NOT NULL,       -- 纯 JavaScript async 函数表达式字符串
 component_code TEXT,           -- React 组件代码（可选）
 created_at INTEGER NOT NULL,
 updated_at INTEGER NOT NULL
@@ -165,33 +171,35 @@ created_at INTEGER NOT NULL
 ### 时间戳注意
 - Drizzle 的 `timestamp` mode 在 SQLite 中存储为 Unix 秒数（整数）
 - 查询时必须手动 `toUnixSec(date)` 转换，Drizzle 不会自动处理
-- `getDueWords` 和 `getProficiencyDistribution` 使用 raw SQL 避免时间戳问题
 
 ## 7. 文件系统约定
 
-### 可写目录（file-write / file-edit 白名单）
+### 可写目录
 - `generated/` — 生成的代码、工具脚本、临时文件
 - `src/components/generated/` — 动态注册的 UI 组件
 - `src/app/api/` — API 路由
 
-### 可读目录（file-read）
+### 可读目录
 - 项目内任意文件
 
 ### 关键文件路径
-- 聊天 API: `src/app/api/chat/route.ts`
+- 聊天 API: `src/app/api/chat/route.ts` — pi SDK SSE 桥接
 - 命令 API: `src/app/api/commands/route.ts`
-- Agent 定义: `src/lib/ai/teacher-agent.ts`, `src/lib/ai/developer-agent.ts`
-- Agent 路由: `src/lib/ai/agent-router.ts`
+- pi SDK 单例: `src/lib/pi/session.ts`
+- pi 扩展: `.pi-vocab/extensions/vocab-agent.ts`
+- System prompt: `src/lib/ai/prompts/teacher-system.ts`, `developer-system.ts`
 - 命令执行器: `src/lib/commands/executor.ts`
-- 组件注册表: `src/components/generative/component-registry.ts`
+- 组件注册表: `src/components/generative/component-registry.ts`（自动维护）
 - DB Schema: `src/lib/db/schema.ts`
 - FSRS: `src/lib/fsrs/scheduler.ts`
 - World State: `src/lib/pipeline/world-state.ts`
 
 ## 8. 环境限制
 
-- Node.js 20.11.1（AI SDK 要求 >=22 但实际可运行，忽略 EBADENGINE 警告）
+- Node.js 20.x（pi SDK 可正常运行）
 - better-sqlite3 无法编译，使用 @libsql/client (WASM-based)
 - 必须用 Turbopack 开发（webpack 在 Q: 盘编译极慢）
-- DeepSeek reasoner 返回 reasoning stream parts，前端需处理
+- pi SDK 需要 `serverExternalPackages` 配置防止 Turbopack 破坏 `import.meta.resolve`
+- jiti 不理解 `@/` 路径别名，postinstall 脚本自动修补
+- jiti 与 Turbopack 加载独立模块实例，跨边界状态用 `globalThis` 共享
 - generated/ 目录已加入 .gitignore

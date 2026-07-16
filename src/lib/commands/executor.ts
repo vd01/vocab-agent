@@ -93,11 +93,23 @@ import { words, reviews, chatMessages, dynamicExtractors, wordGroups, wordGroupM
 
 const DB_TABLES = { words, reviews, chatMessages, dynamicCommands, dynamicExtractors, wordGroups, wordGroupMembers };
 
+// Pre-load fsrs module once for performance
+let fsrsModule: Awaited<typeof import('@/lib/fsrs/scheduler')> | null = null;
+async function getFsrsModule() {
+  if (!fsrsModule) {
+    fsrsModule = await import('@/lib/fsrs/scheduler');
+  }
+  return fsrsModule;
+}
+
 async function executeDynamicCommand(
   cmd: typeof dynamicCommands.$inferSelect,
   args: string[],
 ): Promise<CommandResult> {
   try {
+    // Pre-load fsrs module before creating sandbox
+    const fsrs = await getFsrsModule();
+
     // Provide a restricted sandbox with whitelisted APIs
     const sandbox = {
       db,
@@ -105,12 +117,12 @@ async function executeDynamicCommand(
       tables: DB_TABLES,
       dql: { eq, and, or, not, gt, gte, lt, lte, inArray, like, sql, desc, asc, count },
       fsrs: {
-        getDueWords: (await import('@/lib/fsrs/scheduler')).getDueWords,
-        processReview: (await import('@/lib/fsrs/scheduler')).processReview,
-        initializeCard: (await import('@/lib/fsrs/scheduler')).initializeCard,
-        getProficiencyDistribution: (await import('@/lib/fsrs/scheduler')).getProficiencyDistribution,
-        getDailyStats: (await import('@/lib/fsrs/scheduler')).getDailyStats,
-        Rating: (await import('@/lib/fsrs/scheduler')).Rating,
+        getDueWords: fsrs.getDueWords,
+        processReview: fsrs.processReview,
+        initializeCard: fsrs.initializeCard,
+        getProficiencyDistribution: fsrs.getProficiencyDistribution,
+        getDailyStats: fsrs.getDailyStats,
+        Rating: fsrs.Rating,
       },
       args,
       console: { log: console.log, error: console.error, warn: console.warn },
@@ -127,11 +139,13 @@ async function executeDynamicCommand(
     return result ?? { type: 'dynamic-result', message: '命令执行完成' };
   } catch (err) {
     console.error('[Dynamic Command Error]', err);
+    const errorDetail = err instanceof Error
+      ? { name: err.name, message: err.message, stack: err.stack }
+      : { message: String(err) };
     return {
       type: 'command-error',
       message: `动态命令 /${cmd.name} 执行失败: ${err instanceof Error ? err.message : String(err)}`,
-      // Preserve raw error for test-command to extract line/column from stack
-      _rawError: err instanceof Error ? err : new Error(String(err)),
+      _errorDetail: errorDetail,
     };
   }
 }

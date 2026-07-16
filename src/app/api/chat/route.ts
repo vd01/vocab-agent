@@ -108,12 +108,14 @@ function createSSEStream(
 ): ReadableStream<Uint8Array> {
 	const encoder = new TextEncoder();
 	let aborted = false;
+	let eventCount = 0;
 
 	return new ReadableStream({
 		async start(controller) {
 			// Subscribe to pi session events
 			const unsubscribe = session.subscribe((event) => {
 				if (aborted) return;
+				eventCount++;
 
 				try {
 					switch (event.type) {
@@ -141,12 +143,12 @@ function createSSEStream(
 									),
 								);
 							}
-							// text_start, text_end, thinking_start, thinking_end, etc. can be handled here
 							break;
 						}
 
 						// ── Tool execution ──────────────────────────────
 						case "tool_execution_start": {
+							console.log(`[Chat SSE] tool-start: ${event.toolName} (${event.toolCallId})`);
 							controller.enqueue(
 								encoder.encode(
 									formatSSE("tool-start", {
@@ -162,6 +164,11 @@ function createSSEStream(
 							const details = event.result?.details as
 								| Record<string, unknown>
 								| undefined;
+							const textContent = event.result?.content
+								?.filter((c: any) => c.type === "text")
+								.map((c: any) => c.text)
+								.join("\n") ?? null;
+							console.log(`[Chat SSE] tool-result: ${event.toolName} (${event.toolCallId}), isError=${event.isError}, hasDetails=${!!details}, textLen=${textContent?.length ?? 0}`);
 							controller.enqueue(
 								encoder.encode(
 									formatSSE("tool-result", {
@@ -171,10 +178,7 @@ function createSSEStream(
 										// Pass details for UI rendering
 										uiData: details ?? null,
 										// Also pass text content for fallback
-										textContent: event.result?.content
-											?.filter((c: any) => c.type === "text")
-											.map((c: any) => c.text)
-											.join("\n") ?? null,
+										textContent,
 									}),
 								),
 							);
@@ -183,6 +187,7 @@ function createSSEStream(
 
 						// ── Agent lifecycle ─────────────────────────────
 						case "agent_start": {
+							console.log(`[Chat SSE] agent-start`);
 							controller.enqueue(
 								encoder.encode(formatSSE("agent-start", {})),
 							);
@@ -190,6 +195,7 @@ function createSSEStream(
 						}
 
 						case "agent_end": {
+							console.log(`[Chat SSE] agent-end`);
 							controller.enqueue(
 								encoder.encode(formatSSE("agent-end", {})),
 							);
@@ -197,23 +203,30 @@ function createSSEStream(
 						}
 
 						case "agent_settled": {
+							console.log(`[Chat SSE] agent-settled (total events: ${eventCount})`);
 							controller.enqueue(
 								encoder.encode(formatSSE("agent-settled", {})),
 							);
 							break;
 						}
+
+						default: {
+							console.log(`[Chat SSE] unhandled event: ${event.type}`);
+						}
 					}
 				} catch (err) {
-					// Controller might be closed after abort
+					console.error(`[Chat SSE] Error sending event #${eventCount}:`, err);
 				}
 			});
 
 			try {
 				// Send the prompt — this blocks until the agent finishes
+				console.log(`[Chat SSE] Calling session.prompt()...`);
 				await session.prompt(message);
+				console.log(`[Chat SSE] session.prompt() completed successfully (${eventCount} events sent)`);
 			} catch (err: unknown) {
 				if (!aborted) {
-					console.error("[Chat API] Prompt error:", err);
+					console.error(`[Chat SSE] session.prompt() FAILED:`, err);
 					controller.enqueue(
 						encoder.encode(
 							formatSSE("error", {

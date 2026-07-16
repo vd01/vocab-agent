@@ -5,10 +5,10 @@
  * This replaces @ai-sdk/react's useChat while keeping the same
  * message format that message-item.tsx expects.
  *
- * SSE events from /api/chat/pi-route:
- *   text-delta     → append to assistant text
+ * SSE events from /api/chat:
+ *   text-delta     → append to current text chunk
  *   thinking-delta → append to reasoning text
- *   tool-start     → add tool part (input-streaming)
+ *   tool-start     → close current text chunk, add tool part (input-streaming)
  *   tool-result    → update tool part (output-available)
  *   agent-start    → mark loading
  *   agent-end      → mark done
@@ -27,6 +27,7 @@ interface UsePiChatOptions {
 	api: string;
 	body?: () => Record<string, unknown>;
 	onFinish?: () => void;
+	onToolResult?: (toolName: string, isError: boolean) => void;
 	messages?: UIMessage[];
 }
 
@@ -42,10 +43,29 @@ interface UsePiChatReturn {
 	isLoading: boolean;
 }
 
+// ── Part tracking ────────────────────────────────────────────────────────
+
+interface TextChunk {
+	kind: "text";
+	key: string;
+	text: string; // accumulated text for this chunk
+}
+
+interface ToolPart {
+	kind: "tool";
+	key: string; // toolCallId
+	toolName: string;
+	state: string;
+	input: any;
+	output: any;
+}
+
+type PartEntry = TextChunk | ToolPart;
+
 // ── Hook ─────────────────────────────────────────────────────────────────
 
 export function usePiChat(options: UsePiChatOptions): UsePiChatReturn {
-	const { api, body, onFinish, messages: initialMessages } = options;
+	const { api, body, onFinish, onToolResult, messages: initialMessages } = options;
 
 	const [messages, setMessages] = useState<UIMessage[]>(
 		initialMessages ?? [],
@@ -57,25 +77,18 @@ export function usePiChat(options: UsePiChatOptions): UsePiChatReturn {
 
 	const abortRef = useRef<AbortController | null>(null);
 	const assistantIdRef = useRef<string>("");
-	const textAccumRef = useRef<string>("");
 	const reasoningAccumRef = useRef<string>("");
-	const toolPartsRef = useRef<
-		Map<
-			string,
-			{
-				toolName: string;
-				state: string;
-				input: any;
-				output: any;
-			}
-		>
-	>(new Map());
+
+	// Ordered list of parts as they appear in the stream
+	const partsRef = useRef<PartEntry[]>([]);
+	// Index of the currently accumulating text chunk (null if none)
+	const currentTextIdxRef = useRef<number | null>(null);
 
 	// Build the current assistant message from accumulated state
 	const buildAssistantMessage = useCallback((): UIMessage => {
 		const parts: any[] = [];
 
-		// Reasoning part (if any)
+		// Reasoning part (if any) — always first
 		if (reasoningAccumRef.current) {
 			parts.push({
 				type: "reasoning",
@@ -83,24 +96,22 @@ export function usePiChat(options: UsePiChatOptions): UsePiChatReturn {
 			});
 		}
 
-		// Tool parts (in order of toolCallId)
-		for (const [toolCallId, tool] of toolPartsRef.current) {
-			parts.push({
-				type: `tool-${tool.toolName}`,
-				toolCallId,
-				toolName: tool.toolName,
-				state: tool.state,
-				input: tool.input,
-				output: tool.output,
-			});
-		}
-
-		// Text part (if any)
-		if (textAccumRef.current) {
-			parts.push({
-				type: "text",
-				text: textAccumRef.current,
-			});
+		// Build parts in the order they appeared in the stream
+		for (const entry of partsRef.current) {
+			if (entry.kind === "text") {
+				if (entry.text) {
+					parts.push({ type: "text", text: entry.text });
+				}
+			} else if (entry.kind === "tool") {
+				parts.push({
+					type: `tool-${entry.toolName}`,
+					toolCallId: entry.key,
+					toolName: entry.toolName,
+					state: entry.state,
+					input: entry.input,
+					output: entry.output,
+				});
+			}
 		}
 
 		return {
@@ -139,9 +150,9 @@ export function usePiChat(options: UsePiChatOptions): UsePiChatReturn {
 
 			// Reset assistant accumulation
 			assistantIdRef.current = `asst-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-			textAccumRef.current = "";
 			reasoningAccumRef.current = "";
-			toolPartsRef.current = new Map();
+			partsRef.current = [];
+			currentTextIdxRef.current = null;
 
 			// Add placeholder assistant message
 			const assistantMsg: UIMessage = {
@@ -222,21 +233,35 @@ export function usePiChat(options: UsePiChatOptions): UsePiChatReturn {
 					setStatus("error");
 				});
 		},
-		[api, body, onFinish],
+		[api, body, onFinish, onToolResult, updateAssistantInMessages],
 	);
 
 	// Handle individual SSE events
 	const handleSSEEvent = useCallback(
 		(event: Record<string, unknown>) => {
-			switch (event.type) {
+			const eventType = event.type as string;
+			switch (eventType) {
 				case "text-delta": {
-					textAccumRef.current += event.delta ?? "";
+					const delta = (event.delta ?? "") as string;
+					// If no current text chunk, create one
+					if (currentTextIdxRef.current === null) {
+						const idx = partsRef.current.length;
+						partsRef.current.push({
+							kind: "text",
+							key: `text-${idx}`,
+							text: "",
+						});
+						currentTextIdxRef.current = idx;
+					}
+					// Append delta to current text chunk
+					const entry = partsRef.current[currentTextIdxRef.current] as TextChunk;
+					entry.text += delta;
 					updateAssistantInMessages();
 					break;
 				}
 
 				case "thinking-delta": {
-					reasoningAccumRef.current += event.delta ?? "";
+					reasoningAccumRef.current += (event.delta ?? "") as string;
 					updateAssistantInMessages();
 					break;
 				}
@@ -244,7 +269,12 @@ export function usePiChat(options: UsePiChatOptions): UsePiChatReturn {
 				case "tool-start": {
 					const toolCallId = event.toolCallId as string;
 					const toolName = event.toolName as string;
-					toolPartsRef.current.set(toolCallId, {
+					// Close current text chunk
+					currentTextIdxRef.current = null;
+					// Add tool part
+					partsRef.current.push({
+						kind: "tool",
+						key: toolCallId,
 						toolName,
 						state: "input-streaming",
 						input: {},
@@ -260,17 +290,18 @@ export function usePiChat(options: UsePiChatOptions): UsePiChatReturn {
 					const uiData = event.uiData as any;
 					const isError = event.isError as boolean;
 
-					// The details from pi tool result become the output
-					// If details has a 'type' field, use it directly
-					// Otherwise wrap it
 					const output = uiData ?? { type: "message", message: event.textContent ?? "Done" };
 
-					toolPartsRef.current.set(toolCallId, {
-						toolName,
-						state: isError ? "output-error" : "output-available",
-						input: {},
-						output,
-					});
+					onToolResult?.(toolName, isError);
+
+					// Find and update the tool part
+					const entry = partsRef.current.find(
+						(p) => p.kind === "tool" && p.key === toolCallId,
+					) as ToolPart | undefined;
+					if (entry) {
+						entry.state = isError ? "output-error" : "output-available";
+						entry.output = output;
+					}
 					updateAssistantInMessages();
 					break;
 				}
@@ -282,14 +313,24 @@ export function usePiChat(options: UsePiChatOptions): UsePiChatReturn {
 
 				case "agent-end":
 				case "agent-settled": {
-					// Don't set ready yet — the fetch promise will do that
 					break;
 				}
 
 				case "error": {
-					console.error("[usePiChat] Agent error:", event.message);
-					textAccumRef.current += `\n\n❌ 错误: ${event.message}`;
+					// Add error as a text chunk
+					const idx = partsRef.current.length;
+					partsRef.current.push({
+						kind: "text",
+						key: `error-${idx}`,
+						text: `\n\n❌ 错误: ${event.message}`,
+					});
+					currentTextIdxRef.current = null;
 					updateAssistantInMessages();
+					break;
+				}
+
+				default: {
+					// Ignore unhandled events (message_start, message_end, turn_start, turn_end, etc.)
 					break;
 				}
 			}

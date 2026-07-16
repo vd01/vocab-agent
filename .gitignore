@@ -74,3 +74,10 @@ stop.bat
 
 src-tauri/.cargo/
 *.bak
+
+# pi subagent artifacts
+/.pi-subagents/
+
+# temp/debug scripts at project root
+/query-count.ts
+/20260716210531.jpg

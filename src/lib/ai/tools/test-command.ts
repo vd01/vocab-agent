@@ -19,6 +19,41 @@ function parseErrorDetail(err: unknown): {
   stack?: string;
   hint?: string;
 } {
+  // Handle plain objects (from executor's _errorDetail)
+  if (err && typeof err === 'object' && !(err instanceof Error)) {
+    const obj = err as Record<string, unknown>;
+    const msg = String(obj.message ?? obj.errorMessage ?? 'Unknown error');
+    const name = String(obj.name ?? 'Error');
+    let line: number | undefined;
+    let column: number | undefined;
+    if (obj.stack && typeof obj.stack === 'string') {
+      const stackLineMatch = obj.stack.match(/<anonymous>:(\d+):(\d+)/);
+      if (stackLineMatch) {
+        line = parseInt(stackLineMatch[1], 10);
+        column = parseInt(stackLineMatch[2], 10);
+      }
+    }
+    let hint: string | undefined;
+    const msgLower = msg.toLowerCase();
+    if (msgLower.includes('syntaxerror') || msgLower.includes('unexpected token') || msgLower.includes('is not valid json')) {
+      hint = 'JavaScript 语法错误或 JSON 解析错误。检查 toolCode 中的 JSON.parse 调用，确保数据是合法 JSON。建议用 try-catch 包裹 JSON.parse。';
+    } else if (msgLower.includes('unique constraint')) {
+      hint = '数据已存在（UNIQUE 约束冲突），可能是重复插入。';
+    } else if (msgLower.includes('not null constraint')) {
+      hint = '必填字段缺失（NOT NULL 约束）。检查 id 等必填字段。';
+    } else if (msgLower.includes('referenceerror')) {
+      hint = '引用了未定义的变量。沙盒注入: db, client, tables, dql, fsrs, args, console。';
+    }
+    return {
+      errorType: name,
+      errorMessage: msg,
+      ...(line != null && { line }),
+      ...(column != null && { column }),
+      ...(obj.stack ? { stack: String(obj.stack) } : {}),
+      ...(hint ? { hint } : {}),
+    };
+  }
+
   if (!(err instanceof Error)) {
     return { errorType: 'unknown', errorMessage: String(err) };
   }
@@ -146,8 +181,10 @@ export const testCommandTool = tool({
         };
       }
 
-      // Failed — extract structured error info
-      const errorDetail = parseErrorDetail(result._rawError);
+      // Failed — extract structured error info from _errorDetail
+      const errorDetail = result._errorDetail
+        ? parseErrorDetail(result._errorDetail)
+        : parseErrorDetail(new Error(result.message ?? 'Unknown error'));
       return {
         ...result,
         _testVerdict: 'fail',

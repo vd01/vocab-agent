@@ -33,8 +33,8 @@ export default function vocabAgentExtension(pi: ExtensionAPI) {
 		// ── Switch tool set ───────────────────────────────────────────────
 		if (isDeveloper) {
 			pi.setActiveTools([
-				// pi built-in file tools
-				"read", "write", "edit", "bash",
+				// pi built-in file tools (no bash — replaced by safe-ls)
+				"read", "write", "edit",
 				// pi-readseek tools
 				"readSeek_read", "readSeek_edit", "readSeek_grep",
 				"readSeek_search", "readSeek_refs", "readSeek_rename",
@@ -42,7 +42,7 @@ export default function vocabAgentExtension(pi: ExtensionAPI) {
 				// vocab developer tools
 				"create-command", "register-component", "unregister-component",
 				"db-query", "save-lesson", "list-lessons", "merge-lessons",
-				"test-command",
+				"test-command", "safe-ls",
 			]);
 		} else {
 			pi.setActiveTools([
@@ -475,7 +475,7 @@ export default function vocabAgentExtension(pi: ExtensionAPI) {
 		name: "create-command",
 		label: "Create Command",
 		description:
-			"创建或更新一个 / 命令，一步完成命令注册和 UI 组件注册。代码必须先写入文件，然后通过路径引用。",
+			"创建或更新一个 / 命令，一步完成命令注册和 UI 组件注册。代码必须先写入文件（用 readSeek_write），然后通过路径引用。toolCode 必须是纯 JavaScript async 函数表达式（不能有 TypeScript 类型注解）。沙盒注入: db, client, tables, dql, fsrs, args, console。返回值: { type: 'message', message: '...' } 或 { type: '<name>', ...data }。",
 		promptSnippet: "注册新的斜杠命令",
 		promptGuidelines: [
 			"Use create-command after writing command code files to register them as slash commands.",
@@ -511,7 +511,7 @@ export default function vocabAgentExtension(pi: ExtensionAPI) {
 		name: "register-component",
 		label: "Register Component",
 		description:
-			"注册新的 UI 组件到动态组件注册表。推荐使用 create-command 代替。",
+			"注册新的 UI 组件到动态组件注册表。推荐使用 create-command 代替。组件必须包含 'use client' 和 export default。name 必须与命令名一致（不加 -panel 后缀）。",
 		promptSnippet: "注册动态 UI 组件",
 		parameters: Type.Object({
 			name: Type.String({ description: "命令名称" }),
@@ -537,7 +537,7 @@ export default function vocabAgentExtension(pi: ExtensionAPI) {
 	pi.registerTool({
 		name: "unregister-component",
 		label: "Unregister Component",
-		description: "删除组件。必须使用本工具（而非直接删除文件）。",
+		description: "删除命令及其 UI 组件。必须使用本工具（而非直接删除文件）。它会删除组件文件 + toolCode 文件 + 重写 component-registry.ts + 删除 DB 记录。name 必须与命令名一致。",
 		promptSnippet: "删除动态 UI 组件",
 		parameters: Type.Object({
 			name: Type.String({ description: "命令名称" }),
@@ -562,7 +562,7 @@ export default function vocabAgentExtension(pi: ExtensionAPI) {
 		name: "db-query",
 		label: "DB Query",
 		description:
-			"查询数据库。queryType: word-count, review-history, word-search, custom",
+			"查询数据库。queryType: word-count(词库总量), review-history(复习记录), word-search(搜索单词), custom(自定义 SELECT SQL)。custom 模式仅支持 SELECT，不支持写操作。",
 		promptSnippet: "查询词汇数据库",
 		parameters: Type.Object({
 			queryType: Type.String({ description: "查询类型" }),
@@ -599,16 +599,25 @@ export default function vocabAgentExtension(pi: ExtensionAPI) {
 	pi.registerTool({
 		name: "save-lesson",
 		label: "Save Lesson",
-		description: "保存经验教训。相同标题自动更新。",
+		description:
+			"保存经验教训到知识库，供未来开发任务参考。相同标题自动更新（返回 type: 'updated'），不会重复创建。",
 		promptSnippet: "保存开发经验教训",
+		promptGuidelines: [
+			"Use save-lesson when you discover a non-obvious pitfall, effective pattern, or useful tip during development.",
+		],
 		parameters: Type.Object({
-			title: Type.String({ description: "经验标题" }),
-			content: Type.String({ description: "经验内容" }),
+			category: StringEnum(
+				["pattern", "anti-pattern", "tip", "pitfall"] as const,
+				{ description: "经验类别: pattern=成功模式, anti-pattern=应避免的做法, tip=实用技巧, pitfall=常见陷阱" },
+			),
+			title: Type.String({ description: "简短标题，如 '组件名必须与 type 匹配'" }),
+			content: Type.String({ description: "详细描述，包含具体做法和原因" }),
+			context: Type.Optional(Type.String({ description: "触发场景，如 '注册新命令时'" })),
 		}),
 		async execute(_toolCallId, params) {
 			const { saveLessonTool } = await import("../../src/lib/ai/tools/save-lesson");
 			const result = await saveLessonTool.execute!(
-				{ title: params.title, content: params.content },
+				{ category: params.category, title: params.title, content: params.content, context: params.context },
 				{ toolCallId: "pi", messages: [], abortSignal: undefined },
 			);
 
@@ -651,16 +660,34 @@ export default function vocabAgentExtension(pi: ExtensionAPI) {
 	pi.registerTool({
 		name: "merge-lessons",
 		label: "Merge Lessons",
-		description: "合并冗余的经验教训。",
+		description:
+			"合并冗余的经验教训。先用 list-lessons 获取 ID，再调用本工具合并。合并后删除被合并的旧条目。",
 		promptSnippet: "合并经验教训",
+		promptGuidelines: [
+			"Use merge-lessons when list-lessons reveals semantically duplicate or overlapping entries.",
+		],
 		parameters: Type.Object({
-			keepTitle: Type.String({ description: "保留的标题" }),
-			removeTitles: Type.String({ description: "要合并的标题（逗号分隔）" }),
+			keepId: Type.String({ description: "保留的教训 ID（合并后的主记录）" }),
+			mergeIds: Type.Array(Type.String(), { description: "要合并删除的教训 ID 列表" }),
+			mergedTitle: Type.String({ description: "合并后的标题" }),
+			mergedContent: Type.String({ description: "合并后的内容（综合各条精华，精炼表述）" }),
+			mergedCategory: StringEnum(
+				["pattern", "anti-pattern", "tip", "pitfall"] as const,
+				{ description: "合并后的类别" },
+			),
+			mergedContext: Type.Optional(Type.String({ description: "合并后的触发场景" })),
 		}),
 		async execute(_toolCallId, params) {
 			const { mergeLessonsTool } = await import("../../src/lib/ai/tools/merge-lessons");
 			const result = await mergeLessonsTool.execute!(
-				{ keepTitle: params.keepTitle, removeTitles: params.removeTitles },
+				{
+					keepId: params.keepId,
+					mergeIds: params.mergeIds,
+					mergedTitle: params.mergedTitle,
+					mergedContent: params.mergedContent,
+					mergedCategory: params.mergedCategory,
+					mergedContext: params.mergedContext,
+				},
 				{ toolCallId: "pi", messages: [], abortSignal: undefined },
 			);
 
@@ -676,16 +703,19 @@ export default function vocabAgentExtension(pi: ExtensionAPI) {
 	pi.registerTool({
 		name: "test-command",
 		label: "Test Command",
-		description: "测试已注册的 / 命令。",
+		description:
+			"测试已注册的 / 命令是否正常工作。返回 _testVerdict: pass/warn/fail。fail 时查看 _errorDetail 修复。",
 		promptSnippet: "测试斜杠命令",
+		promptGuidelines: [
+			"Use test-command after create-command to verify the command works correctly.",
+		],
 		parameters: Type.Object({
-			name: Type.String({ description: "命令名称" }),
-			args: Type.Optional(Type.String({ description: "命令参数" })),
+			command: Type.String({ description: "要测试的完整命令，如 'word-stats' 或 'prefix-search app'（不含 / 前缀）" }),
 		}),
 		async execute(_toolCallId, params) {
 			const { testCommandTool } = await import("../../src/lib/ai/tools/test-command");
 			const result = await testCommandTool.execute!(
-				{ name: params.name, args: params.args },
+				{ command: params.command },
 				{ toolCallId: "pi", messages: [], abortSignal: undefined },
 			);
 
@@ -695,4 +725,38 @@ export default function vocabAgentExtension(pi: ExtensionAPI) {
 			};
 		},
 	});
+
+// ── safe-ls ─────────────────────────────────────────────────────────────
+// Restricted bash replacement: only allows `ls` for directory listing.
+// Prevents Agent from running destructive commands (npm, rm, node, etc.)
+
+pi.registerTool({
+	name: "safe-ls",
+	label: "List Directory",
+	description: "列出目录内容。只能执行 ls 命令查看文件结构，不能执行其他 shell 命令。",
+	promptSnippet: "查看目录结构",
+	parameters: Type.Object({
+		path: Type.Optional(Type.String({ description: "要列出的目录路径（默认为项目根目录）" })),
+	}),
+	async execute(_toolCallId, params) {
+		const dir = params.path || process.cwd();
+		// Security: only allow ls, reject any other command
+		const { execSync } = await import("child_process");
+		try {
+			const output = execSync(`ls -la ${JSON.stringify(dir)}`, {
+				encoding: "utf-8",
+				timeout: 5000,
+				cwd: process.cwd(),
+			});
+			return {
+				content: [{ type: "text" as const, text: output }],
+			};
+		} catch (err: any) {
+			return {
+				content: [{ type: "text" as const, text: `Error: ${err.message}` }],
+				isError: true,
+			};
+		}
+	},
+});
 }
