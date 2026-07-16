@@ -25,14 +25,17 @@ import type { UIMessage } from "ai";
 // Read at module level so Next.js can tree-shake when disabled
 const DEBUG_PANEL_ENABLED = process.env.NEXT_PUBLIC_DEBUG_PANEL === "true";
 
-// Dynamic re-import to get the latest loadGeneratedComponents after HMR
+// Dynamic re-import to get the latest loadGeneratedComponents after HMR.
+// Does NOT use cache-busting query params (like ?t=Date.now()) because
+// that forces Turbopack to do a full page reload, which loses the
+// current agent response. Instead, we rely on Turbopack HMR to
+// naturally hot-reload when component-registry.ts is updated.
 async function reloadComponents() {
 	try {
-		const mod = await import("@/components/generative/component-registry?t=" + Date.now());
-		mod.loadGeneratedComponents();
-	} catch {
 		const mod = await import("@/components/generative/component-registry");
-		mod.loadGeneratedComponents();
+		await mod.loadGeneratedComponents();
+	} catch (err) {
+		console.warn("[ChatPanel] reloadComponents failed:", err);
 	}
 }
 
@@ -103,14 +106,16 @@ function ChatInner({
 		},
 		messages: initialMessages,
 		onFinish: () => {
-			if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-			saveTimerRef.current = setTimeout(() => {
-				saveMessagesToDb();
-			}, 500);
+			debouncedSave();
 			if (DEBUG_PANEL_ENABLED && debugIdRef.current) {
 				notifyDebugPanel(debugIdRef.current);
 				debugIdRef.current = null;
 			}
+		},
+		onToolResult: (_toolName: string, _isError: boolean) => {
+			// Save messages after each tool completes (debounced)
+			// This prevents message loss if page refreshes during agent execution
+			debouncedSave();
 		},
 	});
 
@@ -202,10 +207,11 @@ function ChatInner({
 		}
 	}, [status]);
 
-	// Save current messages to DB
+	// Save current messages to DB (debounced)
 	const saveMessagesToDb = useCallback(async () => {
 		try {
 			const currentMessages = messagesRef.current;
+			if (currentMessages.length === 0) return;
 			const res = await fetch("/api/messages", {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
@@ -222,6 +228,14 @@ function ChatInner({
 			console.error("[ChatPanel] Failed to save messages:", err);
 		}
 	}, []);
+
+	// Debounced save — call this whenever messages change significantly
+	const debouncedSave = useCallback(() => {
+		if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+		saveTimerRef.current = setTimeout(() => {
+			saveMessagesToDb();
+		}, 1000);
+	}, [saveMessagesToDb]);
 
 	// Load more (older) messages on scroll to top
 	const handleLoadMore = useCallback(async () => {

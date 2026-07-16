@@ -146,46 +146,49 @@ export function MessageItem({
 								output,
 							} = part;
 
-							// Tool is streaming input
-							if (toolState === "input-streaming") {
-								return (
-									<div
-										key={i}
-										className="mt-2 text-xs text-muted-foreground flex items-center gap-1"
-									>
-										<span className="w-3 h-3 border-2 border-muted-foreground border-t-transparent rounded-full animate-spin" />
-										准备执行 {toolName}...
-									</div>
-								);
-							}
+						// Tool is streaming input
+						if (toolState === "input-streaming") {
+							const displayName = TOOL_DISPLAY_NAMES[toolName] ?? toolName;
+							return (
+								<div
+									key={i}
+									className="mt-2 text-xs text-muted-foreground flex items-center gap-1"
+								>
+									<span className="w-3 h-3 border-2 border-muted-foreground border-t-transparent rounded-full animate-spin" />
+									准备执行 {displayName}...
+								</div>
+							);
+						}
 
-							// Tool is awaiting execution (input available, waiting for call)
-							if (toolState === "input-available") {
-								return (
-									<div
-										key={i}
-										className="mt-2 text-xs text-muted-foreground flex items-center gap-1"
-									>
-										<span className="w-3 h-3 border-2 border-muted-foreground border-t-transparent rounded-full animate-spin" />
-										执行 {toolName}...
-									</div>
-								);
-							}
+						// Tool is awaiting execution (input available, waiting for call)
+						if (toolState === "input-available") {
+							const displayName = TOOL_DISPLAY_NAMES[toolName] ?? toolName;
+							return (
+								<div
+									key={i}
+								className="mt-2 text-xs text-muted-foreground flex items-center gap-1"
+								>
+									<span className="w-3 h-3 border-2 border-muted-foreground border-t-transparent rounded-full animate-spin" />
+									执行 {displayName}...
+								</div>
+							);
+						}
 
 							// Tool completed with output
 							if (toolState === "output-available" && output != null) {
 								return renderToolOutput(i, toolName, output, isLastReview);
 							}
 
-							// Tool error
-							if (toolState === "output-error") {
-								const errorText = part.errorText ?? "执行出错";
-								return (
-									<div key={i} className="mt-2 text-xs text-red-500">
-										{toolName}: {errorText}
-									</div>
-								);
-							}
+						// Tool error
+						if (toolState === "output-error") {
+							const errorText = part.errorText ?? "执行出错";
+							const displayName = TOOL_DISPLAY_NAMES[toolName] ?? toolName;
+							return (
+								<div key={i} className="mt-2 text-xs text-red-500">
+									{displayName}: {errorText}
+								</div>
+							);
+						}
 
 							return null;
 						}
@@ -232,6 +235,20 @@ const DEV_TOOL_LABELS: Record<string, { icon: string; label: string }> = {
 	"list-lessons": { icon: "📋", label: "列出经验" },
 	"merge-lessons": { icon: "🔗", label: "合并经验" },
 	"test-command": { icon: "?", label: "测试命令" },
+	"safe-ls": { icon: "L", label: "列出目录" },
+	"read": { icon: "R", label: "读取文件" },
+	"write": { icon: "W", label: "写文件" },
+	"edit": { icon: "E", label: "编辑文件" },
+	"readSeek_read": { icon: "R", label: "读取文件" },
+	"readSeek_write": { icon: "W", label: "写文件" },
+	"readSeek_edit": { icon: "E", label: "编辑文件" },
+	"readSeek_grep": { icon: "G", label: "搜索内容" },
+	"readSeek_search": { icon: "S", label: "语法搜索" },
+	"readSeek_refs": { icon: "→", label: "查找引用" },
+	"readSeek_rename": { icon: "✎", label: "重命名" },
+	"readSeek_hover": { icon: "?", label: "查看符号" },
+	"readSeek_def": { icon: "D", label: "查找定义" },
+	"readSeek_check": { icon: "✓", label: "语法检查" },
 };
 
 function DevToolOutput({
@@ -374,8 +391,14 @@ function collapseFileBlocks(text: string): string {
 
 // ── Assistant text bubble with Markdown rendering ──────────────────────────
 
+const ASSISTANT_COLLAPSE_LINES = 30;
+
 function AssistantTextBubble({ text }: { text: string }) {
+	const [expanded, setExpanded] = useState(false);
 	const displayText = collapseFileBlocks(text);
+	const lineCount = displayText.split('\n').length;
+	const shouldCollapse = lineCount > ASSISTANT_COLLAPSE_LINES && !expanded;
+
 	return (
 		<div
 			className="text-sm leading-relaxed text-foreground break-words
@@ -394,7 +417,20 @@ function AssistantTextBubble({ text }: { text: string }) {
                     prose-hr:border-border
                     prose-blockquote:border-primary/30 prose-blockquote:text-muted-foreground"
 		>
-			<ReactMarkdown remarkPlugins={[remarkGfm]}>{displayText}</ReactMarkdown>
+			{shouldCollapse ? (
+				<>
+					<ReactMarkdown remarkPlugins={[remarkGfm]}>{displayText.split('\n').slice(0, ASSISTANT_COLLAPSE_LINES).join('\n')}</ReactMarkdown>
+					<button
+						type="button"
+						onClick={() => setExpanded(true)}
+						className="mt-1 text-xs text-primary hover:underline"
+					>
+						展开全部 ({lineCount} 行)
+					</button>
+				</>
+			) : (
+				<ReactMarkdown remarkPlugins={[remarkGfm]}>{displayText}</ReactMarkdown>
+			)}
 		</div>
 	);
 }
@@ -966,6 +1002,31 @@ function renderToolOutput(
 		"file-write",
 		"file-edit",
 	]);
+
+	// Internal pi-readseek tools — suppress output entirely.
+	// These tools return raw LINE:HASH anchors and file contents that are
+	// only useful to the agent, not the user. The agent synthesizes
+	// the information into its text response.
+	const suppressedToolNames = new Set([
+		"readSeek_read",
+		"readSeek_edit",
+		"readSeek_grep",
+		"readSeek_search",
+		"readSeek_refs",
+		"readSeek_rename",
+		"readSeek_hover",
+		"readSeek_def",
+		"readSeek_check",
+		"readSeek_write",
+		"read", // pi built-in read
+		"write", // pi built-in write
+		"edit", // pi built-in edit
+	]);
+
+	if (suppressedToolNames.has(toolName)) {
+		return null;
+	}
+
 	if (devToolNames.has(toolName)) {
 		return <DevToolOutput key={key} toolName={toolName} output={output} />;
 	}
@@ -976,6 +1037,7 @@ function renderToolOutput(
 		: componentRegistry.has(toolName)
 			? toolName
 			: null;
+	console.log(`[renderToolOutput] toolName=${toolName}, output.type=${output.type}, componentName=${componentName}, registryKeys=[${Array.from(componentRegistry.getAll().keys()).join(',')}]`);
 	if (componentName) {
 		return (
 			<div key={key} className="mt-2">
@@ -1122,6 +1184,20 @@ const TOOL_DISPLAY_NAMES: Record<string, string> = {
 	"test-command": "测试命令",
 	"dict-lookup": "查词典",
 	"vocab-stats": "词库统计",
+	"safe-ls": "列出目录",
+	"read": "读取文件",
+	"write": "写文件",
+	"edit": "编辑文件",
+	"readSeek_read": "读取文件",
+	"readSeek_write": "写文件",
+	"readSeek_edit": "编辑文件",
+	"readSeek_grep": "搜索内容",
+	"readSeek_search": "语法搜索",
+	"readSeek_refs": "查找引用",
+	"readSeek_rename": "重命名",
+	"readSeek_hover": "查看符号",
+	"readSeek_def": "查找定义",
+	"readSeek_check": "语法检查",
 };
 
 function AgentStatus({

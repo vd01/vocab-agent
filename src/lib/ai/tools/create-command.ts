@@ -6,7 +6,7 @@ import { db } from '@/lib/db';
 import { dynamicCommands } from '@/lib/db/schema';
 import { v4 as uuid } from 'uuid';
 import { eq } from 'drizzle-orm';
-// file-block-flush removed — pi SDK writes files directly
+import { validateComponentCode, dryRunRender } from './component-validator';
 
 const GENERATED_SRC_DIR = path.join(process.cwd(), 'src', 'components', 'generated');
 
@@ -112,32 +112,33 @@ export const createCommandTool = tool({
         return { type: 'error', message: `组件代码文件不存在: ${componentCodePath}。请先用 file-write 写入代码文件。` };
       }
 
-      // 5b. Basic component structure validation
+      // 5b. Validate component code (syntax + null-safety + structure + dry-run)
       if (componentCode) {
-        const issues: string[] = [];
-
-        // Check for default export
-        if (!/export\s+default\s+/.test(componentCode) && !/export\s*\{[^}]*\bdefault\b/.test(componentCode)) {
-          issues.push('缺少默认导出 (export default)。组件必须有默认导出才能被动态加载。');
-        }
-
-        // Check for 'use client' directive (required for client components)
-        if (!componentCode.trimStart().startsWith("'use client'") && !componentCode.trimStart().startsWith('"use client"')) {
-          issues.push('缺少 "use client" 指令。生成式组件是客户端组件，必须在文件顶部添加 \'use client\'。');
-        }
-
-        // Check for common syntax issues: unclosed JSX, missing return
-        if (/<[A-Z]\w+[^/]*>/.test(componentCode) && !/<\/[A-Z]\w+>/.test(componentCode) && !/\/>/.test(componentCode)) {
-          issues.push('可能存在未闭合的 JSX 标签。请检查所有组件标签是否正确闭合。');
-        }
-
-        if (issues.length > 0) {
+        const validation = validateComponentCode(componentCode, name);
+        if (!validation.valid) {
           return {
             type: 'error',
             errorType: 'component-validation',
-            message: `组件代码验证失败:\n${issues.map((s, i) => `${i + 1}. ${s}`).join('\n')}`,
+            message: `组件代码验证失败:\n${validation.errors.map((s, i) => `${i + 1}. ${s}`).join('\n')}`,
             hint: '修复以上问题后重新调用 create-command。',
           };
+        }
+
+        // Dry-run TSX compilation
+        const dryRun = await dryRunRender(name, componentCode);
+        if (!dryRun.ok) {
+          return {
+            type: 'error',
+            errorType: 'component-compilation',
+            message: dryRun.error!,
+            hint: '修复编译错误后重新调用 create-command。',
+          };
+        }
+
+        // Include warnings in the result (non-blocking)
+        if (validation.warnings.length > 0) {
+          // Store warnings to include in the success message later
+          (globalThis as any).__component_warnings__ = validation.warnings;
         }
       }
     }
@@ -178,11 +179,18 @@ export const createCommandTool = tool({
         await updateRegistryFile();
       }
 
+      // Include component validation warnings in the success message
+      const compWarnings = (globalThis as any).__component_warnings__ as string[] | undefined;
+      delete (globalThis as any).__component_warnings__;
+      const warningLines = compWarnings?.length
+        ? `\n\n⚠️ 注意:\n${compWarnings.map((w: string, i: number) => `${i + 1}. ${w}`).join('\n')}`
+        : '';
+
       return {
         type: 'registered',
         name,
         hasComponent: !!componentCode,
-        message: `命令 /${name} 已注册${componentCode ? '，组件已写入并更新注册表' : ''}。Turbopack HMR 会自动热更新，稍等片刻即可使用。`,
+        message: `命令 /${name} 已注册${componentCode ? '，组件已写入并更新注册表' : ''}。Turbopack HMR 会自动热更新，稍等片刻即可使用。${warningLines}`,
       };
     } catch (error) {
       return { type: 'error', message: `注册失败: ${String(error)}` };

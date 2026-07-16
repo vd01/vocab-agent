@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { promises as fs } from 'fs';
 import path from 'path';
 import { updateRegistryFile, GENERATED_SRC_DIR } from './registry-utils';
-// file-block-flush removed — pi SDK writes files directly
+import { validateComponentCode, dryRunRender } from './component-validator';
 import { db } from '@/lib/db';
 import { dynamicCommands } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
@@ -45,6 +45,33 @@ export const registerComponentTool = tool({
     }
 
     try {
+      // 0. Validate component code (syntax + null-safety + structure)
+      const validation = validateComponentCode(componentCode, name);
+      if (!validation.valid) {
+        return {
+          type: 'error',
+          errorType: 'component-validation',
+          message: `组件代码验证失败:\n${validation.errors.map((s, i) => `${i + 1}. ${s}`).join('\n')}`,
+          hint: '修复以上问题后重新调用 register-component。',
+        };
+      }
+
+      // 0b. Dry-run TSX compilation
+      const dryRun = await dryRunRender(name, componentCode);
+      if (!dryRun.ok) {
+        return {
+          type: 'error',
+          errorType: 'component-compilation',
+          message: dryRun.error!,
+          hint: '修复编译错误后重新调用 register-component。',
+        };
+      }
+
+      // 0c. Include warnings in the result (non-blocking)
+      const warningLines = validation.warnings.length > 0
+        ? `\n\n⚠️ 注意:\n${validation.warnings.map((w, i) => `${i + 1}. ${w}`).join('\n')}`
+        : '';
+
       // 1. Save the component code to src/components/generated/
       await fs.mkdir(GENERATED_SRC_DIR, { recursive: true });
       const componentPath = path.join(GENERATED_SRC_DIR, `${name}.tsx`);
@@ -75,7 +102,7 @@ export const registerComponentTool = tool({
       return {
         type: 'registered',
         name,
-        message: `组件 "${name}" 已注册。Turbopack HMR 会自动热更新，稍等片刻即可使用。`,
+        message: `组件 "${name}" 已注册。Turbopack HMR 会自动热更新，稍等片刻即可使用。${warningLines}`,
       };
     } catch (error) {
       return { type: 'error', message: `注册组件失败: ${String(error)}` };
