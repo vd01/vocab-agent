@@ -12,6 +12,7 @@
     "db:reset": "npx tsx src/lib/db/reset.ts",
     "clean:dynamic": "npx tsx scripts/clean-dynamic.ts",
     "clean:messages": "npx tsx scripts/clean-messages.ts",
+    "purge-all": "npx tsx scripts/purge-all.ts",
     "import-ecdict": "npx tsx src/lib/dictionary/import-ecdict.ts",
     "seed-words": "npx tsx scripts/seed-words-from-ecdict.ts",
     "backfill-audio": "npx tsx src/lib/dictionary/backfill-audio.ts",

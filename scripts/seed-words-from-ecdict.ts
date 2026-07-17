@@ -89,8 +89,10 @@ async function seedWords() {
   const letterStats = await ecdictClient.execute(`
     SELECT UPPER(SUBSTR(word, 1, 1)) AS letter, COUNT(*) AS cnt
     FROM ecdict
-    WHERE (collins >= 3 OR bnc IS NOT NULL)
+    WHERE (collins >= 3 OR bnc > 0)
       AND LENGTH(word) >= 2
+      AND LENGTH(word) <= 20
+      AND word NOT LIKE '% %'
       AND word GLOB '[a-z]*'
     GROUP BY letter
     ORDER BY letter
@@ -162,15 +164,17 @@ async function seedWords() {
     if (quota <= 0) continue;
 
     const orderBy = MODE === 'freq'
-      ? 'CASE WHEN bnc IS NOT NULL THEN bnc ELSE 999999 END ASC, CASE WHEN collins IS NOT NULL THEN -collins ELSE 0 END DESC'
+      ? 'CASE WHEN bnc > 0 THEN bnc ELSE 999999 END ASC, CASE WHEN collins > 0 THEN -collins ELSE 0 END DESC, frq ASC'
       : 'RANDOM()';
 
     const query = `
       SELECT word, phonetic, definition, translation, tag, collins, bnc, frq, exchange
       FROM ecdict
       WHERE UPPER(SUBSTR(word, 1, 1)) = ?
-        AND (collins >= 3 OR bnc IS NOT NULL)
+        AND (collins >= 3 OR bnc > 0)
         AND LENGTH(word) >= 2
+        AND LENGTH(word) <= 20
+        AND word NOT LIKE '% %'
         AND word GLOB '[a-z]*'
       ORDER BY ${orderBy}
       LIMIT ?
@@ -218,7 +222,18 @@ async function seedWords() {
     try {
       for (const row of batch) {
         const id = crypto.randomUUID();
-        const definition = row.definition || row.translation || 'no definition';
+        // 优先使用中文翻译，英文释义作为补充
+        // ECDICT: translation = 中文, definition = 英文
+        let definition: string;
+        const trans = (row.translation || '').trim();
+        const def = (row.definition || '').trim();
+        if (trans && def) {
+          definition = trans + '\n' + def;
+        } else {
+          definition = trans || def || 'no definition';
+        }
+        // 将 ECDICT 中的字面 \n / \r\n 替换为真正的换行符
+        definition = definition.replace(/\\r\\n/g, '\n').replace(/\\n/g, '\n');
         const examples = row.exchange ? JSON.stringify([row.exchange]) : null;
 
         try {
@@ -310,6 +325,26 @@ async function seedWords() {
     }
   } else {
     console.log('✅ All words already have review records');
+  }
+
+  // ── 确保默认分组存在 & 所有词分配到默认分组 ──────────────────────────────
+  // This is critical: /review with a group filter uses INNER JOIN on word_group_members.
+  // Without membership records, group-scoped reviews return 0 words.
+  {
+    const nowSec2 = Math.floor(Date.now() / 1000);
+    await vocabClient.execute({
+      sql: `INSERT OR IGNORE INTO word_groups (id, name, description, is_default, created_at) VALUES (?, ?, ?, ?, ?)`,
+      args: ['default-daily', '日常', '默认分组', 1, nowSec2],
+    });
+    const assignResult = await vocabClient.execute({
+      sql: `INSERT OR IGNORE INTO word_group_members (id, group_id, word_id, added_at)
+           SELECT 'wgm-' || w.id, 'default-daily', w.id, ?
+           FROM words w`,
+      args: [nowSec2],
+    });
+    if (assignResult.rowsAffected > 0) {
+      console.log(`✅ Assigned ${assignResult.rowsAffected} words to default group "日常"`);
+    }
   }
 
   // ── 验证统计 ──────────────────────────────────────────────────────────

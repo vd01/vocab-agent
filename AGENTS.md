@@ -35,7 +35,7 @@ Self-evolving English learning AI with dual-agent architecture (Teacher + Develo
 **Pi Extension** (`.pi-vocab/extensions/vocab-agent.ts`):
 - Single extension handles dual-agent routing, tool registration, and system prompt injection
 - `before_agent_start` hook reads mode context and switches active tools + system prompt
-- Teacher tools (10): fsrs-review, fsrs-rate, vocab-lookup, add-word, extract-words, dict-lookup, vocab-stats, pin-word, unpin-word, group-manage
+- Teacher tools (11): fsrs-review, fsrs-rate, vocab-lookup, add-word, batch-add-words, import-by-tag, extract-words, dict-lookup, vocab-stats, pin-word, unpin-word, group-manage
 - Developer tools (18+): read, write, edit, readSeek_read/edit/grep/search/refs/rename/hover/def/check/write, create-command, register-component, unregister-component, db-query, save-lesson, list-lessons, merge-lessons, test-command, safe-ls
 
 **Command system** (`src/lib/commands/`):

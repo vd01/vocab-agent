@@ -15,7 +15,7 @@ async function generateToken(password: string): Promise<string> {
 }
 
 /**
- * 验证请求中的认证 cookie
+ * 验证请求中的认证 cookie 或 API key header
  */
 async function isAuthenticated(req: NextRequest): Promise<boolean> {
   const password = process.env.AUTH_PASSWORD;
@@ -24,6 +24,13 @@ async function isAuthenticated(req: NextRequest): Promise<boolean> {
   // Bypass auth when AUTH_BYPASS is set (for testing only)
   if (process.env.AUTH_BYPASS === '1') return true;
 
+  // Check X-Auth-Password header first (for CLI scripts like purge-all)
+  const headerPassword = req.headers.get('X-Auth-Password');
+  if (headerPassword) {
+    return headerPassword === password;
+  }
+
+  // Check cookie
   const token = req.cookies.get(COOKIE_NAME)?.value;
   if (!token) return false;
 

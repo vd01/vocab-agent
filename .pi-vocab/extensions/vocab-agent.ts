@@ -3,7 +3,7 @@
  *
  * A single extension that handles:
  *   1. Dual Agent routing (Teacher/Developer mode switching)
- *   2. Teacher tools (10 tools for English learning)
+ *   2. Teacher tools (11 tools for English learning)
  *   3. Developer tools (8 tools for system development)
  *   4. World State injection into system prompt
  *
@@ -48,7 +48,7 @@ export default function vocabAgentExtension(pi: ExtensionAPI) {
 			pi.setActiveTools([
 				// vocab teacher tools only
 				"fsrs-review", "fsrs-rate", "vocab-lookup", "add-word",
-				"batch-add-words", "extract-words", "dict-lookup", "vocab-stats",
+				"batch-add-words", "import-by-tag", "extract-words", "dict-lookup", "vocab-stats",
 				"pin-word", "unpin-word", "group-manage",
 			]);
 		}
@@ -93,7 +93,7 @@ export default function vocabAgentExtension(pi: ExtensionAPI) {
 	});
 
 	// ═══════════════════════════════════════════════════════════════════════
-	// TEACHER TOOLS (10)
+	// TEACHER TOOLS (11)
 	// ═══════════════════════════════════════════════════════════════════════
 
 	// ── fsrs-review ──────────────────────────────────────────────────────
@@ -445,6 +445,50 @@ export default function vocabAgentExtension(pi: ExtensionAPI) {
 					{
 						type: "text" as const,
 						text: r.message ?? "取消置顶完成",
+					},
+				],
+				details: result,
+			};
+		},
+	});
+
+pi.registerTool({
+		name: "import-by-tag",
+		label: "Import by Tag",
+		description:
+			"从 ECDICT 词典中按考试标签筛选高频单词并批量导入到词库。支持 cet4、cet6、gre、toefl、ielts 等标签，按词频排序选取最高频的词。可排除低级别词（如导入六级时排除四级词）。",
+		promptSnippet: "按考试标签批量导入高频词",
+		promptGuidelines: [
+			"Use import-by-tag when the user wants to import a batch of high-frequency words for a specific exam level (e.g., CET-6, GRE, TOEFL, IELTS).",
+			"This tool queries ECDICT by tag and sorts by frequency, so it can find the most common words for any exam level.",
+			"Set preview=true first if the user wants to see the word list before importing.",
+		],
+		parameters: Type.Object({
+			tag: Type.String({ description: "考试标签：cet4(四级)、cet6(六级)、gre、toefl(托福)、ielts(雅思)" }),
+			limit: Type.Optional(Type.Number({ description: "导入数量，默认 100，最大 500" })),
+			group: Type.Optional(Type.String({ description: "导入到指定分组名，必须已存在，默认日常" })),
+			excludeLowerTags: Type.Optional(Type.Boolean({ description: "排除低级别词（如 cet6 排除 cet4），默认 true" })),
+			preview: Type.Optional(Type.Boolean({ description: "仅预览不导入，默认 false" })),
+		}),
+		async execute(_toolCallId, params) {
+			const { importByTagTool } = await import("../../src/lib/ai/tools/import-by-tag");
+			const result = await importByTagTool.execute!(
+				{
+					tag: params.tag,
+					limit: params.limit,
+					group: params.group,
+					excludeLowerTags: params.excludeLowerTags,
+					preview: params.preview,
+				},
+				{ toolCallId: "pi", messages: [], abortSignal: undefined },
+			);
+
+			const r = result as any;
+			return {
+				content: [
+					{
+						type: "text" as const,
+						text: r.message ?? "导入操作完成",
 					},
 				],
 				details: result,

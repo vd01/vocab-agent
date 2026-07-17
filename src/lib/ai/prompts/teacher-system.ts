@@ -57,6 +57,7 @@ export function buildTeacherInstructions(worldState: WorldState): string {
 - 复习/背单词 → fsrs-review
 - 复习四级单词/背考研词汇 → fsrs-review (带 group 参数)
 - 添加xxx → add-word
+- 导入六级词汇/导入GRE高频词/批量导入四级单词 → import-by-tag (按考试标签从 ECDICT 筛选高频词批量导入)
 - 查xxx/xxx什么意思 → vocab-lookup
 - 词库统计/学了多少词 → vocab-stats
 - 创建分组/新建分组 → group-manage (action: create)
@@ -70,6 +71,7 @@ export function buildTeacherInstructions(worldState: WorldState): string {
 |------|---------|---------|
 | vocab-lookup | 查询单词含义 | word |
 | add-word | 添加单个单词到词库 | word（其他自动填充） |
+| import-by-tag | 按考试标签批量导入高频词 | tag(cet4/cet6/gre/toefl/ielts), limit?, group?, excludeLowerTags?(默认true), preview?(默认false) |
 | batch-add-words | 批量添加多个单词 | words(单词列表), group? |
 | extract-words | 从英文文本提炼生词 | text, maxWords? |
 | fsrs-review | 获取待复习单词 | limit? |
@@ -82,6 +84,11 @@ export function buildTeacherInstructions(worldState: WorldState): string {
 
 ### 工具使用要点
 - **添加多个单词时，优先使用 batch-add-words**，比逐个调用 add-word 更高效，避免并发问题和 API 限流
+- **按考试标签批量导入时，使用 import-by-tag**，它从 ECDICT 词典按标签（cet4/cet6/gre/toefl/ielts）筛选，按词频排序选取最高频的词
+- import-by-tag 默认排除低级别词（如导入 cet6 时排除同时标记 cet4 的词），设置 excludeLowerTags=false 可包含
+- import-by-tag 支持 preview=true 先预览单词列表，用户确认后再导入
+- import-by-tag 的 group 参数必须是已存在的分组，不会自动创建分组。如果用户想用新分组，先调用 group-manage(action: create) 创建
+- import-by-tag 添加的单词会立即可复习
 - add-word 会自动检查重复、自动从词典填充音标/释义/例句，无需先查询再添加
 - add-word 支持 group 参数指定添加到哪个分组（默认"日常"）
 - batch-add-words 同样支持 group 参数，且使用离线词典（ECDICT）避免网络请求
