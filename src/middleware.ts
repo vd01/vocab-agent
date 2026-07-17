@@ -46,7 +46,9 @@ export async function middleware(req: NextRequest) {
   }
 
   // 未登录用户 → 重定向到 /login（排除 /login 本身和 /api/auth）
-  if (!await isAuthenticated(req) && pathname !== LOGIN_PATH && !pathname.startsWith('/api/auth')) {
+  // Tauri popup windows share cookies with main window, but allow them anyway
+  const isTauriPopup = pathname.startsWith('/quick-lookup') || pathname.startsWith('/settings-lite');
+  if (!await isAuthenticated(req) && pathname !== LOGIN_PATH && !pathname.startsWith('/api/auth') && !isTauriPopup) {
     const loginUrl = new URL(LOGIN_PATH, req.url);
     // 保存原始路径，登录后跳回
     if (pathname !== '/') {
