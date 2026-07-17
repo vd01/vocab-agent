@@ -78,6 +78,8 @@ export default function QuickLookupPage() {
 	const [newGroupName, setNewGroupName] = useState("");
 	const inputRef = useRef<HTMLInputElement>(null);
 
+	const [shortcutHint, setShortcutHint] = useState("");
+
 	// Read clipboard on window focus (covers both initial show and re-show after hide)
 	useEffect(() => {
 		const handleFocus = () => {
@@ -87,10 +89,22 @@ export default function QuickLookupPage() {
 		return () => window.removeEventListener("focus", handleFocus);
 	}, []);
 
-	// Auto-focus input on mount
+	// Auto-focus input on mount + load shortcut hint
 	useEffect(() => {
 		inputRef.current?.focus();
+		loadShortcutHint();
 	}, []);
+
+	async function loadShortcutHint() {
+		const invoke = getTauriInvoke();
+		if (!invoke) return;
+		try {
+			const cfg = (await invoke("config-get")) as { quick_lookup_shortcut?: string };
+			if (cfg?.quick_lookup_shortcut) {
+				setShortcutHint(cfg.quick_lookup_shortcut);
+			}
+		} catch { /* config unavailable */ }
+	}
 
 	// ESC to hide window
 	useEffect(() => {
@@ -418,7 +432,7 @@ export default function QuickLookupPage() {
 							/>
 						</svg>
 						输入单词后按回车查询
-						<span className="mt-1 opacity-60">Ctrl+Shift+X 快速打开</span>
+						{shortcutHint ? `${shortcutHint} 快速打开` : "设置快捷键快速打开"}
 					</div>
 				)}
 			</div>

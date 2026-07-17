@@ -14,8 +14,12 @@ fn setup_html_b64() -> String {
 }
 
 pub fn setup_tray<R: Runtime>(app: &App<R>) -> Result<(), Box<dyn std::error::Error>> {
+    let store = app.state::<crate::store::AppStore>();
+    let cfg = store.get();
+
     let show_item = MenuItem::with_id(app, "show", "显示/隐藏", true, None::<&str>)?;
-    let quick_lookup_item = MenuItem::with_id(app, "quick-lookup", "快捷查词", true, None::<&str>)?;
+    let ql_label = format!("快捷查词\t{}", cfg.quick_lookup_shortcut);
+    let quick_lookup_item = MenuItem::with_id(app, "quick-lookup", &ql_label, true, None::<&str>)?;
     let separator1 = PredefinedMenuItem::separator(app)?;
     let reminder_item = CheckMenuItemBuilder::with_id("reminder", "复习提醒")
         .checked(true)
