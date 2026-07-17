@@ -6,7 +6,7 @@
   "build": {
     "frontendDist": "../desktop-dist",
     "devUrl": "http://localhost:3088",
-    "beforeDevCommand": "npm run dev -- --turbopack --port 3088",
+    "beforeDevCommand": "node scripts/before-dev.js",
     "beforeBuildCommand": ""
   },
   "app": {
