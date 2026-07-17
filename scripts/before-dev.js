@@ -5,11 +5,15 @@
  * Checks if the Next.js dev server is already running on port 3088.
  * - If running: prints a notice and exits 0 (Tauri continues).
  * - If not: spawns `npm run dev -- --turbopack --port 3088` in the background.
+ *
+ * Options (env vars):
+ *   TAURI_DEV_SHOW_SERVER=1  — show the server console window (default: hidden)
  */
 
 const http = require("http");
 const { spawn } = require("child_process");
 const PORT = 3088;
+const SHOW_SERVER = !!process.env.TAURI_DEV_SHOW_SERVER;
 
 function checkServer(port) {
   return new Promise((resolve) => {
@@ -33,11 +37,31 @@ async function main() {
 
   console.log(`[before-dev] Starting Next.js dev server on port ${PORT}...`);
 
+  const isWin = process.platform === "win32";
+
+  // On Windows, hide the console window by default.
+  // Set TAURI_DEV_SHOW_SERVER=1 to show it (useful for debugging server logs).
+  const spawnOpts = {
+    stdio: SHOW_SERVER ? "inherit" : "pipe",
+    detached: true,
+    env: { ...process.env },
+  };
+
+  if (isWin && !SHOW_SERVER) {
+    spawnOpts.windowsHide = true;
+  }
+
   const child = spawn(
-    process.platform === "win32" ? "npm.cmd" : "npm",
+    isWin ? "npm.cmd" : "npm",
     ["run", "dev", "--", "--turbopack", "--port", String(PORT)],
-    { stdio: "inherit", shell: true, detached: true }
+    spawnOpts
   );
+
+  if (!SHOW_SERVER) {
+    // Silently discard stdout/stderr so nothing leaks to the Tauri console
+    child.stdout?.on("data", () => {});
+    child.stderr?.on("data", () => {});
+  }
 
   child.unref();
 
