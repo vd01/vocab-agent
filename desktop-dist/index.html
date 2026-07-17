@@ -1,202 +1,321 @@
-<!DOCTYPE html>
+<!doctype html>
 <html>
-<head>
-<meta charset="utf-8">
-<title>Vocab Agent</title>
-<style>
-* { margin: 0; padding: 0; box-sizing: border-box; }
-body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; background: #0a0a0a; color: #e5e5e5; display: flex; align-items: center; justify-content: center; height: 100vh; }
-.container { width: 400px; text-align: center; }
-h1 { font-size: 24px; font-weight: 600; margin-bottom: 8px; }
-.subtitle { font-size: 14px; color: #888; margin-bottom: 32px; }
-.input-group { margin-bottom: 16px; text-align: left; }
-label { display: block; font-size: 13px; color: #aaa; margin-bottom: 6px; }
-input { width: 100%; padding: 10px 12px; border: 1px solid #333; border-radius: 8px; background: #1a1a1a; color: #e5e5e5; font-size: 14px; outline: none; transition: border-color 0.2s; }
-input:focus { border-color: #3b82f6; }
-input::placeholder { color: #555; }
-input.capturing { border-color: #3b82f6; background: #1a2a4a; }
-.btn { width: 100%; padding: 10px; border: none; border-radius: 8px; background: #3b82f6; color: #fff; font-size: 14px; font-weight: 500; cursor: pointer; transition: background 0.2s; margin-top: 8px; }
-.btn:hover { background: #2563eb; }
-.btn:disabled { background: #1e3a5f; cursor: not-allowed; }
-.error { color: #ef4444; font-size: 13px; margin-top: 8px; min-height: 20px; }
-.status { font-size: 13px; color: #888; margin-top: 12px; }
-.divider { border: none; border-top: 1px solid #333; margin: 24px 0; }
-.hint { font-size: 12px; color: #666; margin-top: 4px; }
-.section-title { font-size: 14px; color: #aaa; margin-bottom: 12px; font-weight: 500; }
-</style>
-</head>
-<body>
-<div class="container">
-  <h1>Vocab Agent Lite</h1>
-  <p class="subtitle">配置服务端连接</p>
-  <div class="input-group">
-    <label>服务端地址</label>
-    <input type="url" id="urlInput" placeholder="https://example.duckdns.org:31588" autofocus>
-  </div>
-  <button class="btn" id="connectBtn" onclick="connect()">连接</button>
-  <div class="error" id="error"></div>
-  <div class="status" id="status"></div>
+  <head>
+    <meta charset="utf-8" />
+    <title>Vocab Agent</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+        background: #0a0a0a;
+        color: #e5e5e5;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 100vh;
+      }
+      .container {
+        width: 400px;
+        text-align: center;
+      }
+      h1 {
+        font-size: 24px;
+        font-weight: 600;
+        margin-bottom: 8px;
+      }
+      .subtitle {
+        font-size: 14px;
+        color: #888;
+        margin-bottom: 32px;
+      }
+      .input-group {
+        margin-bottom: 16px;
+        text-align: left;
+      }
+      label {
+        display: block;
+        font-size: 13px;
+        color: #aaa;
+        margin-bottom: 6px;
+      }
+      input {
+        width: 100%;
+        padding: 10px 12px;
+        border: 1px solid #333;
+        border-radius: 8px;
+        background: #1a1a1a;
+        color: #e5e5e5;
+        font-size: 14px;
+        outline: none;
+        transition: border-color 0.2s;
+      }
+      input:focus {
+        border-color: #3b82f6;
+      }
+      input::placeholder {
+        color: #555;
+      }
+      input.capturing {
+        border-color: #3b82f6;
+        background: #1a2a4a;
+      }
+      .btn {
+        width: 100%;
+        padding: 10px;
+        border: none;
+        border-radius: 8px;
+        background: #3b82f6;
+        color: #fff;
+        font-size: 14px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: background 0.2s;
+        margin-top: 8px;
+      }
+      .btn:hover {
+        background: #2563eb;
+      }
+      .btn:disabled {
+        background: #1e3a5f;
+        cursor: not-allowed;
+      }
+      .error {
+        color: #ef4444;
+        font-size: 13px;
+        margin-top: 8px;
+        min-height: 20px;
+      }
+      .status {
+        font-size: 13px;
+        color: #888;
+        margin-top: 12px;
+      }
+      .divider {
+        border: none;
+        border-top: 1px solid #333;
+        margin: 24px 0;
+      }
+      .hint {
+        font-size: 12px;
+        color: #666;
+        margin-top: 4px;
+      }
+      .section-title {
+        font-size: 14px;
+        color: #aaa;
+        margin-bottom: 12px;
+        font-weight: 500;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>Vocab Agent Lite</h1>
+      <p class="subtitle">配置服务端连接</p>
+      <div class="input-group">
+        <label>服务端地址</label>
+        <input
+          type="url"
+          id="urlInput"
+          placeholder="https://example.duckdns.org:31588"
+          autofocus
+        />
+      </div>
+      <button class="btn" id="connectBtn" onclick="connect()">连接</button>
+      <div class="error" id="error"></div>
+      <div class="status" id="status"></div>
 
-  <hr class="divider">
-  <p class="section-title">快捷键设置</p>
-  <div class="input-group">
-    <label>快捷查词快捷键</label>
-    <input type="text" id="qlShortcutInput" placeholder="Ctrl+Shift+X" readonly>
-    <p class="hint" id="qlHint">点击输入框后按下组合键</p>
-  </div>
-  <button class="btn" id="qlBtn" onclick="saveQuickLookupShortcut()" disabled>保存快捷键</button>
-  <div class="error" id="qlError"></div>
-</div>
-<script>
-async function connect() {
-  const url = document.getElementById('urlInput').value.trim().replace(/\/+$/, '');
-  const btn = document.getElementById('connectBtn');
-  const err = document.getElementById('error');
-  const status = document.getElementById('status');
+      <hr class="divider" />
+      <p class="section-title">快捷键设置</p>
+      <div class="input-group">
+        <label>快捷查词快捷键</label>
+        <input
+          type="text"
+          id="qlShortcutInput"
+          placeholder="Ctrl+Shift+X"
+          readonly
+        />
+        <p class="hint" id="qlHint">点击输入框后按下组合键</p>
+      </div>
+      <button
+        class="btn"
+        id="qlBtn"
+        onclick="saveQuickLookupShortcut()"
+        disabled
+      >
+        保存快捷键
+      </button>
+      <div class="error" id="qlError"></div>
+    </div>
+    <script>
+      async function connect() {
+        const url = document
+          .getElementById("urlInput")
+          .value.trim()
+          .replace(/\/+$/, "");
+        const btn = document.getElementById("connectBtn");
+        const err = document.getElementById("error");
+        const status = document.getElementById("status");
 
-  if (!url) { err.textContent = '请输入服务端地址'; return; }
+        if (!url) {
+          err.textContent = "请输入服务端地址";
+          return;
+        }
 
-  try { new URL(url); } catch { err.textContent = '地址格式不正确'; return; }
+        try {
+          new URL(url);
+        } catch {
+          err.textContent = "地址格式不正确";
+          return;
+        }
 
-  err.textContent = '';
-  btn.disabled = true;
-  status.textContent = '正在检测服务端...';
+        err.textContent = "";
+        btn.disabled = true;
+        status.textContent = "正在检测服务端...";
 
-  try {
-    const { invoke } = window.__TAURI_INTERNALS__;
-    const ok = await invoke('check-server', { url: url });
-    if (!ok) throw new Error('服务端返回异常状态');
-  } catch (e) {
-    err.textContent = '无法连接到服务端: ' + (e.message || e);
-    btn.disabled = false;
-    status.textContent = '';
-    return;
-  }
+        try {
+          const { invoke } = window.__TAURI_INTERNALS__;
+          const ok = await invoke("check-server", { url: url });
+          if (!ok) throw new Error("服务端返回异常状态");
+        } catch (e) {
+          err.textContent = "无法连接到服务端: " + (e.message || e);
+          btn.disabled = false;
+          status.textContent = "";
+          return;
+        }
 
-  status.textContent = '正在保存配置...';
+        status.textContent = "正在保存配置...";
 
-  try {
-    const { invoke } = window.__TAURI_INTERNALS__;
-    await invoke('config-set', { partial: { server_url: url } });
-    status.textContent = '正在跳转...';
-    // Validate redirect URL to prevent open redirect
-    try {
-      const redirectUrl = new URL(url);
-      if (!['http:', 'https:'].includes(redirectUrl.protocol)) throw new Error('Invalid protocol');
-      window.location.href = url; // url validated above
-    } catch (e) {
-      err.textContent = '跳转失败: 无效的URL';
-      btn.disabled = false;
-      status.textContent = '';
-      return;
-    }
-  } catch (e) {
-    err.textContent = '保存失败: ' + e.message;
-    btn.disabled = false;
-    status.textContent = '';
-  }
-}
+        try {
+          const { invoke } = window.__TAURI_INTERNALS__;
+          await invoke("config-set", { partial: { server_url: url } });
+          status.textContent = "正在跳转...";
+          // Validate redirect URL to prevent open redirect
+          try {
+            const redirectUrl = new URL(url);
+            if (!["http:", "https:"].includes(redirectUrl.protocol))
+              throw new Error("Invalid protocol");
+            window.location.href = url; // url validated above
+          } catch (e) {
+            err.textContent = "跳转失败: 无效的URL";
+            btn.disabled = false;
+            status.textContent = "";
+            return;
+          }
+        } catch (e) {
+          err.textContent = "保存失败: " + e.message;
+          btn.disabled = false;
+          status.textContent = "";
+        }
+      }
 
-document.getElementById('urlInput').addEventListener('keydown', function(e) {
-  if (e.key === 'Enter') connect();
-});
+      document
+        .getElementById("urlInput")
+        .addEventListener("keydown", function (e) {
+          if (e.key === "Enter") connect();
+        });
 
-// ── Quick Lookup Shortcut Capture ──
-let qlCapturing = false;
+      // ── Quick Lookup Shortcut Capture ──
+      let qlCapturing = false;
 
-const qlInput = document.getElementById('qlShortcutInput');
-const qlBtn = document.getElementById('qlBtn');
-const qlHint = document.getElementById('qlHint');
-const qlError = document.getElementById('qlError');
+      const qlInput = document.getElementById("qlShortcutInput");
+      const qlBtn = document.getElementById("qlBtn");
+      const qlHint = document.getElementById("qlHint");
+      const qlError = document.getElementById("qlError");
 
-qlInput.addEventListener('focus', function() {
-  qlCapturing = true;
-  qlInput.classList.add('capturing');
-  qlInput.value = '';
-  qlHint.textContent = '请按下组合键...';
-  qlBtn.disabled = true;
-});
+      qlInput.addEventListener("focus", function () {
+        qlCapturing = true;
+        qlInput.classList.add("capturing");
+        qlInput.value = "";
+        qlHint.textContent = "请按下组合键...";
+        qlBtn.disabled = true;
+      });
 
-qlInput.addEventListener('blur', function() {
-  qlCapturing = false;
-  qlInput.classList.remove('capturing');
-  qlHint.textContent = '点击输入框后按下组合键';
-  // If no shortcut was captured, restore from config
-  if (!qlInput.value) {
-    loadQuickLookupShortcut();
-  }
-});
+      qlInput.addEventListener("blur", function () {
+        qlCapturing = false;
+        qlInput.classList.remove("capturing");
+        qlHint.textContent = "点击输入框后按下组合键";
+        // If no shortcut was captured, restore from config
+        if (!qlInput.value) {
+          loadQuickLookupShortcut();
+        }
+      });
 
-qlInput.addEventListener('keydown', function(e) {
-  if (!qlCapturing) return;
-  e.preventDefault();
-  e.stopPropagation();
+      qlInput.addEventListener("keydown", function (e) {
+        if (!qlCapturing) return;
+        e.preventDefault();
+        e.stopPropagation();
 
-  const parts = [];
-  if (e.ctrlKey) parts.push('Ctrl');
-  if (e.altKey) parts.push('Alt');
-  if (e.shiftKey) parts.push('Shift');
-  if (e.metaKey) parts.push('Super');
+        const parts = [];
+        if (e.ctrlKey) parts.push("Ctrl");
+        if (e.altKey) parts.push("Alt");
+        if (e.shiftKey) parts.push("Shift");
+        if (e.metaKey) parts.push("Super");
 
-  const key = e.key;
-  if (!['Control', 'Alt', 'Shift', 'Meta'].includes(key)) {
-    const keyName = key.length === 1 ? key.toUpperCase() : key;
-    parts.push(keyName);
-  }
+        const key = e.key;
+        if (!["Control", "Alt", "Shift", "Meta"].includes(key)) {
+          const keyName = key.length === 1 ? key.toUpperCase() : key;
+          parts.push(keyName);
+        }
 
-  if (parts.length >= 2) {
-    qlInput.value = parts.join('+');
-    qlCapturing = false;
-    qlInput.classList.remove('capturing');
-    qlHint.textContent = '快捷键已捕获，点击"保存快捷键"确认';
-    qlBtn.disabled = false;
-  }
-});
+        if (parts.length >= 2) {
+          qlInput.value = parts.join("+");
+          qlCapturing = false;
+          qlInput.classList.remove("capturing");
+          qlHint.textContent = '快捷键已捕获，点击"保存快捷键"确认';
+          qlBtn.disabled = false;
+        }
+      });
 
-async function saveQuickLookupShortcut() {
-  const shortcut = qlInput.value.trim();
-  if (!shortcut) return;
+      async function saveQuickLookupShortcut() {
+        const shortcut = qlInput.value.trim();
+        if (!shortcut) return;
 
-  qlError.textContent = '';
-  qlBtn.disabled = true;
-  qlBtn.textContent = '保存中...';
+        qlError.textContent = "";
+        qlBtn.disabled = true;
+        qlBtn.textContent = "保存中...";
 
-  try {
-    const { invoke } = window.__TAURI_INTERNALS__;
-    await invoke('set-quick-lookup-shortcut', { shortcut });
-    qlHint.textContent = '✓ 快捷键已保存: ' + shortcut;
-    qlBtn.textContent = '保存快捷键';
-    qlBtn.disabled = false;
-  } catch (e) {
-    qlError.textContent = '保存失败: ' + (e.message || e);
-    qlBtn.textContent = '保存快捷键';
-    qlBtn.disabled = false;
-  }
-}
+        try {
+          const { invoke } = window.__TAURI_INTERNALS__;
+          await invoke("set-quick-lookup-shortcut", { shortcut });
+          qlHint.textContent = "✓ 快捷键已保存: " + shortcut;
+          qlBtn.textContent = "保存快捷键";
+          qlBtn.disabled = false;
+        } catch (e) {
+          qlError.textContent = "保存失败: " + (e.message || e);
+          qlBtn.textContent = "保存快捷键";
+          qlBtn.disabled = false;
+        }
+      }
 
-async function loadQuickLookupShortcut() {
-  try {
-    const { invoke } = window.__TAURI_INTERNALS__;
-    const cfg = await invoke('config-get');
-    if (cfg.quick_lookup_shortcut) {
-      qlInput.value = cfg.quick_lookup_shortcut;
-    }
-  } catch {}
-}
+      async function loadQuickLookupShortcut() {
+        try {
+          const { invoke } = window.__TAURI_INTERNALS__;
+          const cfg = await invoke("config-get");
+          if (cfg.quick_lookup_shortcut) {
+            qlInput.value = cfg.quick_lookup_shortcut;
+          }
+        } catch {}
+      }
 
-// ── Init ──
-(async function() {
-  try {
-    const { invoke } = window.__TAURI_INTERNALS__;
-    const cfg = await invoke('config-get');
-    if (cfg.server_url) {
-      document.getElementById('urlInput').value = cfg.server_url;
-    }
-    if (cfg.quick_lookup_shortcut) {
-      qlInput.value = cfg.quick_lookup_shortcut;
-    }
-  } catch {}
-})();
-</script>
-</body>
+      // ── Init ──
+      (async function () {
+        try {
+          const { invoke } = window.__TAURI_INTERNALS__;
+          const cfg = await invoke("config-get");
+          if (cfg.server_url) {
+            document.getElementById("urlInput").value = cfg.server_url;
+          }
+          if (cfg.quick_lookup_shortcut) {
+            qlInput.value = cfg.quick_lookup_shortcut;
+          }
+        } catch {}
+      })();
+    </script>
+  </body>
 </html>

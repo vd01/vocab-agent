@@ -1,9 +1,16 @@
 use store::AppStore;
 use tauri::{Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
+use std::sync::{Arc, Mutex};
 
 mod commands;
 mod store;
 mod tray;
+
+/// Shared shortcut key map — updated at runtime by `set-quick-lookup-shortcut`
+pub struct ShortcutKeys {
+    pub main: Option<(tauri_plugin_global_shortcut::Modifiers, tauri_plugin_global_shortcut::Code)>,
+    pub ql: Option<(tauri_plugin_global_shortcut::Modifiers, tauri_plugin_global_shortcut::Code)>,
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -46,10 +53,14 @@ pub fn run() {
                 let main_shortcut = parse_shortcut(&cfg.shortcut);
                 let ql_shortcut = parse_shortcut(&cfg.quick_lookup_shortcut);
 
-                // Extract (modifiers, code) for comparison in handler
-                let main_key: Option<(Modifiers, Code)> = main_shortcut.map(|s| (s.mods, s.key));
-                let ql_key: Option<(Modifiers, Code)> = ql_shortcut.map(|s| (s.mods, s.key));
+                // Shared key map — handler reads, set-quick-lookup-shortcut writes
+                let keys = Arc::new(Mutex::new(ShortcutKeys {
+                    main: main_shortcut.map(|s| (s.mods, s.key)),
+                    ql: ql_shortcut.map(|s| (s.mods, s.key)),
+                }));
+                app.manage(keys.clone());
 
+                let handler_keys = keys.clone();
                 app.handle().plugin(
                     tauri_plugin_global_shortcut::Builder::new()
                         .with_handler(move |app, shortcut, event| {
@@ -58,18 +69,21 @@ pub fn run() {
                             }
 
                             let fired: (Modifiers, Code) = (shortcut.mods, shortcut.key);
+                            let current = handler_keys.lock().unwrap();
 
                             // Check quick-lookup shortcut first
-                            if let Some(qk) = ql_key {
+                            if let Some(qk) = current.ql {
                                 if fired == qk {
+                                    drop(current);
                                     toggle_quick_lookup(app);
                                     return;
                                 }
                             }
 
                             // Check main window shortcut
-                            if let Some(mk) = main_key {
+                            if let Some(mk) = current.main {
                                 if fired == mk {
+                                    drop(current);
                                     if let Some(win) = app.get_webview_window("main") {
                                         if win.is_visible().unwrap_or(false)
                                             && win.is_focused().unwrap_or(false)
@@ -85,6 +99,7 @@ pub fn run() {
                             }
 
                             // Fallback: toggle main window for any other registered shortcut
+                            drop(current);
                             if let Some(win) = app.get_webview_window("main") {
                                 if win.is_visible().unwrap_or(false)
                                     && win.is_focused().unwrap_or(false)

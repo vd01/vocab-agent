@@ -55,7 +55,9 @@ const FSRS_STATE_LABELS: Record<number, { label: string; color: string }> = {
 
 // ── Tauri helpers ──────────────────────────────────────────────────
 
-function getTauriInvoke(): ((cmd: string, args?: Record<string, unknown>) => Promise<unknown>) | null {
+function getTauriInvoke():
+	| ((cmd: string, args?: Record<string, unknown>) => Promise<unknown>)
+	| null {
 	try {
 		// @ts-expect-error Tauri internal API
 		return window.__TAURI_INTERNALS__.invoke ?? null;
@@ -98,9 +100,13 @@ export default function QuickLookupPage() {
 			if (listen) {
 				// eslint-disable-next-line @typescript-eslint/no-explicit-any
 				const unlisten = (listen as any)("quick-lookup-activated", handler);
-				return () => { unlisten.then((fn: () => void) => fn()).catch(() => {}); };
+				return () => {
+					unlisten.then((fn: () => void) => fn()).catch(() => {});
+				};
 			}
-		} catch { /* not in Tauri */ }
+		} catch {
+			/* not in Tauri */
+		}
 	}, []);
 
 	// ESC to hide window
@@ -120,17 +126,22 @@ export default function QuickLookupPage() {
 		if (!invoke) return;
 		try {
 			const clipboardText = await invoke("read-clipboard");
-			if (typeof clipboardText === "string" && isEnglishWordOrPhrase(clipboardText)) {
+			if (
+				typeof clipboardText === "string" &&
+				isEnglishWordOrPhrase(clipboardText)
+			) {
 				setInput(clipboardText.trim());
 			}
-		} catch { /* clipboard access denied */ }
+		} catch {
+			/* clipboard access denied */
+		}
 	}
 
 	async function getBaseUrl(): Promise<string> {
 		const invoke = getTauriInvoke();
 		if (!invoke) return "";
 		try {
-			const cfg = await invoke("config-get") as { server_url?: string };
+			const cfg = (await invoke("config-get")) as { server_url?: string };
 			return cfg?.server_url?.replace(/\/+$/, "") ?? "";
 		} catch {
 			return "";
@@ -157,12 +168,26 @@ export default function QuickLookupPage() {
 			setResult(data);
 		} catch {
 			setResult({
-				type: "error", word: trimmed, inLibrary: false, wordId: null,
-				groups: [], isPinned: false, fsrsState: null, fsrsStateLabel: null,
-				fsrsDue: null, phonetic: null, audioUrl: null,
-				translation: "查询失败，请检查网络连接", definitions: [],
-				collins: null, tag: null, bnc: null, exchange: null, synonyms: [],
-				actions: [], allGroups: [],
+				type: "error",
+				word: trimmed,
+				inLibrary: false,
+				wordId: null,
+				groups: [],
+				isPinned: false,
+				fsrsState: null,
+				fsrsStateLabel: null,
+				fsrsDue: null,
+				phonetic: null,
+				audioUrl: null,
+				translation: "查询失败，请检查网络连接",
+				definitions: [],
+				collins: null,
+				tag: null,
+				bnc: null,
+				exchange: null,
+				synonyms: [],
+				actions: [],
+				allGroups: [],
 			});
 		} finally {
 			setLoading(false);
@@ -180,7 +205,9 @@ export default function QuickLookupPage() {
 
 		try {
 			const baseUrl = await getBaseUrl();
-			const url = baseUrl ? `${baseUrl}/api/quick-lookup-action` : "/api/quick-lookup-action";
+			const url = baseUrl
+				? `${baseUrl}/api/quick-lookup-action`
+				: "/api/quick-lookup-action";
 
 			const res = await fetch(url, {
 				method: "POST",
@@ -191,7 +218,11 @@ export default function QuickLookupPage() {
 			const data: ActionResult = await res.json();
 			setActionMessage(data.message || "操作完成");
 
-			if (["added", "added-and-pinned", "pinned", "added-to-group"].includes(data.type)) {
+			if (
+				["added", "added-and-pinned", "pinned", "added-to-group"].includes(
+					data.type,
+				)
+			) {
 				setTimeout(() => doLookup(input.trim()), 300);
 			}
 		} catch {
@@ -215,8 +246,18 @@ export default function QuickLookupPage() {
 			{/* Search Input - fixed top */}
 			<form onSubmit={handleSubmit} className="flex-shrink-0 p-3 pb-2">
 				<div className="relative">
-					<svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-						<path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+					<svg
+						className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground"
+						fill="none"
+						viewBox="0 0 24 24"
+						stroke="currentColor"
+						strokeWidth={2}
+					>
+						<path
+							strokeLinecap="round"
+							strokeLinejoin="round"
+							d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+						/>
 					</svg>
 					<input
 						ref={inputRef}
@@ -237,9 +278,24 @@ export default function QuickLookupPage() {
 			<div className="flex-1 overflow-y-auto px-3">
 				{loading && (
 					<div className="flex items-center justify-center py-8 text-muted-foreground text-sm">
-						<svg className="animate-spin -ml-1 mr-2 h-4 w-4" fill="none" viewBox="0 0 24 24">
-							<circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-							<path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+						<svg
+							className="animate-spin -ml-1 mr-2 h-4 w-4"
+							fill="none"
+							viewBox="0 0 24 24"
+						>
+							<circle
+								className="opacity-25"
+								cx="12"
+								cy="12"
+								r="10"
+								stroke="currentColor"
+								strokeWidth="4"
+							/>
+							<path
+								className="opacity-75"
+								fill="currentColor"
+								d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+							/>
 						</svg>
 						查询中...
 					</div>
@@ -250,48 +306,83 @@ export default function QuickLookupPage() {
 						{/* Word Header */}
 						<div>
 							<div className="flex items-center gap-2">
-								<span className="text-lg font-semibold text-foreground">{result.word}</span>
+								<span className="text-lg font-semibold text-foreground">
+									{result.word}
+								</span>
 								{result.audioUrl && (
-									<button onClick={() => playAudio(result.audioUrl)} className="p-1 rounded-md hover:bg-muted transition-colors" title="播放发音">
-										<svg className="w-4 h-4 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-											<path strokeLinecap="round" strokeLinejoin="round" d="M15.536 8.464a5 5 0 010 7.072M12 6v12m-3.536-1.464a5 5 0 010-7.072M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+									<button
+										onClick={() => playAudio(result.audioUrl)}
+										className="p-1 rounded-md hover:bg-muted transition-colors"
+										title="播放发音"
+									>
+										<svg
+											className="w-4 h-4 text-muted-foreground"
+											fill="none"
+											viewBox="0 0 24 24"
+											stroke="currentColor"
+											strokeWidth={2}
+										>
+											<path
+												strokeLinecap="round"
+												strokeLinejoin="round"
+												d="M15.536 8.464a5 5 0 010 7.072M12 6v12m-3.536-1.464a5 5 0 010-7.072M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+											/>
 										</svg>
 									</button>
 								)}
 								{result.phonetic && (
-									<span className="text-sm text-muted-foreground">{result.phonetic}</span>
+									<span className="text-sm text-muted-foreground">
+										{result.phonetic}
+									</span>
 								)}
 							</div>
 							{/* Status Badges */}
 							<div className="flex flex-wrap items-center gap-1 mt-1">
 								{result.inLibrary ? (
-									<span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-green-500/20 text-green-400">✓ 已入库</span>
+									<span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-green-500/20 text-green-400">
+										✓ 已入库
+									</span>
 								) : (
-									<span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-muted text-muted-foreground">未入库</span>
-								)}
-								{result.fsrsState !== null && FSRS_STATE_LABELS[result.fsrsState] && (
-									<span className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-muted ${FSRS_STATE_LABELS[result.fsrsState].color}`}>
-										{FSRS_STATE_LABELS[result.fsrsState].label}
+									<span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-muted text-muted-foreground">
+										未入库
 									</span>
 								)}
+								{result.fsrsState !== null &&
+									FSRS_STATE_LABELS[result.fsrsState] && (
+										<span
+											className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-muted ${FSRS_STATE_LABELS[result.fsrsState].color}`}
+										>
+											{FSRS_STATE_LABELS[result.fsrsState].label}
+										</span>
+									)}
 								{result.isPinned && (
-									<span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-primary/20 text-primary">📌 置顶</span>
+									<span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-primary/20 text-primary">
+										📌 置顶
+									</span>
 								)}
 								{result.groups.length > 0 && (
-									<span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-muted text-muted-foreground">{result.groups.join(", ")}</span>
+									<span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-muted text-muted-foreground">
+										{result.groups.join(", ")}
+									</span>
 								)}
 								{result.tag && (
-									<span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-blue-500/20 text-blue-400">{result.tag}</span>
+									<span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-blue-500/20 text-blue-400">
+										{result.tag}
+									</span>
 								)}
 								{result.collins && (
-									<span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-yellow-500/20 text-yellow-400">★ {result.collins}</span>
+									<span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-yellow-500/20 text-yellow-400">
+										★ {result.collins}
+									</span>
 								)}
 							</div>
 						</div>
 
 						{/* Translation */}
 						{result.translation && (
-							<div className="text-sm text-foreground/90 leading-relaxed">{result.translation}</div>
+							<div className="text-sm text-foreground/90 leading-relaxed">
+								{result.translation}
+							</div>
 						)}
 
 						{/* English Definitions - compact */}
@@ -299,9 +390,14 @@ export default function QuickLookupPage() {
 							<div className="space-y-1">
 								{result.definitions.slice(0, 2).map((group, i) => (
 									<div key={i} className="text-xs">
-										<span className="text-muted-foreground font-medium">{group.partOfSpeech} </span>
+										<span className="text-muted-foreground font-medium">
+											{group.partOfSpeech}{" "}
+										</span>
 										<span className="text-foreground/80">
-											{group.definitions.slice(0, 2).map((d) => d.definition).join("; ")}
+											{group.definitions
+												.slice(0, 2)
+												.map((d) => d.definition)
+												.join("; ")}
 										</span>
 									</div>
 								))}
@@ -320,8 +416,18 @@ export default function QuickLookupPage() {
 				{/* Empty State */}
 				{!result && !loading && (
 					<div className="flex flex-col items-center justify-center py-8 text-muted-foreground text-xs">
-						<svg className="w-8 h-8 mb-2 opacity-30" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-							<path strokeLinecap="round" strokeLinejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+						<svg
+							className="w-8 h-8 mb-2 opacity-30"
+							fill="none"
+							viewBox="0 0 24 24"
+							stroke="currentColor"
+							strokeWidth={1.5}
+						>
+							<path
+								strokeLinecap="round"
+								strokeLinejoin="round"
+								d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"
+							/>
 						</svg>
 						输入单词后按回车查询
 						<span className="mt-1 opacity-60">Ctrl+Shift+X 快速打开</span>
@@ -341,7 +447,10 @@ export default function QuickLookupPage() {
 									<button
 										key={g.id}
 										className="px-2 py-1 text-xs rounded-md bg-muted hover:bg-muted/80 text-foreground transition-colors disabled:opacity-50"
-										onClick={() => { doAction("add-to-group", { groupId: g.id }); setShowGroupSelector(false); }}
+										onClick={() => {
+											doAction("add-to-group", { groupId: g.id });
+											setShowGroupSelector(false);
+										}}
 										disabled={actionLoading !== null}
 									>
 										{g.name}
@@ -357,7 +466,9 @@ export default function QuickLookupPage() {
 									className="flex-1 px-2 py-1 text-xs bg-muted/50 border border-border rounded-md text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/50"
 									onKeyDown={(e) => {
 										if (e.key === "Enter" && newGroupName.trim()) {
-											doAction("add-to-group", { groupName: newGroupName.trim() });
+											doAction("add-to-group", {
+												groupName: newGroupName.trim(),
+											});
 											setShowGroupSelector(false);
 											setNewGroupName("");
 										}
@@ -368,7 +479,9 @@ export default function QuickLookupPage() {
 									disabled={!newGroupName.trim() || actionLoading !== null}
 									onClick={() => {
 										if (newGroupName.trim()) {
-											doAction("add-to-group", { groupName: newGroupName.trim() });
+											doAction("add-to-group", {
+												groupName: newGroupName.trim(),
+											});
 											setShowGroupSelector(false);
 											setNewGroupName("");
 										}
@@ -382,16 +495,36 @@ export default function QuickLookupPage() {
 					{/* Buttons */}
 					<div className="flex flex-wrap gap-1.5">
 						{result!.actions.includes("add-to-library") && (
-							<ActionButton label="入库" icon="📚" loading={actionLoading === "add-to-library"} onClick={() => doAction("add-to-library")} />
+							<ActionButton
+								label="入库"
+								icon="📚"
+								loading={actionLoading === "add-to-library"}
+								onClick={() => doAction("add-to-library")}
+							/>
 						)}
 						{result!.actions.includes("add-and-pin") && (
-							<ActionButton label="入库并置顶" icon="📌" loading={actionLoading === "add-and-pin"} onClick={() => doAction("add-and-pin")} />
+							<ActionButton
+								label="入库并置顶"
+								icon="📌"
+								loading={actionLoading === "add-and-pin"}
+								onClick={() => doAction("add-and-pin")}
+							/>
 						)}
 						{result!.actions.includes("pin") && (
-							<ActionButton label="置顶" icon="📌" loading={actionLoading === "pin"} onClick={() => doAction("pin")} />
+							<ActionButton
+								label="置顶"
+								icon="📌"
+								loading={actionLoading === "pin"}
+								onClick={() => doAction("pin")}
+							/>
 						)}
 						{result!.actions.includes("add-to-group") && (
-							<ActionButton label="加入分组" icon="📂" loading={actionLoading === "add-to-group"} onClick={() => setShowGroupSelector(!showGroupSelector)} />
+							<ActionButton
+								label="加入分组"
+								icon="📂"
+								loading={actionLoading === "add-to-group"}
+								onClick={() => setShowGroupSelector(!showGroupSelector)}
+							/>
 						)}
 					</div>
 				</div>
@@ -402,7 +535,17 @@ export default function QuickLookupPage() {
 
 // ── Action Button ──────────────────────────────────────────────────
 
-function ActionButton({ label, icon, loading, onClick }: { label: string; icon: string; loading: boolean; onClick: () => void }) {
+function ActionButton({
+	label,
+	icon,
+	loading,
+	onClick,
+}: {
+	label: string;
+	icon: string;
+	loading: boolean;
+	onClick: () => void;
+}) {
 	return (
 		<button
 			className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium
@@ -413,8 +556,19 @@ function ActionButton({ label, icon, loading, onClick }: { label: string; icon: 
 		>
 			{loading ? (
 				<svg className="animate-spin h-3 w-3" fill="none" viewBox="0 0 24 24">
-					<circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-					<path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+					<circle
+						className="opacity-25"
+						cx="12"
+						cy="12"
+						r="10"
+						stroke="currentColor"
+						strokeWidth="4"
+					/>
+					<path
+						className="opacity-75"
+						fill="currentColor"
+						d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+					/>
 				</svg>
 			) : (
 				<span>{icon}</span>

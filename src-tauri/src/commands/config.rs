@@ -1,5 +1,6 @@
 use crate::store::AppStore;
 use serde::Serialize;
+use std::sync::{Arc, Mutex};
 use tauri::State;
 
 pub fn http_client() -> Result<reqwest::Client, String> {
@@ -52,13 +53,15 @@ pub async fn check_server(url: String) -> Result<bool, String> {
 }
 
 /// Update the quick-lookup shortcut at runtime.
-/// Unregisters the old shortcut and registers the new one.
+/// Unregisters the old shortcut, registers the new one, and updates the shared handler state.
 #[tauri::command(rename = "set-quick-lookup-shortcut")]
 pub fn set_quick_lookup_shortcut(
     app: tauri::AppHandle,
     store: State<'_, AppStore>,
+    keys: State<'_, Arc<Mutex<crate::ShortcutKeys>>>,
     shortcut: String,
 ) -> Result<ConfigResponse, String> {
+    
     use tauri_plugin_global_shortcut::GlobalShortcutExt;
 
     // Parse the new shortcut
@@ -74,6 +77,12 @@ pub fn set_quick_lookup_shortcut(
     // Register the new one
     app.global_shortcut().register(new_sc)
         .map_err(|e| format!("Failed to register shortcut: {}", e))?;
+
+    // Update the shared handler state so the handler recognizes the new key
+    {
+        let mut k = keys.lock().map_err(|e| e.to_string())?;
+        k.ql = Some((new_sc.mods, new_sc.key));
+    }
 
     // Save to config
     Ok(store.set(serde_json::json!({ "quick_lookup_shortcut": shortcut })).into())

@@ -56,14 +56,29 @@ pub fn setup_tray<R: Runtime>(app: &App<R>) -> Result<(), Box<dyn std::error::Er
                 let _ = store.set(serde_json::json!({ "review_reminder": new_val }));
             }
             "settings" => {
-                if let Some(win) = app_handle.get_webview_window("main") {
+                // Open settings in a separate popup window
+                if app_handle.get_webview_window("settings").is_some() {
+                    if let Some(win) = app_handle.get_webview_window("settings") {
+                        let _ = win.show();
+                        let _ = win.set_focus();
+                    }
+                } else {
                     let html_b64 = setup_html_b64();
-                    let _ = win.eval(format!(
-                        "(function(){{var b=atob('{}');var u=new Uint8Array(b.length);for(var i=0;i<b.length;i++)u[i]=b.charCodeAt(i);var h=new TextDecoder('utf-8').decode(u);document.open();document.write(h);document.close();}})();",
+                    let html = format!(
+                        "data:text/html;base64,{}",
                         html_b64
-                    ));
-                    let _ = win.show();
-                    let _ = win.set_focus();
+                    );
+                    let url = tauri::WebviewUrl::External(html.parse().unwrap());
+                    let _win = tauri::WebviewWindowBuilder::new(
+                        app_handle,
+                        "settings",
+                        url,
+                    )
+                    .title("设置 - Vocab Agent Lite")
+                    .inner_size(480.0, 600.0)
+                    .center()
+                    .resizable(true)
+                    .build();
                 }
             }
             "quit" => {
