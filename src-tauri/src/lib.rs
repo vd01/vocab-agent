@@ -225,7 +225,7 @@ pub fn run() {
         .expect("error while running tauri application");
 }
 
-fn prewarm_quick_lookup<R: tauri::Runtime>(app: &tauri::AppHandle<R>, server_url: &str) {
+pub fn prewarm_quick_lookup<R: tauri::Runtime>(app: &tauri::AppHandle<R>, server_url: &str) {
     if app.get_webview_window("quick-lookup").is_some() {
         return;
     }

@@ -1,7 +1,7 @@
 use crate::store::AppStore;
 use serde::Serialize;
 use std::sync::{Arc, Mutex};
-use tauri::State;
+use tauri::{Manager, State};
 
 pub fn http_client() -> Result<reqwest::Client, String> {
     reqwest::Client::builder()
@@ -40,8 +40,27 @@ pub fn config_get(store: State<'_, AppStore>) -> Result<ConfigResponse, String> 
 }
 
 #[tauri::command(rename = "config-set")]
-pub fn config_set(store: State<'_, AppStore>, partial: serde_json::Value) -> Result<ConfigResponse, String> {
-    Ok(store.set(partial).into())
+pub fn config_set(
+    app: tauri::AppHandle,
+    store: State<'_, AppStore>,
+    partial: serde_json::Value,
+) -> Result<ConfigResponse, String> {
+    let old_cfg = store.get();
+    let new_cfg = store.set(partial);
+
+    // If server_url changed, navigate the main window to the new URL
+    if new_cfg.server_url != old_cfg.server_url && !new_cfg.server_url.is_empty() {
+        let url = new_cfg.server_url.trim_end_matches('/');
+        if let Some(win) = app.get_webview_window("main") {
+            let _ = win.eval(format!("window.location.href = '{}'" , url));
+            let _ = win.show();
+            let _ = win.set_focus();
+        }
+        // Also re-warm quick-lookup with new URL
+        crate::prewarm_quick_lookup(&app, url);
+    }
+
+    Ok(new_cfg.into())
 }
 
 #[tauri::command(rename = "check-server")]

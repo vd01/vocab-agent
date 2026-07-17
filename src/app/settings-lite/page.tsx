@@ -26,23 +26,37 @@ export default function SettingsLitePage() {
 		const invoke = getInvoke();
 		if (!invoke) return;
 		// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		invoke("config-get").then((cfg: any) => {
-			if (cfg.server_url) setServerUrl(cfg.server_url);
-			if (cfg.quick_lookup_shortcut) setShortcut(cfg.quick_lookup_shortcut);
-		}).catch(() => {});
+		invoke("config-get")
+			.then((cfg: any) => {
+				if (cfg.server_url) setServerUrl(cfg.server_url);
+				if (cfg.quick_lookup_shortcut) setShortcut(cfg.quick_lookup_shortcut);
+			})
+			.catch(() => {});
 	}, []);
 
 	async function connect() {
 		const url = serverUrl.trim().replace(/\/+$/, "");
-		if (!url) { setError("请输入服务端地址"); return; }
-		try { new URL(url); } catch { setError("地址格式不正确"); return; }
+		if (!url) {
+			setError("请输入服务端地址");
+			return;
+		}
+		try {
+			new URL(url);
+		} catch {
+			setError("地址格式不正确");
+			return;
+		}
 
 		setError("");
 		setSaving(true);
 		setStatus("正在检测服务端...");
 
 		const invoke = getInvoke();
-		if (!invoke) { setError("Tauri API 不可用"); setSaving(false); return; }
+		if (!invoke) {
+			setError("Tauri API 不可用");
+			setSaving(false);
+			return;
+		}
 
 		try {
 			const ok = await invoke("check-server", { url });
@@ -125,7 +139,9 @@ export default function SettingsLitePage() {
 					onChange={(e) => setServerUrl(e.target.value)}
 					placeholder="https://example.duckdns.org:31588"
 					className="w-full px-3 py-2 text-sm bg-muted/50 border border-border rounded-lg text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
-					onKeyDown={(e) => { if (e.key === "Enter" && !capturing) connect(); }}
+					onKeyDown={(e) => {
+						if (e.key === "Enter" && !capturing) connect();
+					}}
 				/>
 			</div>
 			<button
@@ -149,8 +165,14 @@ export default function SettingsLitePage() {
 					type="text"
 					value={shortcut}
 					onChange={(e) => setShortcut(e.target.value)}
-					onFocus={() => { setCapturing(true); setShortcutHint("请按下组合键..."); }}
-					onBlur={() => { setCapturing(false); if (!shortcut) setShortcutHint("点击输入框后按下组合键"); }}
+					onFocus={() => {
+						setCapturing(true);
+						setShortcutHint("请按下组合键...");
+					}}
+					onBlur={() => {
+						setCapturing(false);
+						if (!shortcut) setShortcutHint("点击输入框后按下组合键");
+					}}
 					placeholder={capturing ? "请按下组合键..." : "点击输入框后按下组合键"}
 					readOnly={capturing}
 					className={`w-full px-3 py-2 text-sm border rounded-lg text-foreground placeholder:text-muted-foreground focus:outline-none transition-colors ${capturing ? "bg-primary/10 border-primary ring-2 ring-primary/50" : "bg-muted/50 border-border focus:ring-2 focus:ring-primary/50"}`}
@@ -164,7 +186,9 @@ export default function SettingsLitePage() {
 			>
 				{shortcutSaving ? "保存中..." : "保存快捷键"}
 			</button>
-			{shortcutError && <p className="text-sm text-destructive mt-2">{shortcutError}</p>}
+			{shortcutError && (
+				<p className="text-sm text-destructive mt-2">{shortcutError}</p>
+			)}
 		</div>
 	);
 }

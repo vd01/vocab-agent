@@ -66,19 +66,24 @@ pub fn setup_tray<R: Runtime>(app: &App<R>) -> Result<(), Box<dyn std::error::Er
                     let cfg = store.get();
                     let url = if cfg.server_url.is_empty() {
                         #[cfg(debug_assertions)]
-                        { "http://localhost:3088/settings-lite".to_string() }
+                        {
+                            "http://localhost:3088/settings-lite".to_string()
+                        }
                         #[cfg(not(debug_assertions))]
-                        { return; }
+                        {
+                            return;
+                        }
                     } else {
                         format!("{}/settings-lite", cfg.server_url.trim_end_matches('/'))
                     };
                     let webview_url = tauri::WebviewUrl::External(url.parse().unwrap());
-                    let _win = tauri::WebviewWindowBuilder::new(app_handle, "settings", webview_url)
-                        .title("设置 - Vocab Agent Lite")
-                        .inner_size(480.0, 600.0)
-                        .center()
-                        .resizable(true)
-                        .build();
+                    let _win =
+                        tauri::WebviewWindowBuilder::new(app_handle, "settings", webview_url)
+                            .title("设置 - Vocab Agent Lite")
+                            .inner_size(480.0, 600.0)
+                            .center()
+                            .resizable(true)
+                            .build();
                 }
             }
             "quit" => {
