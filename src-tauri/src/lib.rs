@@ -1,5 +1,5 @@
 use store::AppStore;
-use tauri::{Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
 use std::sync::{Arc, Mutex};
 
 mod commands;
@@ -229,8 +229,6 @@ fn toggle_quick_lookup<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
         } else {
             let _ = win.show();
             let _ = win.set_focus();
-            // Notify frontend to check clipboard
-            let _ = win.emit("quick-lookup-activated", ());
         }
     } else {
         // Create the quick-lookup window

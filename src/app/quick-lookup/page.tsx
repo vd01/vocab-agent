@@ -78,35 +78,18 @@ export default function QuickLookupPage() {
 	const [newGroupName, setNewGroupName] = useState("");
 	const inputRef = useRef<HTMLInputElement>(null);
 
-	// Auto-focus input on mount + read clipboard
+	// Read clipboard on window focus (covers both initial show and re-show after hide)
 	useEffect(() => {
-		inputRef.current?.focus();
-		readClipboardAndFill();
+		const handleFocus = () => {
+			readClipboardAndLookup();
+		};
+		window.addEventListener("focus", handleFocus);
+		return () => window.removeEventListener("focus", handleFocus);
 	}, []);
 
-	// Listen for quick-lookup-activated event
+	// Auto-focus input on mount
 	useEffect(() => {
-		const handler = async () => {
-			inputRef.current?.focus();
-			setResult(null);
-			setActionMessage(null);
-			setShowGroupSelector(false);
-			readClipboardAndFill();
-		};
-
-		try {
-			// @ts-expect-error Tauri internal API
-			const { listen } = window.__TAURI_INTERNALS__;
-			if (listen) {
-				// eslint-disable-next-line @typescript-eslint/no-explicit-any
-				const unlisten = (listen as any)("quick-lookup-activated", handler);
-				return () => {
-					unlisten.then((fn: () => void) => fn()).catch(() => {});
-				};
-			}
-		} catch {
-			/* not in Tauri */
-		}
+		inputRef.current?.focus();
 	}, []);
 
 	// ESC to hide window
@@ -121,7 +104,7 @@ export default function QuickLookupPage() {
 		return () => window.removeEventListener("keydown", handleKeyDown);
 	}, []);
 
-	async function readClipboardAndFill() {
+	async function readClipboardAndLookup() {
 		const invoke = getTauriInvoke();
 		if (!invoke) return;
 		try {
@@ -130,7 +113,12 @@ export default function QuickLookupPage() {
 				typeof clipboardText === "string" &&
 				isEnglishWordOrPhrase(clipboardText)
 			) {
-				setInput(clipboardText.trim());
+				const word = clipboardText.trim();
+				setInput(word);
+				setResult(null);
+				setActionMessage(null);
+				setShowGroupSelector(false);
+				doLookup(word);
 			}
 		} catch {
 			/* clipboard access denied */
