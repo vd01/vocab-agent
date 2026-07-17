@@ -25,8 +25,7 @@
     "electron:preview": "npm run build && npm run electron:compile && cross-env ELECTRON_PREVIEW=1 electron dist-electron/main.js",
     "electron:build": "node scripts/electron-build.js",
     "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build",
-    "postinstall": "node scripts/postinstall-patch-jiti.js"
+    "tauri:build": "tauri build"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",
@@ -34,6 +33,7 @@
     "@libsql/client": "^0.17.4",
     "@tauri-apps/api": "^2.11.1",
     "@tauri-apps/plugin-autostart": "^2.5.1",
+    "@tauri-apps/plugin-clipboard-manager": "^2.3.2",
     "@tauri-apps/plugin-global-shortcut": "^2.3.2",
     "@tauri-apps/plugin-notification": "^2.3.3",
     "ai": "^7.0.29",

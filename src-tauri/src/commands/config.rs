@@ -17,6 +17,7 @@ pub struct ConfigResponse {
     close_to_tray: bool,
     review_reminder: bool,
     reminder_interval: u32,
+    quick_lookup_shortcut: String,
 }
 
 impl From<crate::store::AppConfig> for ConfigResponse {
@@ -27,6 +28,7 @@ impl From<crate::store::AppConfig> for ConfigResponse {
             close_to_tray: cfg.close_to_tray,
             review_reminder: cfg.review_reminder,
             reminder_interval: cfg.reminder_interval,
+            quick_lookup_shortcut: cfg.quick_lookup_shortcut,
         }
     }
 }

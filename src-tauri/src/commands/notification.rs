@@ -49,7 +49,7 @@ pub async fn reminder_start(
                                     .notification()
                                     .builder()
                                     .title("Vocab Agent 复习提醒")
-                                    .body(&format!("你有 {} 个单词待复习", due))
+                                    .body(format!("你有 {} 个单词待复习", due))
                                     .show();
                             }
                         }

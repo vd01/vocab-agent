@@ -1,5 +1,5 @@
 use store::AppStore;
-use tauri::Manager;
+use tauri::{Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 
 mod commands;
 mod store;
@@ -8,6 +8,7 @@ mod tray;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
@@ -43,20 +44,33 @@ pub fn run() {
                 };
 
                 let shortcut_str = cfg.shortcut.clone();
+                let quick_lookup_shortcut_str = cfg.quick_lookup_shortcut.clone();
+                let quick_lookup_shortcut_str_clone = quick_lookup_shortcut_str.clone();
 
                 app.handle().plugin(
                     tauri_plugin_global_shortcut::Builder::new()
-                        .with_handler(move |app, _shortcut, event| {
-                            if event.state() == ShortcutState::Pressed {
-                                if let Some(win) = app.get_webview_window("main") {
-                                    if win.is_visible().unwrap_or(false)
-                                        && win.is_focused().unwrap_or(false)
-                                    {
-                                        let _ = win.hide();
-                                    } else {
-                                        let _ = win.show();
-                                        let _ = win.set_focus();
-                                    }
+                        .with_handler(move |app, shortcut, event| {
+                            if event.state() != ShortcutState::Pressed {
+                                return;
+                            }
+                            let shortcut_id = shortcut.to_string();
+                            log::info!("[Shortcut] Fired: {}", shortcut_id);
+
+                            // Check if this is the quick-lookup shortcut
+                            if is_quick_lookup_shortcut(&shortcut_id, &quick_lookup_shortcut_str) {
+                                toggle_quick_lookup(app);
+                                return;
+                            }
+
+                            // Default: toggle main window
+                            if let Some(win) = app.get_webview_window("main") {
+                                if win.is_visible().unwrap_or(false)
+                                    && win.is_focused().unwrap_or(false)
+                                {
+                                    let _ = win.hide();
+                                } else {
+                                    let _ = win.show();
+                                    let _ = win.set_focus();
                                 }
                             }
                         })
@@ -64,6 +78,9 @@ pub fn run() {
                 )?;
 
                 if let Some(shortcut) = parse_shortcut(&shortcut_str) {
+                    let _ = app.handle().global_shortcut().register(shortcut);
+                }
+                if let Some(shortcut) = parse_shortcut(&quick_lookup_shortcut_str_clone) {
                     let _ = app.handle().global_shortcut().register(shortcut);
                 }
             }
@@ -82,7 +99,7 @@ pub fn run() {
                         Err(e) => {
                             log::error!("[Startup] Failed to create HTTP client: {}", e);
                             if let Some(win) = app_handle.get_webview_window("main") {
-                                let _ = win.eval(&format!("document.body.innerHTML = '<div style=\"display:flex;align-items:center;justify-content:center;height:100vh;font-family:system-ui;color:#ef4444\"><p>HTTP 客户端创建失败: {}</p></div>'; document.body.style.background='#0a0a0a'", e));
+                                let _ = win.eval(format!("document.body.innerHTML = '<div style=\"display:flex;align-items:center;justify-content:center;height:100vh;font-family:system-ui;color:#ef4444\"><p>HTTP 客户端创建失败: {}</p></div>'; document.body.style.background='#0a0a0a'", e));
                                 let _ = win.show();
                                 let _ = win.set_focus();
                             }
@@ -106,7 +123,7 @@ pub fn run() {
 
                     if connected {
                         if let Some(win) = app_handle.get_webview_window("main") {
-                            let _ = win.eval(&format!("window.location.href = '{}'", url));
+                            let _ = win.eval(format!("window.location.href = '{}'", url));
                             let _ = win.show();
                             let _ = win.set_focus();
                         }
@@ -132,24 +149,98 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|window, event| {
-            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                let store = window.state::<AppStore>();
-                let cfg = store.get();
-                if cfg.close_to_tray {
-                    api.prevent_close();
-                    let _ = window.hide();
+            let label = window.label().to_string();
+            match event {
+                tauri::WindowEvent::CloseRequested { api, .. } => {
+                    if label == "quick-lookup" {
+                        api.prevent_close();
+                        let _ = window.hide();
+                        return;
+                    }
+                    let store = window.state::<AppStore>();
+                    let cfg = store.get();
+                    if cfg.close_to_tray {
+                        api.prevent_close();
+                        let _ = window.hide();
+                    }
                 }
+                tauri::WindowEvent::Focused(false)
+                    // Auto-hide quick-lookup window on focus loss
+                    if label == "quick-lookup" => {
+                        let _ = window.hide();
+                    }
+                _ => {}
             }
         })
         .invoke_handler(tauri::generate_handler![
             commands::config::config_get,
             commands::config::config_set,
             commands::config::check_server,
+            commands::clipboard::read_clipboard,
             commands::notification::reminder_start,
             commands::notification::reminder_stop,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+fn is_quick_lookup_shortcut(fired: &str, config_str: &str) -> bool {
+    // Normalize both strings for comparison
+    let normalize = |s: &str| -> String {
+        s.split('+')
+            .map(|p| p.trim())
+            .map(|p| {
+                let lower = p.to_lowercase();
+                match lower.as_str() {
+                    "control" => "ctrl".to_string(),
+                    "super" | "meta" | "win" | "command" | "cmd" => "super".to_string(),
+                    _ => lower,
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("+")
+            .to_lowercase()
+    };
+    normalize(fired) == normalize(config_str)
+}
+
+fn toggle_quick_lookup<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
+    if let Some(win) = app.get_webview_window("quick-lookup") {
+        if win.is_visible().unwrap_or(false) {
+            let _ = win.hide();
+        } else {
+            let _ = win.show();
+            let _ = win.set_focus();
+            // Notify frontend to check clipboard
+            let _ = win.emit("quick-lookup-activated", ());
+        }
+    } else {
+        // Create the quick-lookup window
+        let store = app.state::<AppStore>();
+        let cfg = store.get();
+        let url = if cfg.server_url.is_empty() {
+            // Dev mode or no server configured
+            #[cfg(debug_assertions)]
+            { "http://localhost:3088/quick-lookup".to_string() }
+            #[cfg(not(debug_assertions))]
+            { return; }
+        } else {
+            format!("{}/quick-lookup", cfg.server_url.trim_end_matches('/'))
+        };
+
+        let _win = WebviewWindowBuilder::new(app, "quick-lookup", WebviewUrl::External(url.parse().unwrap()))
+            .title("Quick Lookup")
+            .inner_size(480.0, 400.0)
+            .min_inner_size(320.0, 200.0)
+            .max_inner_size(600.0, 600.0)
+            .center()
+            .decorations(false)
+            .always_on_top(true)
+            .skip_taskbar(true)
+            .resizable(true)
+            .visible(true)
+            .build();
+    }
 }
 
 fn spawn_reminder(app_handle: tauri::AppHandle, interval_minutes: u32) {
@@ -194,7 +285,7 @@ fn spawn_reminder(app_handle: tauri::AppHandle, interval_minutes: u32) {
                                     .notification()
                                     .builder()
                                     .title("Vocab Agent Lite 复习提醒")
-                                    .body(&format!("你有 {} 个单词待复习", due))
+                                    .body(format!("你有 {} 个单词待复习", due))
                                     .show();
                             }
                         }
@@ -258,7 +349,8 @@ fn parse_shortcut(s: &str) -> Option<tauri_plugin_global_shortcut::Shortcut> {
             "tab" => code = Some(Code::Tab),
             "escape" | "esc" => code = Some(Code::Escape),
             other => {
-                if let Some(n) = other.strip_prefix('f') {
+                {
+                    let n = other.strip_prefix('f')?;
                     code = match n.parse::<u8>() {
                         Ok(1) => Some(Code::F1),
                         Ok(2) => Some(Code::F2),
@@ -274,8 +366,6 @@ fn parse_shortcut(s: &str) -> Option<tauri_plugin_global_shortcut::Shortcut> {
                         Ok(12) => Some(Code::F12),
                         _ => return None,
                     };
-                } else {
-                    return None;
                 }
             }
         }

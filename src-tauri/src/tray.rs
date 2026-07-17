@@ -15,6 +15,7 @@ fn setup_html_b64() -> String {
 
 pub fn setup_tray<R: Runtime>(app: &App<R>) -> Result<(), Box<dyn std::error::Error>> {
     let show_item = MenuItem::with_id(app, "show", "显示/隐藏", true, None::<&str>)?;
+    let quick_lookup_item = MenuItem::with_id(app, "quick-lookup", "快捷查词", true, None::<&str>)?;
     let separator1 = PredefinedMenuItem::separator(app)?;
     let reminder_item = CheckMenuItemBuilder::with_id("reminder", "复习提醒")
         .checked(true)
@@ -26,6 +27,7 @@ pub fn setup_tray<R: Runtime>(app: &App<R>) -> Result<(), Box<dyn std::error::Er
 
     let menu = MenuBuilder::new(app)
         .item(&show_item)
+        .item(&quick_lookup_item)
         .item(&separator1)
         .item(&reminder_item)
         .item(&separator2)
@@ -45,6 +47,9 @@ pub fn setup_tray<R: Runtime>(app: &App<R>) -> Result<(), Box<dyn std::error::Er
             "show" => {
                 toggle_window(app_handle);
             }
+            "quick-lookup" => {
+                crate::toggle_quick_lookup(app_handle);
+            }
             "reminder" => {
                 let store = app_handle.state::<crate::store::AppStore>();
                 let new_val = !store.get().review_reminder;
@@ -53,7 +58,7 @@ pub fn setup_tray<R: Runtime>(app: &App<R>) -> Result<(), Box<dyn std::error::Er
             "settings" => {
                 if let Some(win) = app_handle.get_webview_window("main") {
                     let html_b64 = setup_html_b64();
-                    let _ = win.eval(&format!(
+                    let _ = win.eval(format!(
                         "(function(){{var b=atob('{}');var u=new Uint8Array(b.length);for(var i=0;i<b.length;i++)u[i]=b.charCodeAt(i);var h=new TextDecoder('utf-8').decode(u);document.open();document.write(h);document.close();}})();",
                         html_b64
                     ));

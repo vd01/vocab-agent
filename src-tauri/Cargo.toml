@@ -27,6 +27,7 @@ tauri-plugin-autostart = "2"
 reqwest = { version = "0.12", features = ["json"] }
 tokio = { version = "1", features = ["time", "sync"] }
 data-encoding = "2"
+tauri-plugin-clipboard-manager = "2"
 
 [target."cfg(not(any(target_os = \"android\", target_os = \"ios\")))".dependencies]
 tauri-plugin-global-shortcut = "2"
