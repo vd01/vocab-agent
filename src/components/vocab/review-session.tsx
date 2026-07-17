@@ -262,7 +262,7 @@ export function ReviewSession({ words, queueInfo }: ReviewSessionProps) {
   const currentIsNew = currentWord.isNew;
 
   return (
-    <div className="space-y-2 overflow-x-hidden">
+    <div className="space-y-2 w-full">
       <div className="flex items-center justify-between text-xs text-muted-foreground h-4">
         <span className="flex items-center gap-2">
           <span>{currentIndex + 1} / {words.length}</span>
@@ -292,7 +292,8 @@ export function ReviewSession({ words, queueInfo }: ReviewSessionProps) {
           )}
         </span>
       </div>
-      <div className="relative w-full min-w-[260px] sm:min-w-[500px] px-2 sm:px-0" style={{ perspective: '600px' }}>
+      {/* Fixed-height card container prevents size jumps on flip/word-change */}
+      <div className="relative w-full" style={{ perspective: '600px', height: '260px' }}>
         <WordCard
           key={currentWord.wordId}
           wordId={currentWord.wordId}
@@ -306,23 +307,26 @@ export function ReviewSession({ words, queueInfo }: ReviewSessionProps) {
             if (rating === null) setFlipped(f => !f);
           }}
           pronounceRef={pronounceRef}
-          fixedHeight="280px"
+          fixedHeight="260px"
         />
         <div className={`absolute top-2 right-2 z-10 transition-opacity duration-200 ${flipDone ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}>
           <PinButton ref={pinButtonRef} key={currentWord.wordId} wordId={currentWord.wordId} word={currentWord.word} initialPinned={currentWord.pinned} />
         </div>
       </div>
-      <FsrsButtons
-        wordId={currentWord.wordId}
-        onRate={(wordId, ratingValue) => {
-          if (ratingRef.current !== null) return;
-          ratingRef.current = ratingValue;
-          setRating(ratingValue);
-          handleRate(wordId, ratingValue);
-        }}
-        pendingRating={rating}
-        disabled={!flipped}
-      />
+      {/* Fixed-height button row prevents layout shift on enable/disable */}
+      <div style={{ height: '52px' }} className="flex items-center">
+        <FsrsButtons
+          wordId={currentWord.wordId}
+          onRate={(wordId, ratingValue) => {
+            if (ratingRef.current !== null) return;
+            ratingRef.current = ratingValue;
+            setRating(ratingValue);
+            handleRate(wordId, ratingValue);
+          }}
+          pendingRating={rating}
+          disabled={!flipped}
+        />
+      </div>
       <div className="sm:h-4">
         {!flipped && (
           <p className="text-xs text-muted-foreground text-center hidden sm:block">

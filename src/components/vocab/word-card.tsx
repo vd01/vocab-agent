@@ -81,11 +81,12 @@ export function WordCard({ wordId, word, phonetic, audioUrl, definition, example
         Otherwise, container height = max(front height, back height).
       */}
       <div
-        className="grid transition-transform duration-300 w-full"
+        className="grid w-full"
         style={{
           transformStyle: 'preserve-3d',
+          transition: 'transform 0.3s',
           transform: isFlipped ? 'rotateY(180deg)' : 'rotateY(0deg)',
-          ...(fixedHeight ? { height: fixedHeight } : { maxHeight: '300px' }),
+          ...(fixedHeight ? { height: fixedHeight } : { maxHeight: '240px' }),
         }}
       >
         {/* Front face */}
@@ -93,9 +94,9 @@ export function WordCard({ wordId, word, phonetic, audioUrl, definition, example
           className="row-start-1 col-start-1 transition-shadow duration-300 hover:shadow-md w-full"
           style={{ backfaceVisibility: 'hidden', ...(fixedHeight ? { height: fixedHeight } : {}) }}
         >
-          <CardContent className="p-4 sm:p-6 h-full flex items-center justify-center">
-            <div className="text-center py-4">
-              <h3 className="text-2xl sm:text-3xl font-bold text-foreground">{word}</h3>
+          <CardContent className={`p-3 sm:p-4 h-full flex items-center justify-center${fixedHeight ? ' overflow-hidden' : ''}`}>
+            <div className="text-center py-2 sm:py-3">
+              <h3 className="text-xl sm:text-2xl font-bold text-foreground">{word}</h3>
               {phonetic && (
                 <div className="flex items-center justify-center gap-1 mt-2">
                   <p className="text-sm text-muted-foreground">{phonetic}</p>
@@ -107,7 +108,7 @@ export function WordCard({ wordId, word, phonetic, audioUrl, definition, example
                   <PronounceButton ref={pronounceRef} word={word} audioUrl={audioUrl} />
                 </div>
               )}
-              <p className="text-xs text-muted-foreground mt-6">
+              <p className="text-[10px] sm:text-xs text-muted-foreground mt-3 sm:mt-6">
                 点击或按空格键翻转查看释义
               </p>
             </div>
@@ -116,14 +117,14 @@ export function WordCard({ wordId, word, phonetic, audioUrl, definition, example
 
         {/* Back face — same grid cell, rotated 180deg so it shows when container flips */}
         <Card
-          className="row-start-1 col-start-1 transition-shadow duration-300 hover-hidden w-full"
+          className={`row-start-1 col-start-1 transition-shadow duration-300 hover-hidden w-full${fixedHeight ? ' overflow-hidden' : ''}`}
           style={{
             backfaceVisibility: 'hidden',
             transform: 'rotateY(180deg)',
             ...(fixedHeight ? { height: fixedHeight } : {}),
           }}
         >
-          <CardContent className="p-4 sm:p-6 overflow-y-auto scrollbar-thin" style={fixedHeight ? { height: fixedHeight } : { maxHeight: '300px' }}>
+          <CardContent className="p-3 sm:p-4 overflow-y-auto scrollbar-thin" style={fixedHeight ? { height: fixedHeight } : { maxHeight: '240px' }}>
             <div className="space-y-3">
               <div className="flex items-center gap-2">
                 <h3 className="text-lg font-bold text-foreground">{word}</h3>
