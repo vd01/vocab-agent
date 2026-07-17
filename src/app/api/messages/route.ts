@@ -159,3 +159,38 @@ export async function POST(req: NextRequest) {
     );
   }
 }
+
+/**
+ * DELETE /api/messages — 清空所有聊天消息
+ *
+ * Deletes all chat_messages from the DB AND resets the pi agent's
+ * in-memory conversation history. Without resetting the pi session,
+ * the LLM would still "remember" previous conversations even after
+ * the DB is cleared, because SessionManager.inMemory() keeps all
+ * messages in its fileEntries array.
+ *
+ * Auth: handled by middleware (cookie or X-Auth-Password header).
+ */
+export async function DELETE() {
+  try {
+    // ── 1. Clear DB messages ────────────────────────────────────────────
+    await db.delete(chatMessages);
+
+    // ── 2. Reset pi session's in-memory conversation history ────────────
+    try {
+      const { resetPiSession } = await import('@/lib/pi/session');
+      await resetPiSession();
+    } catch (err) {
+      console.error('[DELETE /api/messages] Failed to reset pi session:', err);
+      // Still report success for DB cleanup, but note the session reset issue
+    }
+
+    return NextResponse.json({ deleted: true, message: '所有聊天记录已清空，对话上下文已重置' });
+  } catch (error) {
+    console.error('[DELETE /api/messages] Error:', error);
+    return NextResponse.json(
+      { error: 'Failed to delete messages' },
+      { status: 500 }
+    );
+  }
+}

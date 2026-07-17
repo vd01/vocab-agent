@@ -18,6 +18,7 @@ interface ChatInputProps {
   onCommand: (command: string) => void;
   onReview?: () => void;
   onStats?: () => void;
+  onClearChat?: () => void;
   devMode?: boolean;
   onDevModeChange?: (v: boolean) => void;
   dueCount?: number;
@@ -32,6 +33,7 @@ export function ChatInput({
   onCommand,
   onReview,
   onStats,
+  onClearChat,
   devMode = false,
   onDevModeChange,
   dueCount,
@@ -207,6 +209,22 @@ export function ChatInput({
             <path strokeLinecap="round" strokeLinejoin="round" d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z" />
           </svg>
           <span className="hidden sm:inline">统计</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            if (confirm('确定要清空所有聊天记录吗？此操作不可撤销。')) {
+              onClearChat?.();
+            }
+          }}
+          disabled={isLoading}
+          className="inline-flex items-center gap-1.5 rounded-full border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed"
+          title="清空聊天记录"
+        >
+          <svg className="size-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+          </svg>
+          <span className="hidden sm:inline">清空</span>
         </button>
         {/* Dev mode switch — right-aligned, disabled during streaming */}
         <div className="ml-auto flex items-center gap-1">

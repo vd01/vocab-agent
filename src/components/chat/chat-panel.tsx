@@ -79,7 +79,7 @@ function ChatInner({
 	initialHasMore: boolean;
 }) {
 	const devModeRef = useRef(false);
-	const { activeGroup } = useGroup();
+	const { activeGroup, refreshGroups } = useGroup();
 	const activeGroupRef = useRef(activeGroup);
 	activeGroupRef.current = activeGroup;
 
@@ -116,10 +116,16 @@ function ChatInner({
 				debugIdRef.current = null;
 			}
 		},
-		onToolResult: (_toolName: string, _isError: boolean) => {
+		onToolResult: (toolName: string, _isError: boolean) => {
 			// Save messages after each tool completes (debounced)
 			// This prevents message loss if page refreshes during agent execution
 			debouncedSave();
+
+			// Refresh group info after vocab-modifying tools
+			const vocabTools = ['add-word', 'batch-add-words', 'import-by-tag', 'group-manage', 'extract-words'];
+			if (vocabTools.includes(toolName)) {
+				refreshGroups();
+			}
 		},
 	});
 
@@ -381,6 +387,12 @@ function ChatInner({
 					);
 				}, 100);
 
+				// Refresh group info after vocab-modifying commands
+				const vocabCommands = ['add', 'group', 'stats'];
+				if (vocabCommands.includes(cmdName)) {
+					refreshGroups();
+				}
+
 				return true;
 			} catch (err) {
 				const errorMsg: UIMessage = {
@@ -442,6 +454,22 @@ function ChatInner({
 		tryExecuteCommand("/stats");
 	}, [tryExecuteCommand]);
 
+	const handleClearChat = useCallback(async () => {
+		try {
+			const res = await fetch("/api/messages", { method: "DELETE" });
+			if (res.ok) {
+				setMessages([]);
+				setHasMore(false);
+				refreshGroups();
+				console.log("[ChatPanel] Chat history cleared");
+			} else {
+				console.error("[ChatPanel] Failed to clear chat:", await res.text());
+			}
+		} catch (err) {
+			console.error("[ChatPanel] Failed to clear chat:", err);
+		}
+	}, [setMessages, refreshGroups]);
+
 	return (
 		<div className="flex flex-col h-full w-full">
 			{showPrompt && dueCount > 0 && !devMode && (
@@ -478,6 +506,7 @@ function ChatInner({
 					onCommand={handleCommand}
 					onReview={handleReview}
 					onStats={handleStats}
+					onClearChat={handleClearChat}
 					devMode={devMode}
 					onDevModeChange={setDevMode}
 					dueCount={dueCount}

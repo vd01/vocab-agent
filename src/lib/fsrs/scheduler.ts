@@ -447,7 +447,7 @@ async function fetchDueWordsByType(
         AND ${ratingFilter}
         ${timeFilter}
       GROUP BY r.word_id
-      ORDER BY ${type === 'review' ? 'MIN(r.due) ASC' : 'w.word ASC'}
+      ORDER BY ${type === 'review' ? 'MIN(r.due) ASC' : 'RANDOM()'}
       LIMIT ?
     `,
     args: groupId

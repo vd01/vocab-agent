@@ -45,9 +45,11 @@ export interface EcdictEntry {
 export async function ecdictLookup(word: string): Promise<EcdictEntry | null> {
   try {
     const client = getClient();
-    const result = await client.execute({
-      sql: 'SELECT * FROM ecdict WHERE word = ?',
-      args: [word.toLowerCase()],
+    // Try exact match first, then case-insensitive fallback
+    // ECDICT stores some proper nouns with original casing (e.g. "Islam", "January")
+    let result = await client.execute({
+      sql: 'SELECT * FROM ecdict WHERE word = ? COLLATE NOCASE',
+      args: [word],
     });
 
     if (result.rows.length === 0) return null;
@@ -75,6 +77,10 @@ export async function ecdictLookup(word: string): Promise<EcdictEntry | null> {
 /**
  * Batch look up multiple words in ECDICT. Returns a Map of word → EcdictEntry.
  * Words not found are omitted from the result.
+ *
+ * ECDICT stores some words with original casing (e.g. "Islam", "January"),
+ * so we query with original casing first, then fallback to lowercase.
+ * The map keys use the original ECDICT casing so callers can match results.
  */
 export async function ecdictBatchLookup(words: string[]): Promise<Map<string, EcdictEntry>> {
   const result = new Map<string, EcdictEntry>();
@@ -82,22 +88,32 @@ export async function ecdictBatchLookup(words: string[]): Promise<Map<string, Ec
 
   try {
     const client = getClient();
-    const normalized = [...new Set(words.map(w => w.toLowerCase()))];
+    // Deduplicate case-insensitively: keep original form, track lowercase→original mapping
+    const uniqueOriginals = [...new Set(words)];
+    const lowerToOriginal = new Map<string, string>();
+    for (const w of uniqueOriginals) {
+      const lower = w.toLowerCase();
+      if (!lowerToOriginal.has(lower)) {
+        lowerToOriginal.set(lower, w);
+      }
+    }
+    const allKeys = [...lowerToOriginal.keys()]; // lowercase unique keys
 
     // SQLite has a hard limit on variable bindings (typically 999).
     // Process in chunks to stay safe.
     const CHUNK = 200;
-    for (let i = 0; i < normalized.length; i += CHUNK) {
-      const chunk = normalized.slice(i, i + CHUNK);
+    for (let i = 0; i < allKeys.length; i += CHUNK) {
+      const chunk = allKeys.slice(i, i + CHUNK);
       const placeholders = chunk.map(() => '?').join(',');
       const rows = await client.execute({
-        sql: `SELECT * FROM ecdict WHERE word IN (${placeholders})`,
+        sql: `SELECT * FROM ecdict WHERE word COLLATE NOCASE IN (${placeholders})`,
         args: chunk,
       });
 
       for (const row of rows.rows) {
-        result.set(row.word as string, {
-          word: row.word as string,
+        const ecdictWord = row.word as string;
+        result.set(ecdictWord, {
+          word: ecdictWord,
           phonetic: (row.phonetic as string) || null,
           definition: unescapeNewlines(row.definition as string),
           translation: unescapeNewlines(row.translation as string),
@@ -109,6 +125,8 @@ export async function ecdictBatchLookup(words: string[]): Promise<Map<string, Ec
           frq: row.frq != null ? Number(row.frq) : null,
           exchange: (row.exchange as string) || null,
         });
+        // Also map by lowercase for callers that search by lowercase
+        result.set(ecdictWord.toLowerCase(), result.get(ecdictWord)!);
       }
     }
   } catch {

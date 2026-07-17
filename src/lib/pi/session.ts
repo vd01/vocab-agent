@@ -177,6 +177,30 @@ export function disposePiSession() {
 	}
 }
 
+/**
+ * Reset the pi session's in-memory conversation history.
+ *
+ * This clears the SessionManager's fileEntries (message history) so the
+ * LLM starts fresh on the next prompt. Without this, even after deleting
+ * chat_messages from the DB, the pi agent still "remembers" previous
+ * conversations because they live in the in-memory SessionManager.
+ *
+ * Call this when the user wants to clear/purge all chat history.
+ */
+export async function resetPiSession(): Promise<void> {
+	const result = sessionResult;
+	if (!result) return;
+
+	// Clear the in-memory session history
+	result.session.sessionManager.newSession();
+
+	// Also clear the agent's internal message state so the next prompt
+	// doesn't carry over stale context
+	result.session.agent.state.messages = [];
+
+	console.log('[Pi SDK] Session history reset — conversation context cleared');
+}
+
 // ── Exports for external use ─────────────────────────────────────────────
 
 export { VOCAB_AGENT_DIR };
