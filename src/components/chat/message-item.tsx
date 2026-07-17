@@ -67,9 +67,21 @@ export function MessageItem({
 	const createdAt = (message as any).createdAt;
 	const timeStr = createdAt ? formatTime(new Date(createdAt)) : null;
 
+	// Extract review session data from tool outputs — render it full-width outside the avatar+content row
+	const reviewData = (() => {
+		if (isUser) return null;
+		for (let i = mergedParts.length - 1; i >= 0; i--) {
+			const part = mergedParts[i];
+			if (part.type === 'tool' && part.state === 'output-available' && part.output?.type === 'due-words' && part.output.words) {
+				return isLastReview ? part.output : null;
+			}
+		}
+		return null;
+	})();
+
 	return (
 		<div
-			className={`flex ${isUser ? "justify-end" : "justify-start"} px-3 sm:px-4 py-2 sm:py-3`}
+			className={`flex flex-wrap ${isUser ? "justify-end" : "justify-start"} px-3 sm:px-4 py-2 sm:py-3`}
 		>
 			<div
 				className={`flex gap-3 max-w-3xl w-full ${isUser ? "justify-end" : ""}`}
@@ -176,6 +188,8 @@ export function MessageItem({
 
 							// Tool completed with output
 							if (toolState === "output-available" && output != null) {
+								// Review session is rendered separately below — skip here
+								if (output.type === 'due-words' && output.words) return null;
 								return renderToolOutput(i, toolName, output, isLastReview);
 							}
 
@@ -216,6 +230,12 @@ export function MessageItem({
 					)}
 				</div>
 			</div>
+			{/* Review session — full-width, outside the avatar+content row */}
+			{reviewData && (
+				<div className="max-w-lg w-full mt-1">
+					<ReviewSession words={reviewData.words} queueInfo={reviewData.queueInfo} />
+				</div>
+			)}
 		</div>
 	);
 }
@@ -881,16 +901,9 @@ function renderToolOutput(
 	output: any,
 	isLastReview: boolean,
 ) {
-	// Render review session (one card at a time) — only the latest review is interactive
+	// Review session is now rendered outside the avatar+content row for full width
+	// Stale review sessions show a collapsed summary
 	if (output.type === "due-words" && output.words) {
-		if (isLastReview) {
-			return (
-				<div key={key} className="mt-2">
-					<ReviewSession words={output.words} queueInfo={output.queueInfo} />
-				</div>
-			);
-		}
-		// Stale review session — show collapsed summary
 		return (
 			<div key={key} className="mt-2">
 				<div className="text-xs text-muted-foreground mb-1.5">
