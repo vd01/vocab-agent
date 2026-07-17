@@ -8,11 +8,6 @@ use tauri::{
 
 static LAST_TOGGLE: AtomicBool = AtomicBool::new(false);
 
-fn setup_html_b64() -> String {
-    use data_encoding::BASE64;
-    BASE64.encode(include_bytes!("../../desktop-dist/index.html"))
-}
-
 pub fn setup_tray<R: Runtime>(app: &App<R>) -> Result<(), Box<dyn std::error::Error>> {
     let store = app.state::<crate::store::AppStore>();
     let cfg = store.get();
@@ -67,9 +62,7 @@ pub fn setup_tray<R: Runtime>(app: &App<R>) -> Result<(), Box<dyn std::error::Er
                         let _ = win.set_focus();
                     }
                 } else {
-                    let html_b64 = setup_html_b64();
-                    let html = format!("data:text/html;base64,{}", html_b64);
-                    let url = tauri::WebviewUrl::External(html.parse().unwrap());
+                    let url = tauri::WebviewUrl::App("index.html".into());
                     let _win = tauri::WebviewWindowBuilder::new(app_handle, "settings", url)
                         .title("设置 - Vocab Agent Lite")
                         .inner_size(480.0, 600.0)
