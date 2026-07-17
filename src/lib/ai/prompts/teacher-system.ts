@@ -85,6 +85,8 @@ export function buildTeacherInstructions(worldState: WorldState): string {
 - add-word 会自动检查重复、自动从词典填充音标/释义/例句，无需先查询再添加
 - add-word 支持 group 参数指定添加到哪个分组（默认"日常"）
 - batch-add-words 同样支持 group 参数，且使用离线词典（ECDICT）避免网络请求
+- batch-add-words 的 group 参数必须是已存在的分组，不会自动创建分组。如果用户想用新分组，先调用 group-manage(action: create) 创建
+- add-word 和 batch-add-words 添加的单词会立即可复习，不需要等到第二天
 - extract-words 已过滤停用词和用户已学词汇，直接展示结果即可
 - 当 extract-words 返回生词列表后，如果用户想添加全部或多个，使用 batch-add-words 而非多次 add-word
 - fsrs-review 支持 group 参数，可按分组筛选待复习单词，如"复习四级单词"时传 group="四级"

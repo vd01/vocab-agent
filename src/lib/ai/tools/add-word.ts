@@ -1,9 +1,8 @@
 import { defineTool } from './types';
 import { z } from 'zod';
 import { db } from '@/lib/db';
-import { words, wordGroups, wordGroupMembers } from '@/lib/db/schema';
+import { words, wordGroups, wordGroupMembers, reviews } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
-import { initializeCard } from '@/lib/fsrs/scheduler';
 import { lookupWord } from '@/lib/dictionary/lookup';
 import { v4 as uuid } from 'uuid';
 
@@ -113,10 +112,28 @@ export const addWordTool = defineTool({
       createdAt: now,
     });
 
-    // Initialize FSRS card
-    await initializeCard(wordId);
+    // Initialize FSRS card — immediately available for review
+    // (not queued behind daily new limit, since user explicitly added this word)
+    const { createEmptyCard } = await import('ts-fsrs');
+    const card = createEmptyCard();
+    const reviewNow = new Date();
+    await db.insert(reviews).values({
+      id: uuid(),
+      wordId,
+      rating: 0,
+      state: card.state as number,
+      due: reviewNow,          // immediately available
+      stability: card.stability,
+      difficulty: card.difficulty,
+      elapsedDays: card.elapsed_days,
+      scheduledDays: card.scheduled_days,
+      reps: card.reps,
+      lapses: card.lapses,
+      lastReview: reviewNow,
+      reviewedAt: reviewNow,
+    });
 
-    // Assign to group (default: "日常")
+    // Assign to group (default: "日常" — only use existing groups)
     const groupName = group?.trim() || '日常';
     let assignedGroup = groupName;
     try {
@@ -126,26 +143,30 @@ export const addWordTool = defineTool({
         .where(eq(wordGroups.name, groupName))
         .limit(1);
 
-      let targetGroupId: string;
       if (targetGroup.length > 0) {
-        targetGroupId = targetGroup[0].id;
-      } else {
-        // Auto-create the group if it doesn't exist
-        targetGroupId = uuid();
-        await db.insert(wordGroups).values({
-          id: targetGroupId,
-          name: groupName,
-          isDefault: 0,
-          createdAt: new Date(),
+        await db.insert(wordGroupMembers).values({
+          id: uuid(),
+          groupId: targetGroup[0].id,
+          wordId,
+          addedAt: new Date(),
         });
+      } else {
+        // Group doesn't exist — fall back to default group "日常"
+        const defaultGroup = await db
+          .select()
+          .from(wordGroups)
+          .where(eq(wordGroups.name, '日常'))
+          .limit(1);
+        if (defaultGroup.length > 0) {
+          await db.insert(wordGroupMembers).values({
+            id: uuid(),
+            groupId: defaultGroup[0].id,
+            wordId,
+            addedAt: new Date(),
+          });
+          assignedGroup = '日常';
+        }
       }
-
-      await db.insert(wordGroupMembers).values({
-        id: uuid(),
-        groupId: targetGroupId,
-        wordId,
-        addedAt: new Date(),
-      });
     } catch (err) {
       // Group assignment failure should not block word addition
       console.error('[add-word] Group assignment failed:', err);

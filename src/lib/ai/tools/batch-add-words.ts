@@ -2,8 +2,7 @@ import { defineTool } from './types';
 import { z } from 'zod';
 import { db } from '@/lib/db';
 import { words, wordGroups, wordGroupMembers } from '@/lib/db/schema';
-import { eq } from 'drizzle-orm';
-import { initializeCard } from '@/lib/fsrs/scheduler';
+import { eq, inArray } from 'drizzle-orm';
 import { ecdictBatchLookup } from '@/lib/dictionary/ecdict';
 import { v4 as uuid } from 'uuid';
 
@@ -21,18 +20,62 @@ interface AddResult {
   message: string;
 }
 
+/**
+ * Initialize an FSRS review card that is immediately available for review.
+ * Unlike the regular initializeCard() which queues new words (due=2099),
+ * this sets due=now so the word can be reviewed right away.
+ */
+async function initializeCardImmediate(wordId: string): Promise<void> {
+  const { createEmptyCard } = await import('ts-fsrs');
+  const card = createEmptyCard();
+  const now = new Date();
+
+  // Insert with due=now (immediately available) instead of QUEUE_DUE sentinel
+  const { reviews } = await import('@/lib/db/schema');
+  await db.insert(reviews).values({
+    id: uuid(),
+    wordId,
+    rating: 0,
+    state: card.state as number,
+    due: now,          // immediately available for review
+    stability: card.stability,
+    difficulty: card.difficulty,
+    elapsedDays: card.elapsed_days,
+    scheduledDays: card.scheduled_days,
+    reps: card.reps,
+    lapses: card.lapses,
+    lastReview: now,
+    reviewedAt: now,
+  });
+}
+
 export const batchAddWordsTool = defineTool({
-  description: '批量添加多个单词到词库。比逐个调用 add-word 更高效，避免并发问题和 API 限流。只需提供单词列表，音标、释义等会自动从词典填充。',
+  description: '批量添加多个单词到词库，并立即释放为可复习状态。比逐个调用 add-word 更高效，避免并发问题和 API 限流。只需提供单词列表，音标、释义等会自动从词典填充。',
   inputSchema: z.object({
     words: z.array(z.string()).describe('要添加的英语单词列表'),
-    group: z.string().optional().describe('添加到指定分组（分组名），默认"日常"'),
+    group: z.string().optional().describe('添加到指定分组（分组名），必须为已存在的分组，默认"日常"'),
   }),
   execute: async ({ words: wordList, group }) => {
     if (!wordList || wordList.length === 0) {
       return { type: 'error', message: '单词列表为空' };
     }
 
+    // Resolve group — only use existing groups, don't auto-create
     const groupName = group?.trim() || '日常';
+    const targetGroup = await db
+      .select()
+      .from(wordGroups)
+      .where(eq(wordGroups.name, groupName))
+      .limit(1);
+
+    if (targetGroup.length === 0) {
+      return {
+        type: 'error',
+        message: `分组 "${groupName}" 不存在。请先创建分组，或使用已有分组。可用分组可通过 group-manage 工具查看。`,
+      };
+    }
+    const targetGroupId = targetGroup[0].id;
+
     const results: AddResult[] = [];
 
     // 1. Check which words already exist (batch query)
@@ -55,27 +98,7 @@ export const batchAddWordsTool = defineTool({
     const unknownWords = normalized.filter(w => !existingSet.has(w));
     const ecdictResults = await ecdictBatchLookup(unknownWords);
 
-    // 3. Ensure the target group exists
-    let targetGroupId: string;
-    const targetGroup = await db
-      .select()
-      .from(wordGroups)
-      .where(eq(wordGroups.name, groupName))
-      .limit(1);
-
-    if (targetGroup.length > 0) {
-      targetGroupId = targetGroup[0].id;
-    } else {
-      targetGroupId = uuid();
-      await db.insert(wordGroups).values({
-        id: targetGroupId,
-        name: groupName,
-        isDefault: 0,
-        createdAt: new Date(),
-      });
-    }
-
-    // 4. Add each unknown word sequentially (safe for SQLite)
+    // 3. Add each unknown word sequentially (safe for SQLite)
     const now = new Date();
     let addedCount = 0;
     let skippedCount = 0;
@@ -133,8 +156,8 @@ export const batchAddWordsTool = defineTool({
           createdAt: now,
         });
 
-        // Initialize FSRS card
-        await initializeCard(wordId);
+        // Initialize FSRS card — immediately available for review
+        await initializeCardImmediate(wordId);
 
         // Assign to group
         try {
@@ -195,6 +218,3 @@ export const batchAddWordsTool = defineTool({
     };
   },
 });
-
-// Need to import inArray for the batch query
-import { inArray } from 'drizzle-orm';

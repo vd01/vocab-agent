@@ -632,12 +632,32 @@ function ExtractedWordsPanel({
 }) {
 	const [addingAll, setAddingAll] = useState(false);
 	const [addResult, setAddResult] = useState<any>(null);
+	const [selectedGroup, setSelectedGroup] = useState<string>(group ?? "日常");
+	const [groups, setGroups] = useState<Array<{ id: string; name: string }>>([]);
+	const [groupsLoaded, setGroupsLoaded] = useState(false);
+
+	// Fetch available groups on first render
+	useEffect(() => {
+		if (groupsLoaded) return;
+		fetch("/api/groups")
+			.then(r => r.json())
+			.then(data => {
+				setGroups(data.groups ?? []);
+				setGroupsLoaded(true);
+				// Default to the group suggested by extract-words, or "日常"
+				if (!group && data.groups?.length > 0) {
+					const defaultGroup = data.groups.find((g: any) => g.isDefault);
+					if (defaultGroup) setSelectedGroup(defaultGroup.name);
+				}
+			})
+			.catch(() => setGroupsLoaded(true));
+	}, [groupsLoaded, group]);
 
 	const handleAddAll = () => {
 		if (addingAll) return;
 		setAddingAll(true);
 		const wordList = extractedWords.map(w => w.word);
-		const message = `请使用 batch-add-words 工具将以下单词添加到词库：${wordList.join(", ")}${group ? `，分组为"${group}"` : ""}`;
+		const message = `请使用 batch-add-words 工具将以下单词添加到词库：${wordList.join(", ")}，分组为"${selectedGroup}"`;
 		// Dispatch a custom event that ChatPanel listens to
 		window.dispatchEvent(new CustomEvent("vocab-send-message", { detail: { message } }));
 		setAddResult({ success: true, message: "已发送添加请求" });
@@ -694,9 +714,24 @@ function ExtractedWordsPanel({
 				))}
 			</div>
 
-			{/* Add All button */}
+			{/* Group selector + Add All button */}
 			{!addResult && (
-				<div className="px-3 pb-2 pt-1">
+				<div className="px-3 pb-2 pt-1 space-y-2">
+					{/* Group selector */}
+					<div className="flex items-center gap-2">
+						<span className="text-xs text-muted-foreground shrink-0">添加到分组：</span>
+						<select
+							value={selectedGroup}
+							onChange={e => setSelectedGroup(e.target.value)}
+							className="flex-1 text-xs px-2 py-1 rounded-md border border-blue-200 dark:border-blue-800 bg-white dark:bg-muted/50 focus:outline-none focus:ring-1 focus:ring-blue-400"
+						>
+							{groups.map(g => (
+								<option key={g.id} value={g.name}>{g.name}</option>
+							))}
+							{!groupsLoaded && <option value="日常">日常</option>}
+						</select>
+					</div>
+					{/* Add button */}
 					<button
 						type="button"
 						onClick={handleAddAll}
