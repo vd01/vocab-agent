@@ -68,21 +68,14 @@ pub fn setup_tray<R: Runtime>(app: &App<R>) -> Result<(), Box<dyn std::error::Er
                     }
                 } else {
                     let html_b64 = setup_html_b64();
-                    let html = format!(
-                        "data:text/html;base64,{}",
-                        html_b64
-                    );
+                    let html = format!("data:text/html;base64,{}", html_b64);
                     let url = tauri::WebviewUrl::External(html.parse().unwrap());
-                    let _win = tauri::WebviewWindowBuilder::new(
-                        app_handle,
-                        "settings",
-                        url,
-                    )
-                    .title("设置 - Vocab Agent Lite")
-                    .inner_size(480.0, 600.0)
-                    .center()
-                    .resizable(true)
-                    .build();
+                    let _win = tauri::WebviewWindowBuilder::new(app_handle, "settings", url)
+                        .title("设置 - Vocab Agent Lite")
+                        .inner_size(480.0, 600.0)
+                        .center()
+                        .resizable(true)
+                        .build();
                 }
             }
             "quit" => {
@@ -93,7 +86,10 @@ pub fn setup_tray<R: Runtime>(app: &App<R>) -> Result<(), Box<dyn std::error::Er
         .on_tray_icon_event(|tray, event| {
             if let tauri::tray::TrayIconEvent::Click { button, .. } = event {
                 if button == tauri::tray::MouseButton::Left {
-                    if LAST_TOGGLE.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_err() {
+                    if LAST_TOGGLE
+                        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+                        .is_err()
+                    {
                         return;
                     }
                     let app = tray.app_handle();

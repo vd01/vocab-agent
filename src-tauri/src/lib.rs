@@ -165,6 +165,9 @@ pub fn run() {
                             let _ = win.set_focus();
                         }
 
+                        // Pre-warm quick-lookup window (hidden) so it opens instantly
+                        prewarm_quick_lookup(&app_handle, url);
+
                         if cfg.review_reminder {
                             spawn_reminder(app_handle.clone(), cfg.reminder_interval);
                         }
@@ -222,6 +225,25 @@ pub fn run() {
         .expect("error while running tauri application");
 }
 
+fn prewarm_quick_lookup<R: tauri::Runtime>(app: &tauri::AppHandle<R>, server_url: &str) {
+    if app.get_webview_window("quick-lookup").is_some() {
+        return;
+    }
+    let ql_url = format!("{}/quick-lookup", server_url.trim_end_matches('/'));
+    let _win = WebviewWindowBuilder::new(app, "quick-lookup", WebviewUrl::External(ql_url.parse().unwrap()))
+        .title("Quick Lookup")
+        .inner_size(480.0, 400.0)
+        .min_inner_size(320.0, 200.0)
+        .max_inner_size(600.0, 600.0)
+        .center()
+        .decorations(false)
+        .always_on_top(true)
+        .skip_taskbar(true)
+        .resizable(true)
+        .visible(false) // hidden — will be shown on shortcut
+        .build();
+}
+
 fn toggle_quick_lookup<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
     if let Some(win) = app.get_webview_window("quick-lookup") {
         if win.is_visible().unwrap_or(false) {
@@ -231,31 +253,23 @@ fn toggle_quick_lookup<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
             let _ = win.set_focus();
         }
     } else {
-        // Create the quick-lookup window
+        // Fallback: create if not pre-warmed (e.g. server was down at startup)
         let store = app.state::<AppStore>();
         let cfg = store.get();
         let url = if cfg.server_url.is_empty() {
-            // Dev mode or no server configured
             #[cfg(debug_assertions)]
-            { "http://localhost:3088/quick-lookup".to_string() }
+            { "http://localhost:3088".to_string() }
             #[cfg(not(debug_assertions))]
             { return; }
         } else {
-            format!("{}/quick-lookup", cfg.server_url.trim_end_matches('/'))
+            cfg.server_url.trim_end_matches('/').to_string()
         };
-
-        let _win = WebviewWindowBuilder::new(app, "quick-lookup", WebviewUrl::External(url.parse().unwrap()))
-            .title("Quick Lookup")
-            .inner_size(480.0, 400.0)
-            .min_inner_size(320.0, 200.0)
-            .max_inner_size(600.0, 600.0)
-            .center()
-            .decorations(false)
-            .always_on_top(true)
-            .skip_taskbar(true)
-            .resizable(true)
-            .visible(true)
-            .build();
+        prewarm_quick_lookup(app, &url);
+        // Now show it
+        if let Some(win) = app.get_webview_window("quick-lookup") {
+            let _ = win.show();
+            let _ = win.set_focus();
+        }
     }
 }
 

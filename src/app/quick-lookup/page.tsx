@@ -99,11 +99,15 @@ export default function QuickLookupPage() {
 		const invoke = getTauriInvoke();
 		if (!invoke) return;
 		try {
-			const cfg = (await invoke("config-get")) as { quick_lookup_shortcut?: string };
+			const cfg = (await invoke("config-get")) as {
+				quick_lookup_shortcut?: string;
+			};
 			if (cfg?.quick_lookup_shortcut) {
 				setShortcutHint(cfg.quick_lookup_shortcut);
 			}
-		} catch { /* config unavailable */ }
+		} catch {
+			/* config unavailable */
+		}
 	}
 
 	// ESC to hide window
