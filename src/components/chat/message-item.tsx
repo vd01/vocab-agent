@@ -481,108 +481,358 @@ function BatchAddedWords({
 		message: string;
 	}>;
 }) {
-	const [expanded, setExpanded] = useState(false);
+	const [currentIndex, setCurrentIndex] = useState(0);
+
+	const goTo = (idx: number) => {
+		const clamped = Math.max(0, Math.min(idx, items.length - 1));
+		setCurrentIndex(clamped);
+	};
+
+	const item = items[currentIndex];
 
 	return (
 		<div className="mt-2 rounded-xl border border-green-200 dark:border-green-900 bg-green-50/50 dark:bg-green-950/20 overflow-hidden">
-			{/* Header — always visible */}
-			<button
-				type="button"
-				onClick={() => setExpanded(!expanded)}
-				className="w-full flex items-center justify-between px-3 py-2 text-left hover:bg-green-100/50 dark:hover:bg-green-900/30 transition-colors"
-			>
+			{/* Header with counter */}
+			<div className="flex items-center justify-between px-3 py-2">
 				<div className="flex items-center gap-2">
 					<svg
 						className="w-4 h-4 text-green-600 dark:text-green-400 shrink-0"
-						fill="none"
-						viewBox="0 0 24 24"
-						stroke="currentColor"
-						strokeWidth={2}
+						fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
 					>
-						<path
-							strokeLinecap="round"
-							strokeLinejoin="round"
-							d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-						/>
+						<path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
 					</svg>
 					<span className="text-sm font-medium text-green-700 dark:text-green-300">
 						已添加 {items.length} 个单词
 					</span>
 				</div>
-				<svg
-					className={`w-4 h-4 text-muted-foreground transition-transform ${expanded ? "rotate-180" : ""}`}
-					fill="none"
-					viewBox="0 0 24 24"
-					stroke="currentColor"
-					strokeWidth={2}
-				>
-					<path
-						strokeLinecap="round"
-						strokeLinejoin="round"
-						d="M19 9l-7 7-7-7"
-					/>
-				</svg>
-			</button>
+				{items.length > 1 && (
+					<span className="text-xs text-muted-foreground">
+						{currentIndex + 1} / {items.length}
+					</span>
+				)}
+			</div>
 
-			{/* Collapsed preview — show first 5 words inline */}
-			{!expanded && (
-				<div className="px-3 pb-2 flex flex-wrap gap-1.5">
-					{items.slice(0, 8).map((item) => (
-						<span
-							key={item.wordId}
-							className="inline-flex items-center gap-1 text-xs bg-white dark:bg-muted rounded-md px-1.5 py-0.5"
+			{/* Carousel: word cards with left/right navigation */}
+			{items.length === 1 ? (
+				/* Single item — show compact card */
+				<div className="px-3 pb-2">
+					<CompactWordCard item={items[0]} />
+				</div>
+			) : (
+				<div className="relative">
+					{/* Navigation arrows */}
+					{currentIndex > 0 && (
+						<button
+							type="button"
+							onClick={() => goTo(currentIndex - 1)}
+							className="absolute left-1 top-1/2 -translate-y-1/2 z-10 w-7 h-7 rounded-full bg-white/80 dark:bg-muted/80 shadow-sm flex items-center justify-center hover:bg-white dark:hover:bg-muted transition-colors"
 						>
-							<span className="font-medium">{item.word}</span>
-							{item.phonetic && (
-								<span className="text-muted-foreground">{item.phonetic}</span>
-							)}
-						</span>
-					))}
-					{items.length > 8 && (
-						<span className="text-xs text-muted-foreground self-center">
-							+{items.length - 8} 更多
-						</span>
+							<svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+								<path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+							</svg>
+						</button>
+					)}
+					{currentIndex < items.length - 1 && (
+						<button
+							type="button"
+							onClick={() => goTo(currentIndex + 1)}
+							className="absolute right-1 top-1/2 -translate-y-1/2 z-10 w-7 h-7 rounded-full bg-white/80 dark:bg-muted/80 shadow-sm flex items-center justify-center hover:bg-white dark:hover:bg-muted transition-colors"
+						>
+							<svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+								<path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+							</svg>
+						</button>
+					)}
+
+					{/* Current card */}
+					<div className="px-3 pb-2">
+						<CompactWordCard item={item} />
+					</div>
+
+					{/* Dot indicators */}
+					{items.length > 1 && (
+						<div className="flex justify-center gap-1 pb-2">
+							{items.map((_, idx) => (
+								<button
+									key={idx}
+									type="button"
+									onClick={() => goTo(idx)}
+									className={`w-1.5 h-1.5 rounded-full transition-colors ${
+										idx === currentIndex ? "bg-green-500" : "bg-green-300 dark:bg-green-800"
+									}`}
+								/>
+							))}
+						</div>
 					)}
 				</div>
 			)}
+		</div>
+	);
+}
 
-			{/* Expanded — full list with definitions */}
-			{expanded && (
-				<div className="px-3 pb-2 max-h-80 overflow-y-auto space-y-1.5">
-					{items.map((item) => (
-						<div
-							key={item.wordId}
-							className="flex items-start gap-2 text-xs py-1 border-b border-green-100 dark:border-green-900/50 last:border-0"
-						>
-							<div className="flex-1 min-w-0">
-								<div className="flex items-baseline gap-1.5 flex-wrap">
-									<span className="font-semibold text-sm">{item.word}</span>
-									{item.phonetic && (
-										<span className="text-muted-foreground">
-											{item.phonetic}
-										</span>
-									)}
-									<PronounceButton word={item.word} audioUrl={item.audioUrl} />
-									{item.collins && (
-										<span className="text-amber-500 text-[10px]">
-											{"★".repeat(item.collins)}
-										</span>
-									)}
-									{item.tag && (
-										<span className="text-[10px] px-1 py-0 rounded bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300">
-											{item.tag.split(/\s+/)[0]}
-										</span>
-									)}
-								</div>
-								{item.definition && (
-									<div className="text-muted-foreground mt-0.5 truncate">
-										{item.definition.split("\n")[0]}
-									</div>
+// ── Compact word card for carousel ────────────────────────────────────────
+
+function CompactWordCard({ item }: {
+	item: {
+		word: string;
+		phonetic: string | null;
+		audioUrl: string | null;
+		definition: string | null;
+		wordId: string;
+		tag: string | null;
+		collins: number | null;
+	};
+}) {
+	return (
+		<div className="rounded-lg bg-white dark:bg-muted/50 p-2.5 space-y-1">
+			<div className="flex items-baseline gap-1.5 flex-wrap">
+				<span className="font-semibold text-sm">{item.word}</span>
+				{item.phonetic && (
+					<span className="text-xs text-muted-foreground">{item.phonetic}</span>
+				)}
+				<PronounceButton word={item.word} audioUrl={item.audioUrl} />
+				{item.collins && (
+					<span className="text-amber-500 text-[10px]">
+						{"★".repeat(item.collins)}
+					</span>
+				)}
+				{item.tag && (
+					<span className="text-[10px] px-1 py-0 rounded bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300">
+						{item.tag.split(/\s+/)[0]}
+					</span>
+				)}
+			</div>
+			{item.definition && (
+				<div className="text-xs text-muted-foreground line-clamp-2">
+					{item.definition.split("\n")[0]}
+				</div>
+			)}
+		</div>
+	);
+}
+
+// ── Extracted words panel with "Add All" button ───────────────────────────
+
+function ExtractedWordsPanel({
+	words: extractedWords,
+	knownCount,
+	group,
+	message,
+}: {
+	words: Array<{
+		word: string;
+		phonetic: string | null;
+		translation: string | null;
+		tag: string | null;
+		collins: number | null;
+	}>;
+	knownCount: number;
+	group: string | null;
+	message: string;
+}) {
+	const [addingAll, setAddingAll] = useState(false);
+	const [addResult, setAddResult] = useState<any>(null);
+
+	const handleAddAll = () => {
+		if (addingAll) return;
+		setAddingAll(true);
+		const wordList = extractedWords.map(w => w.word);
+		const message = `请使用 batch-add-words 工具将以下单词添加到词库：${wordList.join(", ")}${group ? `，分组为"${group}"` : ""}`;
+		// Dispatch a custom event that ChatPanel listens to
+		window.dispatchEvent(new CustomEvent("vocab-send-message", { detail: { message } }));
+		setAddResult({ success: true, message: "已发送添加请求" });
+		setAddingAll(false);
+	};
+
+	return (
+		<div className="mt-2 rounded-xl border border-blue-200 dark:border-blue-900 bg-blue-50/50 dark:bg-blue-950/20 overflow-hidden">
+			{/* Header */}
+			<div className="flex items-center justify-between px-3 py-2">
+				<div className="flex items-center gap-2">
+					<svg className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+						<path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" />
+					</svg>
+					<span className="text-sm font-medium text-blue-700 dark:text-blue-300">
+						提取了 {extractedWords.length} 个生词
+					</span>
+					{knownCount > 0 && (
+						<span className="text-xs text-muted-foreground">
+							（已认识 {knownCount} 个）
+						</span>
+					)}
+				</div>
+			</div>
+
+			{/* Word list */}
+			<div className="px-3 pb-2 max-h-64 overflow-y-auto space-y-1">
+				{extractedWords.map((w, i) => (
+					<div key={i} className="flex items-start gap-2 text-xs py-1 border-b border-blue-100 dark:border-blue-900/50 last:border-0">
+						<div className="flex-1 min-w-0">
+							<div className="flex items-baseline gap-1.5 flex-wrap">
+								<span className="font-semibold text-sm">{w.word}</span>
+								{w.phonetic && (
+									<span className="text-muted-foreground">{w.phonetic}</span>
+								)}
+								{w.collins && (
+									<span className="text-amber-500 text-[10px]">
+										{"★".repeat(w.collins)}
+									</span>
+								)}
+								{w.tag && (
+									<span className="text-[10px] px-1 py-0 rounded bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300">
+										{w.tag.split(/\s+/)[0]}
+									</span>
 								)}
 							</div>
+							{w.translation && (
+								<div className="text-muted-foreground mt-0.5 line-clamp-2">
+									{w.translation}
+								</div>
+							)}
+						</div>
+					</div>
+				))}
+			</div>
+
+			{/* Add All button */}
+			{!addResult && (
+				<div className="px-3 pb-2 pt-1">
+					<button
+						type="button"
+						onClick={handleAddAll}
+						disabled={addingAll}
+						className="w-full py-1.5 rounded-lg bg-blue-500 hover:bg-blue-600 disabled:bg-blue-300 text-white text-sm font-medium transition-colors flex items-center justify-center gap-1.5"
+					>
+						{addingAll ? (
+							<>
+								<span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+								添加中...
+							</>
+						) : (
+							<>
+								<svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+									<path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+								</svg>
+								全部添加到词库
+							</>
+						)}
+					</button>
+				</div>
+			)}
+			{addResult && (
+				<div className={`px-3 pb-2 pt-1 text-xs ${addResult.success ? "text-green-600" : "text-red-500"}`}>
+					{addResult.message}
+				</div>
+			)}
+		</div>
+	);
+}
+
+// ── Batch add result (from batch-add-words tool) ──────────────────────────
+
+function BatchAddResult({ output }: { output: any }) {
+	const addedItems = (output.results ?? []).filter((r: any) => r.type === "added");
+	const errorItems = (output.results ?? []).filter((r: any) => r.type === "error");
+	const skippedItems = (output.results ?? []).filter((r: any) => r.type === "already-exists");
+	const [currentIndex, setCurrentIndex] = useState(0);
+
+	const goTo = (idx: number) => {
+		setCurrentIndex(Math.max(0, Math.min(idx, addedItems.length - 1)));
+	};
+
+	return (
+		<div className="mt-2 rounded-xl border border-green-200 dark:border-green-900 bg-green-50/50 dark:bg-green-950/20 overflow-hidden">
+			{/* Summary header */}
+			<div className="flex items-center justify-between px-3 py-2">
+				<div className="flex items-center gap-2">
+					<svg className="w-4 h-4 text-green-600 dark:text-green-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+						<path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+					</svg>
+					<span className="text-sm font-medium text-green-700 dark:text-green-300">
+						{output.message}
+					</span>
+				</div>
+				{addedItems.length > 1 && (
+					<span className="text-xs text-muted-foreground">
+						{currentIndex + 1} / {addedItems.length}
+					</span>
+				)}
+			</div>
+
+			{/* Carousel of added words */}
+			{addedItems.length > 0 && (
+				<>
+					{addedItems.length === 1 ? (
+						<div className="px-3 pb-2">
+							<CompactWordCard item={addedItems[0]} />
+						</div>
+					) : (
+						<div className="relative">
+							{currentIndex > 0 && (
+								<button
+									type="button"
+									onClick={() => goTo(currentIndex - 1)}
+									className="absolute left-1 top-1/2 -translate-y-1/2 z-10 w-7 h-7 rounded-full bg-white/80 dark:bg-muted/80 shadow-sm flex items-center justify-center hover:bg-white dark:hover:bg-muted transition-colors"
+								>
+									<svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+										<path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+									</svg>
+								</button>
+							)}
+							{currentIndex < addedItems.length - 1 && (
+								<button
+									type="button"
+									onClick={() => goTo(currentIndex + 1)}
+									className="absolute right-1 top-1/2 -translate-y-1/2 z-10 w-7 h-7 rounded-full bg-white/80 dark:bg-muted/80 shadow-sm flex items-center justify-center hover:bg-white dark:hover:bg-muted transition-colors"
+								>
+									<svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+										<path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+									</svg>
+								</button>
+							)}
+							<div className="px-3 pb-2">
+								<CompactWordCard item={addedItems[currentIndex]} />
+							</div>
+							<div className="flex justify-center gap-1 pb-2">
+								{addedItems.map((_: any, idx: number) => (
+									<button
+										key={idx}
+										type="button"
+										onClick={() => goTo(idx)}
+										className={`w-1.5 h-1.5 rounded-full transition-colors ${
+											idx === currentIndex ? "bg-green-500" : "bg-green-300 dark:bg-green-800"
+										}`}
+									/>
+								))}
+							</div>
+						</div>
+					)}
+				</>
+			)}
+
+			{/* Error items (if any) */}
+			{errorItems.length > 0 && (
+				<div className="px-3 pb-2 space-y-0.5">
+					{errorItems.map((item: any, i: number) => (
+						<div key={i} className="text-xs text-red-500">
+							{item.message}
 						</div>
 					))}
 				</div>
+			)}
+
+			{/* Skipped items (collapsed) */}
+			{skippedItems.length > 0 && (
+				<details className="px-3 pb-2">
+					<summary className="text-xs text-muted-foreground cursor-pointer">
+						{skippedItems.length} 个词已在词库中
+					</summary>
+					<div className="mt-1 flex flex-wrap gap-1">
+						{skippedItems.map((item: any, i: number) => (
+							<span key={i} className="text-xs bg-muted rounded px-1.5 py-0.5">{item.word}</span>
+						))}
+					</div>
+				</details>
 			)}
 		</div>
 	);
@@ -810,6 +1060,42 @@ function renderToolOutput(
 			<div key={key} className="mt-2 text-sm text-muted-foreground">
 				{output.message}
 			</div>
+		);
+	}
+
+	// Extracted words from text — show list with "Add All" button
+	if (output.type === "extracted-words" && output.words) {
+		return (
+			<ExtractedWordsPanel
+				key={key}
+				words={output.words}
+				knownCount={output.knownCount}
+				group={output.group}
+				message={output.message}
+			/>
+		);
+	}
+
+	if (output.type === "all-known") {
+		return (
+			<div key={key} className="mt-2 text-sm text-green-600">
+				{output.message}
+			</div>
+		);
+	}
+
+	if (output.type === "no-words") {
+		return (
+			<div key={key} className="mt-2 text-sm text-muted-foreground">
+				{output.message}
+			</div>
+		);
+	}
+
+	// Batch add result — show carousel of added words
+	if (output.type === "batch-added") {
+		return (
+			<BatchAddResult key={key} output={output} />
 		);
 	}
 

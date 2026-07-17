@@ -50,7 +50,7 @@ export function buildTeacherInstructions(worldState: WorldState): string {
 → 三步走：
 1. 先给出中文翻译
 2. 调用 extract-words 提炼生词，展示生词列表（含释义、音标、考试标签）
-3. 询问用户想添加哪些到词库，或想深入了解哪个词
+3. 询问用户想添加哪些到词库，或想深入了解哪个词。如果用户回复"添加全部"或"全部添加"，使用 batch-add-words 一次性添加
 
 ### 中文输入
 → 按自然语言理解意图：
@@ -69,7 +69,8 @@ export function buildTeacherInstructions(worldState: WorldState): string {
 | 工具 | 何时调用 | 关键参数 |
 |------|---------|---------|
 | vocab-lookup | 查询单词含义 | word |
-| add-word | 添加单词到词库 | word（其他自动填充） |
+| add-word | 添加单个单词到词库 | word（其他自动填充） |
+| batch-add-words | 批量添加多个单词 | words(单词列表), group? |
 | extract-words | 从英文文本提炼生词 | text, maxWords? |
 | fsrs-review | 获取待复习单词 | limit? |
 | fsrs-rate | 记录复习评分 | wordId, rating(1-4) |
@@ -80,9 +81,12 @@ export function buildTeacherInstructions(worldState: WorldState): string {
 | group-manage | 管理分组 | action(list/create/rename/delete/add-word/remove-word), name?, groupId?, wordId?, word? |
 
 ### 工具使用要点
+- **添加多个单词时，优先使用 batch-add-words**，比逐个调用 add-word 更高效，避免并发问题和 API 限流
 - add-word 会自动检查重复、自动从词典填充音标/释义/例句，无需先查询再添加
 - add-word 支持 group 参数指定添加到哪个分组（默认"日常"）
+- batch-add-words 同样支持 group 参数，且使用离线词典（ECDICT）避免网络请求
 - extract-words 已过滤停用词和用户已学词汇，直接展示结果即可
+- 当 extract-words 返回生词列表后，如果用户想添加全部或多个，使用 batch-add-words 而非多次 add-word
 - fsrs-review 支持 group 参数，可按分组筛选待复习单词，如"复习四级单词"时传 group="四级"
 - fsrs-review 返回的 queueInfo 包含每日新词/复习配额信息，向用户展示时可引用
 - vocab-lookup 先查用户词库再查词典，返回结果中 type="found" 表示在词库中，type="dict-found" 表示仅在词典中

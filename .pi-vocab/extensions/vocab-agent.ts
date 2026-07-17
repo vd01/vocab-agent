@@ -48,7 +48,7 @@ export default function vocabAgentExtension(pi: ExtensionAPI) {
 			pi.setActiveTools([
 				// vocab teacher tools only
 				"fsrs-review", "fsrs-rate", "vocab-lookup", "add-word",
-				"extract-words", "dict-lookup", "vocab-stats",
+				"batch-add-words", "extract-words", "dict-lookup", "vocab-stats",
 				"pin-word", "unpin-word", "group-manage",
 			]);
 		}
@@ -241,6 +241,41 @@ export default function vocabAgentExtension(pi: ExtensionAPI) {
 			};
 		},
 	});
+
+	// ── batch-add-words ───────────────────────────────────────────────
+
+		pi.registerTool({
+			name: "batch-add-words",
+			label: "Batch Add Words",
+			description: "批量添加多个单词到词库。比逐个调用 add-word 更高效，避免并发问题和 API 限流。只需提供单词列表，音标、释义等会自动从 ECDICT 离线词典填充。",
+			promptSnippet: "批量添加多个单词到词库",
+			promptGuidelines: [
+				"Use batch-add-words when the user wants to add multiple words at once, especially after extract-words returns a list of new words.",
+				"Prefer batch-add-words over calling add-word multiple times to avoid rate limiting and concurrency issues.",
+			],
+			parameters: Type.Object({
+				words: Type.Array(Type.String(), { description: "要添加的英语单词列表" }),
+				group: Type.Optional(Type.String({ description: "添加到指定分组（分组名），默认日常" })),
+			}),
+			async execute(_toolCallId, params) {
+				const { batchAddWordsTool } = await import("../../src/lib/ai/tools/batch-add-words");
+				const result = await batchAddWordsTool.execute!(
+					{ words: params.words, group: params.group },
+					{ toolCallId: "pi", messages: [], abortSignal: undefined },
+				);
+
+				const r = result as any;
+				return {
+					content: [
+						{
+							type: "text" as const,
+							text: r.message ?? "批量添加完成",
+						},
+					],
+					details: result,
+				};
+			},
+		});
 
 	// ── extract-words ────────────────────────────────────────────────────
 

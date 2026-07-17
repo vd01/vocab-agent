@@ -106,7 +106,11 @@ function ChatInner({
 		},
 		messages: initialMessages,
 		onFinish: () => {
-			debouncedSave();
+			// Use a longer delay for the final save to ensure React state has updated
+			// with the complete message content before persisting to DB
+			setTimeout(() => {
+				saveMessagesToDb();
+			}, 500);
 			if (DEBUG_PANEL_ENABLED && debugIdRef.current) {
 				notifyDebugPanel(debugIdRef.current);
 				debugIdRef.current = null;
@@ -149,6 +153,18 @@ function ChatInner({
 	useEffect(() => {
 		reloadComponents();
 	}, []);
+
+	// Listen for "add all words" events from ExtractedWordsPanel
+	useEffect(() => {
+		const handler = (e: Event) => {
+			const { message } = (e as CustomEvent).detail;
+			if (message) {
+				sendMessage({ text: message });
+			}
+		};
+		window.addEventListener("vocab-send-message", handler);
+		return () => window.removeEventListener("vocab-send-message", handler);
+	}, [sendMessage]);
 
 	// Initialize NotificationManager and fetch initial due count
 	useEffect(() => {

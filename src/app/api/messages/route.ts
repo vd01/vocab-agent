@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { chatMessages } from '@/lib/db/schema';
-import { desc, lt, inArray, sql } from 'drizzle-orm';
+import { desc, lt, inArray, sql, eq } from 'drizzle-orm';
 
 const PAGE_SIZE = 20;
 
@@ -104,6 +104,19 @@ export async function POST(req: NextRequest) {
     // Filter to only new messages
     const newMessages = incoming.filter(m => !existingIds.has(m.id));
 
+    // Messages that already exist — update their parts (content may have changed during streaming)
+    const updatedMessages = incoming.filter(m => existingIds.has(m.id));
+
+    // Update existing messages (parts may have been incomplete when first saved)
+    for (const msg of updatedMessages) {
+      if (msg.parts && Array.isArray(msg.parts)) {
+        await db
+          .update(chatMessages)
+          .set({ parts: JSON.stringify(msg.parts) })
+          .where(eq(chatMessages.id, msg.id));
+      }
+    }
+
     if (newMessages.length === 0) {
       return NextResponse.json({ saved: 0, skipped: ids.length });
     }
@@ -137,7 +150,7 @@ export async function POST(req: NextRequest) {
       await db.insert(chatMessages).values(row).onConflictDoNothing();
     }
 
-    return NextResponse.json({ saved: rows.length, skipped: existingIds.size });
+    return NextResponse.json({ saved: rows.length, updated: updatedMessages.length, skipped: existingIds.size - updatedMessages.length });
   } catch (error) {
     console.error('[POST /api/messages] Error:', error);
     return NextResponse.json(
