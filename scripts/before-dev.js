@@ -39,31 +39,29 @@ async function main() {
 
   const isWin = process.platform === "win32";
 
-  // On Windows, hide the console window by default.
-  // Set TAURI_DEV_SHOW_SERVER=1 to show it (useful for debugging server logs).
-  const spawnOpts = {
-    stdio: SHOW_SERVER ? "inherit" : "pipe",
-    detached: true,
-    env: { ...process.env },
-  };
-
-  if (isWin && !SHOW_SERVER) {
-    spawnOpts.windowsHide = true;
+  if (isWin) {
+    // Windows: shell:true is required for npm.cmd.
+    // windowsHide:true hides the console window.
+    // detached:false is fine — child survives because shell:true creates
+    // a cmd.exe grandchild that persists after the parent exits.
+    const child = spawn(
+      "npm.cmd",
+      ["run", "dev", "--", "--turbopack", "--port", String(PORT)],
+      {
+        stdio: "ignore",
+        shell: true,
+        windowsHide: !SHOW_SERVER,
+      }
+    );
+    child.unref();
+  } else {
+    // macOS / Linux
+    const child = spawn("npm", ["run", "dev", "--", "--turbopack", "--port", String(PORT)], {
+      stdio: SHOW_SERVER ? "inherit" : "ignore",
+      detached: true,
+    });
+    child.unref();
   }
-
-  const child = spawn(
-    isWin ? "npm.cmd" : "npm",
-    ["run", "dev", "--", "--turbopack", "--port", String(PORT)],
-    spawnOpts
-  );
-
-  if (!SHOW_SERVER) {
-    // Silently discard stdout/stderr so nothing leaks to the Tauri console
-    child.stdout?.on("data", () => {});
-    child.stderr?.on("data", () => {});
-  }
-
-  child.unref();
 
   // Wait up to 30s for the server to become available
   const deadline = Date.now() + 30_000;
