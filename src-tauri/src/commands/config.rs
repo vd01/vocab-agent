@@ -50,3 +50,31 @@ pub async fn check_server(url: String) -> Result<bool, String> {
     let res = client.get(url).send().await.map_err(|e| e.to_string())?;
     Ok(res.status().is_success() || res.status() == reqwest::StatusCode::FOUND || res.status() == reqwest::StatusCode::TEMPORARY_REDIRECT)
 }
+
+/// Update the quick-lookup shortcut at runtime.
+/// Unregisters the old shortcut and registers the new one.
+#[tauri::command(rename = "set-quick-lookup-shortcut")]
+pub fn set_quick_lookup_shortcut(
+    app: tauri::AppHandle,
+    store: State<'_, AppStore>,
+    shortcut: String,
+) -> Result<ConfigResponse, String> {
+    use tauri_plugin_global_shortcut::GlobalShortcutExt;
+
+    // Parse the new shortcut
+    let new_sc = crate::parse_shortcut(&shortcut)
+        .ok_or_else(|| format!("Invalid shortcut format: {}", shortcut))?;
+
+    // Unregister old quick-lookup shortcut
+    let old_cfg = store.get();
+    if let Some(old_sc) = crate::parse_shortcut(&old_cfg.quick_lookup_shortcut) {
+        let _ = app.global_shortcut().unregister(old_sc);
+    }
+
+    // Register the new one
+    app.global_shortcut().register(new_sc)
+        .map_err(|e| format!("Failed to register shortcut: {}", e))?;
+
+    // Save to config
+    Ok(store.set(serde_json::json!({ "quick_lookup_shortcut": shortcut })).into())
+}

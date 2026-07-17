@@ -37,6 +37,7 @@
     "allow-config-get",
     "allow-config-set",
     "allow-check-server",
+    "allow-set-quick-lookup-shortcut",
     "allow-read-clipboard",
     "allow-reminder-start",
     "allow-reminder-stop"

@@ -1,0 +1,4 @@
+[[permission]]
+identifier = "allow-set-quick-lookup-shortcut"
+description = "Allows setting the quick-lookup shortcut at runtime"
+commands.allow = ["set-quick-lookup-shortcut"]

@@ -69,7 +69,10 @@ impl AppStore {
         if let Some(n) = partial.get("reminder_interval").and_then(|v| v.as_u64()) {
             cfg.reminder_interval = n as u32;
         }
-        if let Some(s) = partial.get("quick_lookup_shortcut").and_then(|v| v.as_str()) {
+        if let Some(s) = partial
+            .get("quick_lookup_shortcut")
+            .and_then(|v| v.as_str())
+        {
             cfg.quick_lookup_shortcut = s.to_string();
         }
         let _ = fs::write(&self.path, serde_json::to_string_pretty(&*cfg).unwrap());

@@ -40,12 +40,15 @@ pub fn run() {
             #[cfg(desktop)]
             {
                 use tauri_plugin_global_shortcut::{
-                    GlobalShortcutExt, ShortcutState,
+                    Code, GlobalShortcutExt, Modifiers, ShortcutState,
                 };
 
-                let shortcut_str = cfg.shortcut.clone();
-                let quick_lookup_shortcut_str = cfg.quick_lookup_shortcut.clone();
-                let quick_lookup_shortcut_str_clone = quick_lookup_shortcut_str.clone();
+                let main_shortcut = parse_shortcut(&cfg.shortcut);
+                let ql_shortcut = parse_shortcut(&cfg.quick_lookup_shortcut);
+
+                // Extract (modifiers, code) for comparison in handler
+                let main_key: Option<(Modifiers, Code)> = main_shortcut.map(|s| (s.mods, s.key));
+                let ql_key: Option<(Modifiers, Code)> = ql_shortcut.map(|s| (s.mods, s.key));
 
                 app.handle().plugin(
                     tauri_plugin_global_shortcut::Builder::new()
@@ -53,16 +56,35 @@ pub fn run() {
                             if event.state() != ShortcutState::Pressed {
                                 return;
                             }
-                            let shortcut_id = shortcut.to_string();
-                            log::info!("[Shortcut] Fired: {}", shortcut_id);
 
-                            // Check if this is the quick-lookup shortcut
-                            if is_quick_lookup_shortcut(&shortcut_id, &quick_lookup_shortcut_str) {
-                                toggle_quick_lookup(app);
-                                return;
+                            let fired: (Modifiers, Code) = (shortcut.mods, shortcut.key);
+
+                            // Check quick-lookup shortcut first
+                            if let Some(qk) = ql_key {
+                                if fired == qk {
+                                    toggle_quick_lookup(app);
+                                    return;
+                                }
                             }
 
-                            // Default: toggle main window
+                            // Check main window shortcut
+                            if let Some(mk) = main_key {
+                                if fired == mk {
+                                    if let Some(win) = app.get_webview_window("main") {
+                                        if win.is_visible().unwrap_or(false)
+                                            && win.is_focused().unwrap_or(false)
+                                        {
+                                            let _ = win.hide();
+                                        } else {
+                                            let _ = win.show();
+                                            let _ = win.set_focus();
+                                        }
+                                    }
+                                    return;
+                                }
+                            }
+
+                            // Fallback: toggle main window for any other registered shortcut
                             if let Some(win) = app.get_webview_window("main") {
                                 if win.is_visible().unwrap_or(false)
                                     && win.is_focused().unwrap_or(false)
@@ -77,10 +99,10 @@ pub fn run() {
                         .build(),
                 )?;
 
-                if let Some(shortcut) = parse_shortcut(&shortcut_str) {
+                if let Some(shortcut) = main_shortcut {
                     let _ = app.handle().global_shortcut().register(shortcut);
                 }
-                if let Some(shortcut) = parse_shortcut(&quick_lookup_shortcut_str_clone) {
+                if let Some(shortcut) = ql_shortcut {
                     let _ = app.handle().global_shortcut().register(shortcut);
                 }
             }
@@ -176,32 +198,13 @@ pub fn run() {
             commands::config::config_get,
             commands::config::config_set,
             commands::config::check_server,
+            commands::config::set_quick_lookup_shortcut,
             commands::clipboard::read_clipboard,
             commands::notification::reminder_start,
             commands::notification::reminder_stop,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
-}
-
-fn is_quick_lookup_shortcut(fired: &str, config_str: &str) -> bool {
-    // Normalize both strings for comparison
-    let normalize = |s: &str| -> String {
-        s.split('+')
-            .map(|p| p.trim())
-            .map(|p| {
-                let lower = p.to_lowercase();
-                match lower.as_str() {
-                    "control" => "ctrl".to_string(),
-                    "super" | "meta" | "win" | "command" | "cmd" => "super".to_string(),
-                    _ => lower,
-                }
-            })
-            .collect::<Vec<_>>()
-            .join("+")
-            .to_lowercase()
-    };
-    normalize(fired) == normalize(config_str)
 }
 
 fn toggle_quick_lookup<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
@@ -297,7 +300,7 @@ fn spawn_reminder(app_handle: tauri::AppHandle, interval_minutes: u32) {
     });
 }
 
-fn parse_shortcut(s: &str) -> Option<tauri_plugin_global_shortcut::Shortcut> {
+pub fn parse_shortcut(s: &str) -> Option<tauri_plugin_global_shortcut::Shortcut> {
     use tauri_plugin_global_shortcut::{Code, Modifiers, Shortcut};
 
     let parts: Vec<&str> = s.split('+').map(|p| p.trim()).collect();
