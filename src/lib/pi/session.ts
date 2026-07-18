@@ -109,7 +109,10 @@ async function initSession(): Promise<CreateAgentSessionResult> {
 			},
 		},
 	};
-	writeFileSync(join(VOCAB_AGENT_DIR, "models.json"), JSON.stringify(modelsConfig, null, 2));
+	writeFileSync(
+		join(VOCAB_AGENT_DIR, "models.json"),
+		JSON.stringify(modelsConfig, null, 2),
+	);
 
 	const authStorage = AuthStorage.create(join(VOCAB_AGENT_DIR, "auth.json"));
 	const modelRegistry = ModelRegistry.create(
@@ -152,9 +155,7 @@ async function initSession(): Promise<CreateAgentSessionResult> {
 		// In-memory sessions — we persist messages ourselves via /api/messages
 	});
 
-	console.log(
-		`[Pi SDK] Session initialized (agentDir: ${VOCAB_AGENT_DIR})`,
-	);
+	console.log(`[Pi SDK] Session initialized (agentDir: ${VOCAB_AGENT_DIR})`);
 	console.log(
 		`[Pi SDK] Extensions loaded: ${result.extensionsResult.extensions.length}`,
 	);
@@ -165,6 +166,93 @@ async function initSession(): Promise<CreateAgentSessionResult> {
 	}
 
 	return result;
+}
+
+// ── Prompt Queue (concurrency guard) ───────────────────────────────────
+//
+// Pi SDK's Agent.prompt() throws if called while a previous prompt is active.
+// Since we use a single global session, concurrent HTTP requests would crash.
+// This queue serializes prompt calls — each request waits for the previous
+// one to complete before sending its prompt.
+//
+// For a single-user app this is acceptable. If multi-user support is needed,
+// each user would need their own AgentSession.
+
+interface QueuedPrompt {
+	message: string;
+	resolve: () => void;
+	reject: (err: Error) => void;
+}
+
+let promptQueue: QueuedPrompt[] = [];
+let isPromptActive = false;
+
+/**
+ * Send a prompt to the pi session, queuing if another prompt is in progress.
+ *
+ * Returns a promise that resolves when the prompt has been fully processed
+ * (i.e., the agent has finished responding). If the queue is full, rejects
+ * immediately with a clear error.
+ */
+export async function queuePrompt(
+	session: AgentSession,
+	message: string,
+	maxQueueSize = 5,
+): Promise<void> {
+	if (promptQueue.length >= maxQueueSize) {
+		throw new Error(
+			`Agent is busy. Too many queued requests (${maxQueueSize}). Please wait and try again.`,
+		);
+	}
+
+	if (!isPromptActive) {
+		// No active prompt — execute immediately
+		isPromptActive = true;
+		try {
+			await session.prompt(message);
+		} finally {
+			isPromptActive = false;
+			processQueue(session);
+		}
+	} else {
+		// Prompt in progress — queue this one
+		console.log(
+			`[Pi SDK] Prompt queued (queue depth: ${promptQueue.length + 1})`,
+		);
+		await new Promise<void>((resolve, reject) => {
+			promptQueue.push({ message, resolve, reject });
+		});
+	}
+}
+
+function processQueue(session: AgentSession) {
+	if (promptQueue.length === 0 || isPromptActive) return;
+
+	const next = promptQueue.shift()!;
+	isPromptActive = true;
+
+	session
+		.prompt(next.message)
+		.then(() => {
+			next.resolve();
+		})
+		.catch((err) => {
+			next.reject(err instanceof Error ? err : new Error(String(err)));
+		})
+		.finally(() => {
+			isPromptActive = false;
+			processQueue(session);
+		});
+}
+
+/**
+ * Abort the current prompt and clear the queue.
+ * Called when the user explicitly stops a response.
+ */
+export function abortAndClearQueue(session: AgentSession) {
+	promptQueue.forEach((q) => q.reject(new Error("Request aborted")));
+	promptQueue = [];
+	session.abort();
 }
 
 // ── Helper: dispose session (for graceful shutdown) ──────────────────────
@@ -198,7 +286,7 @@ export async function resetPiSession(): Promise<void> {
 	// doesn't carry over stale context
 	result.session.agent.state.messages = [];
 
-	console.log('[Pi SDK] Session history reset — conversation context cleared');
+	console.log("[Pi SDK] Session history reset — conversation context cleared");
 }
 
 // ── Exports for external use ─────────────────────────────────────────────

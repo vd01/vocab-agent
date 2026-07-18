@@ -11,7 +11,13 @@
  *   4. Frontend consumes SSE to render messages
  */
 
-import { getPiSession, type AgentSession } from "@/lib/pi/session";
+import {
+	getPiSession,
+	queuePrompt,
+	abortAndClearQueue,
+	type AgentSession,
+} from "@/lib/pi/session";
+import { runWithModeContext, setCurrentMode } from "@/lib/pi/mode-context";
 
 export const maxDuration = 60;
 
@@ -26,26 +32,28 @@ export async function POST(req: Request) {
 		};
 
 		if (!message?.trim()) {
-			return Response.json(
-				{ error: "Message is required" },
-				{ status: 400 },
-			);
+			return Response.json({ error: "Message is required" }, { status: 400 });
 		}
 
 		// Get the global pi session
 		const session = await getPiSession();
 
-		// Store mode context for the vocab-agent extension to read
+		// Build mode context for the vocab-agent extension to read
 		// (The extension reads this in before_agent_start to switch tools/prompts)
 		const resolvedMode = mode ?? "teach";
-		console.log(`[Chat API] Setting mode: ${resolvedMode}, modeSwitched: ${modeSwitched}`);
-		setCurrentMode(resolvedMode, {
+		console.log(
+			`[Chat API] Setting mode: ${resolvedMode}, modeSwitched: ${modeSwitched}`,
+		);
+		const modeCtx = setCurrentMode(resolvedMode, {
 			modeSwitched: modeSwitched === true,
 			activeGroup: activeGroup ?? null,
 		});
 
-		// Create SSE stream from pi events
-		const stream = createSSEStream(session, message);
+		// Run the entire SSE stream within AsyncLocalStorage scope
+		// so the extension can read the correct mode per-request
+		const stream = runWithModeContext(modeCtx, () =>
+			createSSEStream(session, message),
+		);
 
 		return new Response(stream, {
 			headers: {
@@ -66,39 +74,8 @@ export async function POST(req: Request) {
 	}
 }
 
-// ── Mode context (shared with vocab-agent extension) ─────────────────────
-
-export interface ModeContext {
-	mode: "teach" | "develop";
-	modeSwitched: boolean;
-	activeGroup: string | null;
-}
-
-// Use globalThis to share across module instances
-// (jiti and Turbopack load separate instances of the same module)
-const GLOBAL_KEY = "__vocab_mode_context__" as const;
-
-const defaultModeContext: ModeContext = {
-	mode: "teach",
-	modeSwitched: false,
-	activeGroup: null,
-};
-
-function setCurrentMode(
-	mode: string,
-	extra: { modeSwitched: boolean; activeGroup: string | null },
-) {
-	const ctx: ModeContext = {
-		mode: mode === "develop" ? "develop" : "teach",
-		...extra,
-	};
-	(globalThis as any)[GLOBAL_KEY] = ctx;
-}
-
-/** Read by vocab-agent extension to determine active mode */
-export function getCurrentModeContext(): ModeContext {
-	return (globalThis as any)[GLOBAL_KEY] ?? defaultModeContext;
-}
+// Mode context is now managed via AsyncLocalStorage in @/lib/pi/mode-context
+// See that module for setCurrentMode / getCurrentModeContext
 
 // ── SSE Stream Builder ───────────────────────────────────────────────────
 
@@ -148,7 +125,9 @@ function createSSEStream(
 
 						// ── Tool execution ──────────────────────────────
 						case "tool_execution_start": {
-							console.log(`[Chat SSE] tool-start: ${event.toolName} (${event.toolCallId})`);
+							console.log(
+								`[Chat SSE] tool-start: ${event.toolName} (${event.toolCallId})`,
+							);
 							controller.enqueue(
 								encoder.encode(
 									formatSSE("tool-start", {
@@ -164,11 +143,14 @@ function createSSEStream(
 							const details = event.result?.details as
 								| Record<string, unknown>
 								| undefined;
-							const textContent = event.result?.content
-								?.filter((c: any) => c.type === "text")
-								.map((c: any) => c.text)
-								.join("\n") ?? null;
-							console.log(`[Chat SSE] tool-result: ${event.toolName} (${event.toolCallId}), isError=${event.isError}, hasDetails=${!!details}, textLen=${textContent?.length ?? 0}`);
+							const textContent =
+								event.result?.content
+									?.filter((c: any) => c.type === "text")
+									.map((c: any) => c.text)
+									.join("\n") ?? null;
+							console.log(
+								`[Chat SSE] tool-result: ${event.toolName} (${event.toolCallId}), isError=${event.isError}, hasDetails=${!!details}, textLen=${textContent?.length ?? 0}`,
+							);
 							controller.enqueue(
 								encoder.encode(
 									formatSSE("tool-result", {
@@ -188,22 +170,20 @@ function createSSEStream(
 						// ── Agent lifecycle ─────────────────────────────
 						case "agent_start": {
 							console.log(`[Chat SSE] agent-start`);
-							controller.enqueue(
-								encoder.encode(formatSSE("agent-start", {})),
-							);
+							controller.enqueue(encoder.encode(formatSSE("agent-start", {})));
 							break;
 						}
 
 						case "agent_end": {
 							console.log(`[Chat SSE] agent-end`);
-							controller.enqueue(
-								encoder.encode(formatSSE("agent-end", {})),
-							);
+							controller.enqueue(encoder.encode(formatSSE("agent-end", {})));
 							break;
 						}
 
 						case "agent_settled": {
-							console.log(`[Chat SSE] agent-settled (total events: ${eventCount})`);
+							console.log(
+								`[Chat SSE] agent-settled (total events: ${eventCount})`,
+							);
 							controller.enqueue(
 								encoder.encode(formatSSE("agent-settled", {})),
 							);
@@ -220,18 +200,19 @@ function createSSEStream(
 			});
 
 			try {
-				// Send the prompt — this blocks until the agent finishes
-				console.log(`[Chat SSE] Calling session.prompt()...`);
-				await session.prompt(message);
-				console.log(`[Chat SSE] session.prompt() completed successfully (${eventCount} events sent)`);
+				// Send the prompt via queue (serializes concurrent requests)
+				console.log(`[Chat SSE] Calling queuePrompt()...`);
+				await queuePrompt(session, message);
+				console.log(
+					`[Chat SSE] queuePrompt() completed successfully (${eventCount} events sent)`,
+				);
 			} catch (err: unknown) {
 				if (!aborted) {
 					console.error(`[Chat SSE] session.prompt() FAILED:`, err);
 					controller.enqueue(
 						encoder.encode(
 							formatSSE("error", {
-								message:
-									err instanceof Error ? err.message : String(err),
+								message: err instanceof Error ? err.message : String(err),
 							}),
 						),
 					);
@@ -240,22 +221,25 @@ function createSSEStream(
 				unsubscribe();
 				try {
 					controller.close();
-				} catch {}
+				} catch (closeErr) {
+					// Controller may already be closed if the client disconnected
+					console.debug(
+						"[Chat SSE] Controller close error (expected on disconnect):",
+						closeErr,
+					);
+				}
 			}
 		},
 
 		cancel() {
 			aborted = true;
-			session.abort();
+			abortAndClearQueue(session);
 		},
 	});
 }
 
 // ── SSE Formatting ───────────────────────────────────────────────────────
 
-function formatSSE(
-	event: string,
-	data: Record<string, unknown>,
-): string {
+function formatSSE(event: string, data: Record<string, unknown>): string {
 	return `data: ${JSON.stringify({ type: event, ...data })}\n\n`;
 }
