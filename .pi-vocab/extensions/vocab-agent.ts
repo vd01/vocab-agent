@@ -78,7 +78,9 @@ export default function vocabAgentExtension(pi: ExtensionAPI) {
 				"vocab-stats",
 				"pin-word",
 				"unpin-word",
-				"group-manage",
+				"wordnet-lookup",
+				"wiktionary-lookup",
+				"mdx-lookup",
 			]);
 		}
 

@@ -182,6 +182,73 @@ export function registerTeacherTools(pi: ExtensionAPI) {
 				: `词典中未找到 ${p.word}`,
 	});
 
+	// ── wordnet-lookup ───────────────────────────────────────────────────
+	wrapTool({
+		pi,
+		name: "wordnet-lookup",
+		label: "WordNet Lookup",
+		description:
+			"查 WordNet 获取单词的语义分类（synsets）、上下位关系（hypernyms/hyponyms）和词形变化。用于词义层次、同义辨析、词汇扩展。",
+		promptSnippet: "查 WordNet 语义关系",
+		promptGuidelines: [
+			"Use wordnet-lookup when the user asks about word senses, semantic relations (hypernyms/hyponyms), or wants to explore word families.",
+		],
+		parameters: Type.Object({
+			word: Type.String({ description: "要查询的单词" }),
+		}),
+		toolModule: `${TOOL_MODULE}/wordnet-lookup`,
+		toolExport: "wordnetLookupTool",
+		summarizeResult: (r, p) =>
+			r.type === "wordnet-found"
+				? `WordNet 中找到 ${p.word}（${r.synsetCount} 个 synset）`
+				: `WordNet 中未找到 ${p.word}`,
+	});
+
+	// ── wiktionary-lookup ────────────────────────────────────────────────
+	wrapTool({
+		pi,
+		name: "wiktionary-lookup",
+		label: "Wiktionary Lookup",
+		description:
+			"查 Wiktionary 获取详细词源（etymology）、词形变化表（forms）、多地区发音（IPA）和释义。",
+		promptSnippet: "查 Wiktionary 词源和变位",
+		promptGuidelines: [
+			"Use wiktionary-lookup when the user asks about word origins (etymology), inflectional forms (conjugations/declensions), or detailed pronunciation.",
+		],
+		parameters: Type.Object({
+			word: Type.String({ description: "要查询的单词" }),
+		}),
+		toolModule: `${TOOL_MODULE}/wiktionary-lookup`,
+		toolExport: "wiktionaryLookupTool",
+		summarizeResult: (r, p) =>
+			r.type === "wiktionary-found"
+				? `Wiktionary 中找到 ${p.word}`
+				: `Wiktionary 中未找到 ${p.word}`,
+	});
+
+
+	// ── mdx-lookup ──────────────────────────────────────────────────────
+	wrapTool({
+		pi,
+		name: "mdx-lookup",
+		label: "MDX Lookup",
+		description:
+			"查用户安装的 MDX 词典（牛津高阶 OALD、朗文当代 LDOCE 等），获取完整权威释义。",
+		promptSnippet: "查 MDX 权威词典释义",
+		promptGuidelines: [
+			"Use mdx-lookup when the user needs authoritative dictionary definitions from their installed MDX files (OALD, LDOCE, etc.).",
+		],
+		parameters: Type.Object({
+			word: Type.String({ description: "要查询的单词" }),
+			dict: Type.Optional(Type.String({ description: "指定词典名（如 oald9、ldoce6），留空查所有" })),
+		}),
+		toolModule: `${TOOL_MODULE}/mdx-lookup`,
+		toolExport: "mdxLookupTool",
+		summarizeResult: (r, p) =>
+			r.type === "mdx-found"
+				? `MDX 词典中找到 ${p.word}（${r.entryCount} 条）`
+				: `MDX 词典中未找到 ${p.word}`,
+	});
 	// ── vocab-stats ──────────────────────────────────────────────────────
 	wrapTool({
 		pi,

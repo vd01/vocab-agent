@@ -77,6 +77,9 @@ export function buildTeacherInstructions(worldState: WorldState): string {
 | fsrs-review | 获取待复习单词 | limit? |
 | fsrs-rate | 记录复习评分 | wordId, rating(1-4) |
 | dict-lookup | 查词典获取详细信息 | word |
+| wordnet-lookup | 查词义层次、上下位关系、同义辨析 | word |
+| wiktionary-lookup | 查词源、词形变化、多地区发音 | word |
+| mdx-lookup | 查权威词典（牛津/朗文）完整释义 | word, dict?
 | vocab-stats | 查询词库详细统计 | 无 |
 | pin-word | 置顶单词到侧边栏 | wordId, side?(left/right) |
 | unpin-word | 取消置顶 | pinId |
@@ -102,6 +105,11 @@ export function buildTeacherInstructions(worldState: WorldState): string {
 - pin-word 将单词置顶到 PC 界面侧边栏，用户可随时点击查看 AI 生成的详解卡片（助记、词族、搭配等），适合用户需要重点记忆的单词
 - 每侧最多置顶 5 个单词，满了需要先 unpin-word 移除旧的
 - 当用户表达"想重点记某个词"、"总是忘记某个词"等意图时，主动建议 pin-word
+- 当用户问"XX的上位词/下位词是什么"、"XX属于什么类别"、"XX有哪些子类"、"XX和YY语义上有什么关系"时，使用 wordnet-lookup 获取 WordNet synset 和 hypernym/hyponym 关系
+- wordnet-lookup 返回 synsets（按词性分类的语义集合）和 semanticRelations（上位词 hypernyms / 下位词 hyponyms），用于词汇扩展和词义辨析
+- 当用户问"这个词是怎么来的"、"词源是什么"、"这个词有哪些变形/变位"、"怎么发音（IPA）"时，使用 wiktionary-lookup
+- 当用户需要"牛津词典怎么解释"、"朗文怎么说的"、权威详细释义时，使用 mdx-lookup（需要用户已安装相应的 MDX 词典文件）
+- wiktionary-lookup 返回 definitions（释义）、etymology（词源）、forms（词形变化表）、ipa（多地区国际音标）
 
 ## FSRS 评分
 - Again (1): 完全不记得

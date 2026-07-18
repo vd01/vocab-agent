@@ -148,3 +148,49 @@ export async function ecdictIsAvailable(): Promise<boolean> {
     return false;
   }
 }
+
+// ── Source adapter ────────────────────────────────────────────────────────
+
+import type { DictSource, DefGroup } from './types';
+
+/**
+ * DictSource adapter for ECDICT. Returns Partial<DictEntry> suitable for
+ * merging with other sources via mergeMultiple().
+ */
+export const ecdictSource: DictSource = {
+	name: 'ecdict',
+	available: ecdictIsAvailable,
+	lookup: async (word: string) => {
+		const entry = await ecdictLookup(word);
+		if (!entry) return null;
+
+		// Build DefGroup from ECDICT English definitions
+		let definitions: DefGroup[] = [];
+		if (entry.definition) {
+			const lines = entry.definition.split('\n').filter(Boolean);
+			if (lines.length > 0) {
+				definitions.push({
+					partOfSpeech: entry.pos || '',
+					definitions: lines.map((d) => ({
+						definition: d.replace(/^[a-z]+\.\s*/, ''),
+					})),
+				});
+			}
+		}
+
+		return {
+			word: entry.word,
+			phonetic: entry.phonetic ?? undefined,
+			translation: entry.translation ?? '',
+			definitions,
+			collins: entry.collins ?? null,
+			tag: entry.tag ?? null,
+			bnc: entry.bnc ?? null,
+			frq: entry.frq ?? null,
+			exchange: entry.exchange ?? null,
+			synonyms: [],
+			antonyms: [],
+			source: 'ecdict',
+		};
+	},
+};

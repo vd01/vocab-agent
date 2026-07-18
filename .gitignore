@@ -46,6 +46,9 @@ scripts/*.js
 
 # local data
 /data/*.db
+/data/*.jsonl.gz
+/data/wiktionary-import.progress
+/data/mdx/
 /generated/
 /src/components/generated/
 /src/components/generative/component-registry.ts
