@@ -3,8 +3,8 @@ import { z } from 'zod';
 import { promises as fs } from 'fs';
 import path from 'path';
 import { updateRegistryFile, GENERATED_SRC_DIR, GENERATED_TOOLS_DIR } from './registry-utils';
-import { db } from '@/lib/db';
-import { dynamicCommands } from '@/lib/db/schema';
+import { db } from '../../db';
+import { dynamicCommands } from '../../db/schema';
 import { eq } from 'drizzle-orm';
 
 export const unregisterComponentTool = defineTool({

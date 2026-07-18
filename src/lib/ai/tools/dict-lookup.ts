@@ -1,6 +1,6 @@
 import { defineTool } from './types';
 import { z } from 'zod';
-import { lookupWord } from '@/lib/dictionary/lookup';
+import { lookupWord } from '../../dictionary/lookup';
 
 /**
  * Pure dictionary lookup tool — for Teacher Agent.

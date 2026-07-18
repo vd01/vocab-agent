@@ -9,9 +9,9 @@
  *   /review 四级     — 复习四级分组中 5 个单词
  */
 
-import { getDueWords } from '@/lib/fsrs/scheduler';
-import { db } from '@/lib/db';
-import { wordGroups } from '@/lib/db/schema';
+import { getDueWords } from '../../fsrs/scheduler';
+import { db } from '../../db';
+import { wordGroups } from '../../db/schema';
 import { eq } from 'drizzle-orm';
 import type { CommandHandler, CommandResult } from '../executor';
 
@@ -52,7 +52,7 @@ export const reviewHandler: CommandHandler = {
     const dueWords = await getDueWords(limit, groupId);
     if (dueWords.length === 0) {
       // Get queue info even when no words returned (might have hit daily limit)
-      const { getDailyQueueInfo } = await import('@/lib/fsrs/scheduler');
+      const { getDailyQueueInfo } = await import('../../fsrs/scheduler');
       const queueInfo = await getDailyQueueInfo(groupId);
       const limitMessage = queueInfo.dailyNewLimit > 0 && queueInfo.newRemaining === 0
         ? `\n今日新词配额已用完 (${queueInfo.todayNewReviewed}/${queueInfo.dailyNewLimit})`
@@ -78,7 +78,7 @@ export const reviewHandler: CommandHandler = {
     }
 
     // Get queue info for context
-    const { getDailyQueueInfo } = await import('@/lib/fsrs/scheduler');
+    const { getDailyQueueInfo } = await import('../../fsrs/scheduler');
     const queueInfo = await getDailyQueueInfo(groupId);
 
     return {

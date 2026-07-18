@@ -1,9 +1,9 @@
 import { defineTool } from './types';
 import { z } from 'zod';
-import { db } from '@/lib/db';
-import { words, wordGroups, wordGroupMembers } from '@/lib/db/schema';
+import { db } from '../../db';
+import { words, wordGroups, wordGroupMembers } from '../../db/schema';
 import { eq } from 'drizzle-orm';
-import { lookupWord } from '@/lib/dictionary/lookup';
+import { lookupWord } from '../../dictionary/lookup';
 
 export const vocabLookupTool = defineTool({
   description: '查询单词详情。先查用户词库，未找到则自动查词典（ECDICT + 在线词典），返回音标、释义、例句等丰富信息。',

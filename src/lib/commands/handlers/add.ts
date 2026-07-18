@@ -8,11 +8,11 @@
  *   /add ephemeral 短暂的 四级
  */
 
-import { db } from '@/lib/db';
-import { words, wordGroups, wordGroupMembers } from '@/lib/db/schema';
+import { db } from '../../db';
+import { words, wordGroups, wordGroupMembers } from '../../db/schema';
 import { eq } from 'drizzle-orm';
-import { initializeCard } from '@/lib/fsrs/scheduler';
-import { lookupWord } from '@/lib/dictionary/lookup';
+import { initializeCard } from '../../fsrs/scheduler';
+import { lookupWord } from '../../dictionary/lookup';
 import { v4 as uuid } from 'uuid';
 import type { CommandHandler, CommandResult } from '../executor';
 

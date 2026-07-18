@@ -7,9 +7,9 @@
  *   /stats 四级  — 四级分组统计
  */
 
-import { getProficiencyDistribution, getDailyStats } from '@/lib/fsrs/scheduler';
-import { db } from '@/lib/db';
-import { words, wordGroups, wordGroupMembers } from '@/lib/db/schema';
+import { getProficiencyDistribution, getDailyStats } from '../../fsrs/scheduler';
+import { db } from '../../db';
+import { words, wordGroups, wordGroupMembers } from '../../db/schema';
 import { count, sql, eq } from 'drizzle-orm';
 import type { CommandHandler, CommandResult } from '../executor';
 

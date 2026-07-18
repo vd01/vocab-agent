@@ -1,9 +1,9 @@
 import { defineTool } from './types';
 import { z } from 'zod';
-import { db } from '@/lib/db';
-import { words } from '@/lib/db/schema';
+import { db } from '../../db';
+import { words } from '../../db/schema';
 import { inArray } from 'drizzle-orm';
-import { ecdictBatchLookup } from '@/lib/dictionary/ecdict';
+import { ecdictBatchLookup } from '../../dictionary/ecdict';
 
 // ── Stop words ──────────────────────────────────────────────────────────
 // Common English words that are almost never worth extracting as "new vocabulary"

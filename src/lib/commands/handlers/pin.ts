@@ -1,9 +1,9 @@
-import { db } from '@/lib/db';
-import { pinnedWords, words } from '@/lib/db/schema';
+import { db } from '../../db';
+import { pinnedWords, words } from '../../db/schema';
 import { eq, asc, sql } from 'drizzle-orm';
 import { v4 as uuid } from 'uuid';
-import { lookupWord } from '@/lib/dictionary/lookup';
-import { initializeCard } from '@/lib/fsrs/scheduler';
+import { lookupWord } from '../../dictionary/lookup';
+import { initializeCard } from '../../fsrs/scheduler';
 import type { CommandHandler, CommandResult } from '../executor';
 
 const MAX_PINS_PER_SIDE = 5;

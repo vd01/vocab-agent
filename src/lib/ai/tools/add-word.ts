@@ -1,9 +1,9 @@
 import { defineTool } from './types';
 import { z } from 'zod';
-import { db } from '@/lib/db';
-import { words, wordGroups, wordGroupMembers, reviews } from '@/lib/db/schema';
+import { db } from '../../db';
+import { words, wordGroups, wordGroupMembers, reviews } from '../../db/schema';
 import { eq } from 'drizzle-orm';
-import { lookupWord } from '@/lib/dictionary/lookup';
+import { lookupWord } from '../../dictionary/lookup';
 import { v4 as uuid } from 'uuid';
 
 export const addWordTool = defineTool({

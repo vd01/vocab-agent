@@ -9,9 +9,9 @@ import {
   type Card,
   type Grade,
 } from 'ts-fsrs';
-import { db, client } from '@/lib/db';
-import { reviews, words, pinnedWords } from '@/lib/db/schema';
-import { eq, and, lte, desc, sql, gt } from 'drizzle-orm';
+import { db, client } from '../db';
+import { reviews } from '../db/schema';
+import { eq, and, desc, sql, gt } from 'drizzle-orm';
 import { v4 as uuid } from 'uuid';
 
 const engine = fsrs();
@@ -28,11 +28,6 @@ const engine = fsrs();
 
 /** Sentinel due timestamp for queued new words — year 2099 */
 const QUEUE_DUE_SEC = Math.floor(new Date('2099-12-31T23:59:59').getTime() / 1000);
-
-/** Check if a due timestamp indicates a queued (unreleased) new word */
-function isQueuedDue(dueSec: number): boolean {
-  return dueSec >= QUEUE_DUE_SEC - 86400; // within 1 day of sentinel = queued
-}
 
 // ── Timestamp helper ────────────────────────────────────────────────────
 // Drizzle's `timestamp` mode stores seconds since epoch in SQLite integer columns.
@@ -143,22 +138,6 @@ export async function getDailyQueueInfo(groupId?: string | null): Promise<{
     args: [...groupArgs, todayStartSec],
   });
 
-  // Count today's reviewed review words (reviews of words that already had a prior real review)
-  const todayReviewResult = await client.execute({
-    sql: `
-      SELECT COUNT(*) as cnt
-      FROM reviews r
-      WHERE r.rating > 0 AND r.reviewed_at >= ?
-        AND r.word_id NOT IN (
-          SELECT word_id FROM reviews
-          WHERE rating > 0 AND reviewed_at >= ?
-          GROUP BY word_id
-          HAVING MIN(reviewed_at) = reviewed_at
-        )
-    `,
-    args: [todayStartSec, todayStartSec],
-  });
-
   // Simpler approach: count all today's reviews, then subtract new-reviewed
   const todayAllReviewedResult = await client.execute({
     sql: `
@@ -176,7 +155,7 @@ export async function getDailyQueueInfo(groupId?: string | null): Promise<{
   const todayReviewReviewed = Math.max(0, todayAllReviewed - todayNewReviewed);
 
   // Read limits from settings
-  const { getSetting } = await import('@/lib/db/settings');
+  const { getSetting } = await import('../db/settings');
   const dailyNewLimit = parseInt(await getSetting('review.dailyNewLimit'), 10) || 0;
   const dailyReviewLimit = parseInt(await getSetting('review.dailyReviewLimit'), 10) || 0;
 
@@ -218,7 +197,7 @@ export async function getDailyQueueInfo(groupId?: string | null): Promise<{
  * @returns Number of words released
  */
 export async function releaseNewWords(groupId?: string | null): Promise<number> {
-  const { getSetting } = await import('@/lib/db/settings');
+  const { getSetting } = await import('../db/settings');
   const dailyNewLimit = parseInt(await getSetting('review.dailyNewLimit'), 10) || 0;
 
   // If unlimited, release all queued words
@@ -584,7 +563,7 @@ export async function initializeCard(wordId: string): Promise<Card> {
   const now = new Date();
 
   // Check if daily new limit is set — if unlimited (0), release immediately
-  const { getSetting } = await import('@/lib/db/settings');
+  const { getSetting } = await import('../db/settings');
   const dailyNewLimit = parseInt(await getSetting('review.dailyNewLimit'), 10) || 0;
 
   // If unlimited, make the word immediately available (due = now)

@@ -12,12 +12,14 @@
 ```
 
 ### Teacher Agent
+
 - 模型: `TEACHER_MODEL` 环境变量
 - 职责: 日常对话、单词查询、复习引导
 - 工具: fsrs-review, fsrs-rate, vocab-lookup, add-word, extract-words, dict-lookup, vocab-stats, pin-word, unpin-word, group-manage
 - 不需要注册命令，直接用工具完成任务
 
 ### Developer Agent
+
 - 模型: `DEVELOPER_MODEL` 环境变量
 - 职责: 创建命令、写代码、扩展系统
 - 工具:
@@ -26,6 +28,7 @@
   - **vocab 开发工具**: create-command, register-component, unregister-component, db-query, save-lesson, list-lessons, merge-lessons, test-command
 
 ### 模式路由
+
 - 聊天面板有"开发模式"开关，状态通过 `globalThis.__vocab_mode_context__` 传递
 - `before_agent_start` 事件中根据模式调用 `pi.setActiveTools()` 切换工具集
 - 同时注入对应的 system prompt（teacher-system.ts 或 developer-system.ts）
@@ -33,6 +36,7 @@
 ## 2. 命令系统
 
 ### 内置命令 (`src/lib/commands/handlers/`)
+
 - `/review` — 获取待复习单词，返回 `{ type: 'due-words', words: [...] }`
 - `/add <word>` — 添加单词，返回 `{ type: 'added', wordId, word, ... }`
 - `/stats` — 学习统计，返回 `{ type: 'stats', totalWords, daily, distribution }`
@@ -40,6 +44,7 @@
 - `/group` — 分组管理
 
 ### 动态命令 (`dynamic_commands` 表)
+
 - 由 Developer Agent 通过 `create-command` 工具注册
 - toolCode 存在 DB 中，运行时通过 `new Function()` 沙盒执行
 - 沙盒注入: `db`, `client`, `tables`, `dql`, `fsrs`, `args`, `console`
@@ -47,6 +52,7 @@
 - 如果 toolCode 返回的 `type` 有对应注册组件，前端自动渲染该组件
 
 ### 命令执行流程
+
 ```
 用户输入 /xxx → chat-panel.tsx 检测到 / 开头
   → POST /api/commands { command: "/xxx" }
@@ -59,6 +65,7 @@
 ## 3. 组件注册系统
 
 ### 注册流程
+
 ```
 create-command({ name, toolCodePath, componentCodePath })
   → 读取 toolCode 文件和 componentCode 文件
@@ -71,6 +78,7 @@ create-command({ name, toolCodePath, componentCodePath })
 ```
 
 ### component-registry.ts 机制
+
 - 文件路径: `src/components/generative/component-registry.ts`
 - 使用静态 import + `componentRegistry.register()` 注册所有组件
 - 每次 register-component/create-command 调用时**自动重写**此文件
@@ -78,11 +86,13 @@ create-command({ name, toolCodePath, componentCodePath })
 - **不要手动编辑此文件**——改动会被下次注册覆盖
 
 ### 组件命名规则
+
 - 组件文件名: kebab-case（如 `word-stats-panel.tsx`）
 - 注册名: kebab-case，与命令名一致（如 `'word-stats'`，不加 -panel 后缀）
 - toolCode 返回的 `type` 必须与注册名完全一致
 
 ### DynamicRenderer
+
 - 路径: `src/components/generative/dynamic-renderer.tsx`
 - 根据 componentName 从 componentRegistry 查找组件
 - 包含 ErrorBoundary 防止组件崩溃影响整个页面
@@ -91,7 +101,9 @@ create-command({ name, toolCodePath, componentCodePath })
 ## 4. 前端消息渲染
 
 ### message-item.tsx 渲染逻辑
+
 消息中的 tool result 按以下优先级渲染：
+
 1. `type: 'due-words'` → ReviewSession 组件（只有最新的可交互）
 2. `type: 'added'` → WordCard 组件
 3. `type: 'found'` / `'dict-found'` → WordCard / 词典详情
@@ -106,6 +118,7 @@ create-command({ name, toolCodePath, componentCodePath })
 ## 5. 数据库 Schema
 
 ### words 表
+
 ```sql
 id TEXT PRIMARY KEY,
 word TEXT NOT NULL UNIQUE,
@@ -122,6 +135,7 @@ created_at INTEGER         -- Unix timestamp (seconds)
 ```
 
 ### reviews 表
+
 ```sql
 id TEXT PRIMARY KEY,
 word_id TEXT NOT NULL REFERENCES words(id),
@@ -139,6 +153,7 @@ reviewed_at INTEGER NOT NULL   -- Unix timestamp
 ```
 
 ### dynamic_commands 表
+
 ```sql
 id TEXT PRIMARY KEY,
 name TEXT NOT NULL UNIQUE,
@@ -150,6 +165,7 @@ updated_at INTEGER NOT NULL
 ```
 
 ### developer_lessons 表
+
 ```sql
 id TEXT PRIMARY KEY,
 category TEXT NOT NULL,  -- "pattern" | "anti-pattern" | "tip" | "pitfall"
@@ -162,6 +178,7 @@ created_at INTEGER NOT NULL
 ## 6. FSRS 间隔重复
 
 ### 关键函数 (`src/lib/fsrs/scheduler.ts`)
+
 - `getDueWords(limit)` — 获取待复习单词，5 分钟内刚复习过的排除
 - `processReview(wordId, rating)` — 提交评分，2 秒防抖
 - `initializeCard(wordId)` — 初始化新卡片
@@ -169,20 +186,24 @@ created_at INTEGER NOT NULL
 - `getDailyStats()` — 今日统计
 
 ### 时间戳注意
+
 - Drizzle 的 `timestamp` mode 在 SQLite 中存储为 Unix 秒数（整数）
 - 查询时必须手动 `toUnixSec(date)` 转换，Drizzle 不会自动处理
 
 ## 7. 文件系统约定
 
 ### 可写目录
+
 - `generated/` — 生成的代码、工具脚本、临时文件
 - `src/components/generated/` — 动态注册的 UI 组件
 - `src/app/api/` — API 路由
 
 ### 可读目录
+
 - 项目内任意文件
 
 ### 关键文件路径
+
 - 聊天 API: `src/app/api/chat/route.ts` — pi SDK SSE 桥接
 - 命令 API: `src/app/api/commands/route.ts`
 - pi SDK 单例: `src/lib/pi/session.ts`
@@ -200,6 +221,6 @@ created_at INTEGER NOT NULL
 - better-sqlite3 无法编译，使用 @libsql/client (WASM-based)
 - 必须用 Turbopack 开发（webpack 在 Q: 盘编译极慢）
 - pi SDK 需要 `serverExternalPackages` 配置防止 Turbopack 破坏 `import.meta.resolve`
-- jiti 不理解 `@/` 路径别名，postinstall 脚本自动修补
-- jiti 与 Turbopack 加载独立模块实例，跨边界状态用 `globalThis` 共享
+- jiti 不理解 `@/` 路径别名，被 jiti 加载链涉及的模块必须用相对路径（如 `../db` 而非 `@/lib/db`）
+- jiti 与 Turbopack 加载独立模块实例，AsyncLocalStorage 跨边界不可见，模式状态通过 `globalThis[Symbol.for('vocab-agent:mode-context')]` 桥接
 - generated/ 目录已加入 .gitignore

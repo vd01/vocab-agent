@@ -1,5 +1,5 @@
-import { db } from '@/lib/db';
-import { dynamicCommands } from '@/lib/db/schema';
+import { db } from '../db';
+import { dynamicCommands } from '../db/schema';
 import { eq } from 'drizzle-orm';
 import { getAllBuiltins } from './executor';
 

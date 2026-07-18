@@ -1,9 +1,9 @@
 import { defineTool } from './types';
 import { z } from 'zod';
-import { db, client } from '@/lib/db';
-import { words, wordGroups, wordGroupMembers } from '@/lib/db/schema';
+import { db, client } from '../../db';
+import { words, wordGroups, wordGroupMembers } from '../../db/schema';
 import { sql, desc, eq } from 'drizzle-orm';
-import { getProficiencyDistribution, getDailyStats } from '@/lib/fsrs/scheduler';
+import { getProficiencyDistribution, getDailyStats } from '../../fsrs/scheduler';
 
 /**
  * Vocab stats tool — returns detailed statistics about the user's vocabulary library.

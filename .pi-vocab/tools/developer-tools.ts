@@ -46,14 +46,13 @@ export function registerDeveloperTools(pi: ExtensionAPI) {
 		name: "register-component",
 		label: "Register Component",
 		description:
-			"注册新的 UI 组件到动态组件注册表。推荐使用 create-command 代替。组件必须包含 'use client' 和 export default。name 必须与命令名一致（不加 -panel 后缀）。",
+			"注册新的 UI 组件到动态组件注册表。推荐使用 create-command 代替。组件必须包含 'use client' 和 export default。name 必须与命令名一致（不加 -panel 后缀）。组件代码必须先写入文件再通过 codePath 引用。",
 		promptSnippet: "注册动态 UI 组件",
 		parameters: Type.Object({
 			name: Type.String({ description: "命令名称" }),
-			code: Type.Optional(
-				Type.String({ description: "简短的 React 组件代码" }),
-			),
-			codePath: Type.Optional(Type.String({ description: "组件代码文件路径" })),
+			codePath: Type.String({
+				description: "组件代码文件路径（必须先写入文件再引用）",
+			}),
 		}),
 		toolModule: `${TOOL_MODULE}/register-component`,
 		toolExport: "registerComponentTool",

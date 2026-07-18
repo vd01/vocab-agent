@@ -1,9 +1,9 @@
 import { defineTool } from './types';
 import { z } from 'zod';
-import { db } from '@/lib/db';
-import { words, wordGroups, wordGroupMembers } from '@/lib/db/schema';
+import { db } from '../../db';
+import { words, wordGroups, wordGroupMembers } from '../../db/schema';
 import { eq, inArray, notInArray, and, like, sql } from 'drizzle-orm';
-import { ecdictBatchLookup } from '@/lib/dictionary/ecdict';
+import { ecdictBatchLookup } from '../../dictionary/ecdict';
 import { v4 as uuid } from 'uuid';
 
 /**
@@ -14,7 +14,7 @@ async function initializeCardImmediate(wordId: string): Promise<void> {
 	const card = createEmptyCard();
 	const now = new Date();
 
-	const { reviews } = await import('@/lib/db/schema');
+	const { reviews } = await import('../../db/schema');
 	await db.insert(reviews).values({
 		id: uuid(),
 		wordId,

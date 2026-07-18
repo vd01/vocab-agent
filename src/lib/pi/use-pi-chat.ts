@@ -65,11 +65,15 @@ type PartEntry = TextChunk | ToolPart;
 // ── Hook ─────────────────────────────────────────────────────────────────
 
 export function usePiChat(options: UsePiChatOptions): UsePiChatReturn {
-	const { api, body, onFinish, onToolResult, messages: initialMessages } = options;
+	const {
+		api,
+		body,
+		onFinish,
+		onToolResult,
+		messages: initialMessages,
+	} = options;
 
-	const [messages, setMessages] = useState<UIMessage[]>(
-		initialMessages ?? [],
-	);
+	const [messages, setMessages] = useState<UIMessage[]>(initialMessages ?? []);
 	const [status, setStatus] = useState<
 		"ready" | "submitted" | "streaming" | "error"
 	>("ready");
@@ -125,9 +129,7 @@ export function usePiChat(options: UsePiChatOptions): UsePiChatReturn {
 	const updateAssistantInMessages = useCallback(() => {
 		const assistantMsg = buildAssistantMessage();
 		setMessages((prev) => {
-			const idx = prev.findIndex(
-				(m) => m.id === assistantIdRef.current,
-			);
+			const idx = prev.findIndex((m) => m.id === assistantIdRef.current);
 			if (idx === -1) return [...prev, assistantMsg];
 			const next = [...prev];
 			next[idx] = assistantMsg;
@@ -161,7 +163,13 @@ export function usePiChat(options: UsePiChatOptions): UsePiChatReturn {
 				parts: [],
 			};
 
-			setMessages((prev) => [...prev, userMsg, assistantMsg]);
+			setMessages((prev) => {
+				const existingIds = new Set(prev.map((m) => m.id));
+				const toAdd = [userMsg, assistantMsg].filter(
+					(m) => !existingIds.has(m.id),
+				);
+				return [...prev, ...toAdd];
+			});
 			setStatus("submitted");
 
 			// Start SSE connection
@@ -221,7 +229,9 @@ export function usePiChat(options: UsePiChatOptions): UsePiChatReturn {
 						try {
 							const event = JSON.parse(buffer.slice(6));
 							handleSSEEvent(event);
-						} catch {}
+						} catch {
+							// Incomplete JSON in remaining buffer — ignore
+						}
 					}
 
 					setStatus("ready");
@@ -245,16 +255,18 @@ export function usePiChat(options: UsePiChatOptions): UsePiChatReturn {
 					const delta = (event.delta ?? "") as string;
 					// If no current text chunk, create one
 					if (currentTextIdxRef.current === null) {
-						const idx = partsRef.current.length;
+						const textIdx = partsRef.current.length;
 						partsRef.current.push({
 							kind: "text",
-							key: `text-${idx}`,
+							key: `text-${textIdx}`,
 							text: "",
 						});
-						currentTextIdxRef.current = idx;
+						currentTextIdxRef.current = textIdx;
 					}
 					// Append delta to current text chunk
-					const entry = partsRef.current[currentTextIdxRef.current] as TextChunk;
+					const entry = partsRef.current[
+						currentTextIdxRef.current
+					] as TextChunk;
 					entry.text += delta;
 					updateAssistantInMessages();
 					break;
@@ -290,7 +302,10 @@ export function usePiChat(options: UsePiChatOptions): UsePiChatReturn {
 					const uiData = event.uiData as any;
 					const isError = event.isError as boolean;
 
-					const output = uiData ?? { type: "message", message: event.textContent ?? "Done" };
+					const output = uiData ?? {
+						type: "message",
+						message: event.textContent ?? "Done",
+					};
 
 					onToolResult?.(toolName, isError);
 
@@ -318,10 +333,10 @@ export function usePiChat(options: UsePiChatOptions): UsePiChatReturn {
 
 				case "error": {
 					// Add error as a text chunk
-					const idx = partsRef.current.length;
+					const errorIdx = partsRef.current.length;
 					partsRef.current.push({
 						kind: "text",
-						key: `error-${idx}`,
+						key: `error-${errorIdx}`,
 						text: `\n\n❌ 错误: ${event.message}`,
 					});
 					currentTextIdxRef.current = null;

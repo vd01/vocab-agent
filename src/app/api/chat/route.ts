@@ -189,10 +189,6 @@ function createSSEStream(
 							);
 							break;
 						}
-
-						default: {
-							console.log(`[Chat SSE] unhandled event: ${event.type}`);
-						}
 					}
 				} catch (err) {
 					console.error(`[Chat SSE] Error sending event #${eventCount}:`, err);

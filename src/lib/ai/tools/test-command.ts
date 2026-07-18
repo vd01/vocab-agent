@@ -1,8 +1,8 @@
 import { defineTool } from './types';
 import { z } from 'zod';
-import { executeCommand } from '@/lib/commands/executor';
-import { db } from '@/lib/db';
-import { dynamicCommands } from '@/lib/db/schema';
+import { executeCommand } from '../../commands/executor';
+import { db } from '../../db';
+import { dynamicCommands } from '../../db/schema';
 import { eq } from 'drizzle-orm';
 import { existsSync } from 'fs';
 import path from 'path';

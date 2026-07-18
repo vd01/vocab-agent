@@ -1,9 +1,9 @@
 import { defineTool } from './types';
 import { z } from 'zod';
-import { db, client } from '@/lib/db';
-import { words, reviews } from '@/lib/db/schema';
+import { db, client } from '../../db';
+import { words, reviews } from '../../db/schema';
 import { eq, sql, and, desc } from 'drizzle-orm';
-import { getDueWords, getProficiencyDistribution } from '@/lib/fsrs/scheduler';
+import { getDueWords, getProficiencyDistribution } from '../../fsrs/scheduler';
 
 // Tables that are forbidden in custom SQL queries (security/sensitivity)
 const FORBIDDEN_TABLES = ['sqlite_master', 'sqlite_sequence', 'dynamic_commands', 'developer_lessons'];

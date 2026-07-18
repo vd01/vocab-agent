@@ -1,8 +1,8 @@
 import { defineTool } from './types';
 import { z } from 'zod';
-import { getDueWords, processReview, Rating } from '@/lib/fsrs/scheduler';
-import { db } from '@/lib/db';
-import { wordGroups } from '@/lib/db/schema';
+import { getDueWords, processReview, Rating } from '../../fsrs/scheduler';
+import { db } from '../../db';
+import { wordGroups } from '../../db/schema';
 import { eq } from 'drizzle-orm';
 
 export const fsrsReviewTool = defineTool({
@@ -28,7 +28,7 @@ export const fsrsReviewTool = defineTool({
 
     const dueWords = await getDueWords(limit, groupId);
     if (dueWords.length === 0) {
-      const { getDailyQueueInfo } = await import('@/lib/fsrs/scheduler');
+      const { getDailyQueueInfo } = await import('../../fsrs/scheduler');
       const queueInfo = await getDailyQueueInfo(groupId);
       return {
         type: 'no-due-words',
@@ -47,7 +47,7 @@ export const fsrsReviewTool = defineTool({
       };
     }
 
-    const { getDailyQueueInfo } = await import('@/lib/fsrs/scheduler');
+    const { getDailyQueueInfo } = await import('../../fsrs/scheduler');
     const queueInfo = await getDailyQueueInfo(groupId);
 
     return {

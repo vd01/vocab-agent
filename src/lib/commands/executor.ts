@@ -3,8 +3,8 @@
  * Built-in commands are registered here; dynamic commands are loaded from DB.
  */
 
-import { db, client } from "@/lib/db";
-import { dynamicCommands } from "@/lib/db/schema";
+import { db, client } from "../db";
+import { dynamicCommands } from "../db/schema";
 import {
 	eq,
 	and,
@@ -116,7 +116,7 @@ import {
 	dynamicExtractors,
 	wordGroups,
 	wordGroupMembers,
-} from "@/lib/db/schema";
+} from "../db/schema";
 
 const DB_TABLES = {
 	words,
@@ -129,10 +129,10 @@ const DB_TABLES = {
 };
 
 // Pre-load fsrs module once for performance
-let fsrsModule: Awaited<typeof import("@/lib/fsrs/scheduler")> | null = null;
+let fsrsModule: Awaited<typeof import("../fsrs/scheduler")> | null = null;
 async function getFsrsModule() {
 	if (!fsrsModule) {
-		fsrsModule = await import("@/lib/fsrs/scheduler");
+		fsrsModule = await import("../fsrs/scheduler");
 	}
 	return fsrsModule;
 }

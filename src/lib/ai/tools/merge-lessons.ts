@@ -1,7 +1,7 @@
 import { defineTool } from './types';
 import { z } from 'zod';
-import { db } from '@/lib/db';
-import { developerLessons } from '@/lib/db/schema';
+import { db } from '../../db';
+import { developerLessons } from '../../db/schema';
 import { eq, inArray } from 'drizzle-orm';
 
 export const mergeLessonsTool = defineTool({

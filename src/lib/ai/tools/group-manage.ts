@@ -1,7 +1,7 @@
 import { defineTool } from './types';
 import { z } from 'zod';
-import { db } from '@/lib/db';
-import { wordGroups, wordGroupMembers, words } from '@/lib/db/schema';
+import { db } from '../../db';
+import { wordGroups, wordGroupMembers, words } from '../../db/schema';
 import { eq, and, sql } from 'drizzle-orm';
 import { v4 as uuid } from 'uuid';
 

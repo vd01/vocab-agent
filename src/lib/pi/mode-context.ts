@@ -33,6 +33,22 @@ const defaultModeContext: ModeContext = {
 
 export const modeContextStore = new AsyncLocalStorage<ModeContext>();
 
+// ── globalThis bridge ────────────────────────────────────────────────────
+// jiti (pi extension loader) and Turbopack (Next.js) load separate module
+// instances, so AsyncLocalStorage set in one runtime is invisible to the other.
+// We bridge this by writing the current mode to globalThis in the Next.js
+// route handler, and reading it from globalThis in the pi extension.
+
+const GLOBAL_MODE_KEY = Symbol.for("vocab-agent:mode-context");
+
+function writeModeToGlobalThis(ctx: ModeContext): void {
+	(globalThis as any)[GLOBAL_MODE_KEY] = ctx;
+}
+
+export function readModeFromGlobalThis(): ModeContext {
+	return (globalThis as any)[GLOBAL_MODE_KEY] ?? defaultModeContext;
+}
+
 // ── API ──────────────────────────────────────────────────────────────────
 
 /**
@@ -42,6 +58,7 @@ export const modeContextStore = new AsyncLocalStorage<ModeContext>();
  * will see this context.
  */
 export function runWithModeContext<T>(ctx: ModeContext, fn: () => T): T {
+	writeModeToGlobalThis(ctx);
 	return modeContextStore.run(ctx, fn);
 }
 

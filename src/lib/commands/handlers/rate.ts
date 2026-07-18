@@ -3,7 +3,7 @@
  * Usage: /rate <wordId> <rating>
  */
 
-import { processReview, Rating } from '@/lib/fsrs/scheduler';
+import { processReview, Rating } from '../../fsrs/scheduler';
 import type { CommandHandler, CommandResult } from '../executor';
 
 const RATING_NAMES: Record<number, string> = {
