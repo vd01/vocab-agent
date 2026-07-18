@@ -5042,6 +5042,7 @@ dependencies = [
  "tauri-plugin-log",
  "tauri-plugin-notification",
  "tokio",
+ "url",
 ]
 
 [[package]]

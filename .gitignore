@@ -58,6 +58,7 @@ scripts/*.js
 
 # dev logs
 dev-server.log
+server.log
 
 # Windows scripts (local only)
 restart.bat

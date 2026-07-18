@@ -52,7 +52,12 @@ pub fn config_set(
     if new_cfg.server_url != old_cfg.server_url && !new_cfg.server_url.is_empty() {
         let url = new_cfg.server_url.trim_end_matches('/');
         if let Some(win) = app.get_webview_window("main") {
-            let _ = win.eval(format!("window.location.href = '{}'" , url));
+            // Use Tauri's native navigate() instead of win.eval("window.location.href = ...").
+            // eval-based navigation can be blocked by webview security policies when
+            // crossing security boundaries (e.g. HTTPS → HTTP localhost).
+            if let Ok(parsed) = url.parse::<url::Url>() {
+                let _ = win.navigate(parsed);
+            }
             let _ = win.show();
             let _ = win.set_focus();
         }

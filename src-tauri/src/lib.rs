@@ -160,7 +160,12 @@ pub fn run() {
 
                     if connected {
                         if let Some(win) = app_handle.get_webview_window("main") {
-                            let _ = win.eval(format!("window.location.href = '{}'", url));
+                            // Use Tauri's native navigate() instead of eval("window.location.href = ...").
+                            // eval-based navigation can be blocked by webview security policies
+                            // when crossing security boundaries (e.g. HTTPS → HTTP localhost).
+                            if let Ok(parsed) = url.parse::<url::Url>() {
+                                let _ = win.navigate(parsed);
+                            }
                             let _ = win.show();
                             let _ = win.set_focus();
                         }
