@@ -233,14 +233,14 @@ export function registerTeacherTools(pi: ExtensionAPI) {
 		name: "mdx-lookup",
 		label: "MDX Lookup",
 		description:
-			"查用户安装的 MDX 词典（牛津高阶 OALD、朗文当代 LDOCE 等），获取完整权威释义。",
+			"查用户安装的 MDX 词典（新牛津英汉双解 oald、朗文当代英汉双解 ldoce、韦氏高阶 merriam），获取完整权威释义。",
 		promptSnippet: "查 MDX 权威词典释义",
 		promptGuidelines: [
 			"Use mdx-lookup when the user needs authoritative dictionary definitions from their installed MDX files (OALD, LDOCE, etc.).",
 		],
 		parameters: Type.Object({
 			word: Type.String({ description: "要查询的单词" }),
-			dict: Type.Optional(Type.String({ description: "指定词典名（如 oald9、ldoce6），留空查所有" })),
+			dict: Type.Optional(Type.String({ description: "指定词典 ID（oald / ldoce / merriam），留空查所有" })),
 		}),
 		toolModule: `${TOOL_MODULE}/mdx-lookup`,
 		toolExport: "mdxLookupTool",

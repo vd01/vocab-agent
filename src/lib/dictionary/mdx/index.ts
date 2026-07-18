@@ -73,6 +73,25 @@ async function loadMdxFile(filePath: string, dictName: string): Promise<MdictFil
 let mdxSources: DictSource[] | null = null;
 
 /**
+ * Known MDX dictionary filename → short canonical ID mapping.
+ * Files not in this map use the filename as-is (lowercased, spaces → hyphens).
+ */
+const DICT_ID_MAP: Record<string, string> = {
+	'新牛津英汉双解大词典': 'oald',
+	'朗文当代英语词典英汉双解词典': 'ldoce',
+	'韦氏高阶学习词典': 'merriam',
+};
+
+function deriveDictId(filename: string): string {
+	const base = path.basename(filename, '.mdx');
+	return DICT_ID_MAP[base] ?? base.toLowerCase().replace(/\s+/g, '-');
+}
+
+function deriveDictLabel(filename: string): string {
+	return path.basename(filename, '.mdx');
+}
+
+/**
  * Scan data/mdx/ for *.mdx files and create a DictSource for each.
  * Results are cached after the first call.
  */
@@ -90,15 +109,16 @@ export async function scanMdxSources(): Promise<DictSource[]> {
 	for (const entry of entries) {
 		if (!entry.endsWith('.mdx')) continue;
 
-		const dictName = path.basename(entry, '.mdx');
+		const dictId = deriveDictId(entry);
+		const dictLabel = deriveDictLabel(entry);
 		const filePath = path.join(MDX_DIR, entry);
 
 		// Pre-load to verify it works
-		const mdict = await loadMdxFile(filePath, dictName);
+		const mdict = await loadMdxFile(filePath, dictId);
 		if (!mdict) continue;
 
 		sources.push({
-			name: `mdx:${dictName}`,
+			name: `mdx:${dictId}`,
 			available: async () => existsSync(filePath),
 			lookup: async (word: string) => {
 				const result = mdict.lookup(word);
@@ -107,7 +127,7 @@ export async function scanMdxSources(): Promise<DictSource[]> {
 				// Return only a text summary for DictEntry; full HTML requires
 				// the standalone mdx-lookup tool.
 				const mdxEntries: DictEntry['mdxEntries'] = [{
-					dict: dictName,
+					dict: dictId,
 					html: result.html ?? result.definition ?? '',
 					text: result.text ?? result.definition ?? '',
 				}];
@@ -116,7 +136,7 @@ export async function scanMdxSources(): Promise<DictSource[]> {
 					word,
 					translation: result.text ? result.text.slice(0, 200) : '',
 					mdxEntries,
-					source: `mdx:${dictName}`,
+					source: `mdx:${dictId}`,
 				};
 			},
 		});

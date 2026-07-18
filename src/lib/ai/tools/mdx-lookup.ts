@@ -11,13 +11,13 @@ import { mdxLookupAll, scanMdxSources } from '../../dictionary/mdx/index';
  */
 export const mdxLookupTool = defineTool({
 	description:
-		'查用户安装的 MDX 词典（牛津高阶 OALD、朗文当代 LDOCE 等），获取完整权威释义（HTML 格式）。用于获取详细的英文释义、用法说明和例句。',
+		'查用户安装的 MDX 词典（新牛津英汉双解 oald、朗文当代英汉双解 ldoce、韦氏高阶 merriam），获取完整权威释义。用于获取详细的英文释义、用法说明和例句。',
 	inputSchema: z.object({
 		word: z.string().describe('要查询的单词'),
 		dict: z
 			.string()
 			.optional()
-			.describe('指定词典名（如 oald9、ldoce6），留空则查询所有已安装的 MDX 词典'),
+			.describe('指定词典 ID（oald / ldoce / merriam），留空查所有已安装词典'),
 	}),
 	execute: async ({ word, dict }) => {
 		// Check if any sources are available
