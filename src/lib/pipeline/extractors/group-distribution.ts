@@ -1,5 +1,5 @@
-import { db } from '@/lib/db';
-import { wordGroups, wordGroupMembers } from '@/lib/db/schema';
+import { db } from '../../db';
+import { wordGroups, wordGroupMembers } from '../../db/schema';
 import { eq, sql } from 'drizzle-orm';
 import type { Extractor } from './registry';
 

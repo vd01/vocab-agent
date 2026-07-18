@@ -1,4 +1,4 @@
-import { getDailyStats } from '@/lib/fsrs/scheduler';
+import { getDailyStats } from '../../fsrs/scheduler';
 import type { Extractor } from './registry';
 
 export const dailyStatsExtractor: Extractor = {

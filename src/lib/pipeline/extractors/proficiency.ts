@@ -1,4 +1,4 @@
-import { getProficiencyDistribution } from '@/lib/fsrs/scheduler';
+import { getProficiencyDistribution } from '../../fsrs/scheduler';
 import type { Extractor } from './registry';
 
 export const proficiencyExtractor: Extractor = {

@@ -1,5 +1,5 @@
-import { db } from '@/lib/db';
-import { words } from '@/lib/db/schema';
+import { db } from '../../db';
+import { words } from '../../db/schema';
 import { sql } from 'drizzle-orm';
 import type { Extractor } from './registry';
 

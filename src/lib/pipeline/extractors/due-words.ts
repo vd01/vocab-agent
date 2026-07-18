@@ -1,4 +1,4 @@
-import { client } from '@/lib/db';
+import { client } from '../../db';
 import type { Extractor } from './registry';
 
 function toUnixSec(date: Date): number {
@@ -10,7 +10,7 @@ export const dueWordsExtractor: Extractor = {
   description: '今日待复习单词数量（基于每个词的最新 review 记录）',
   async extract() {
     // Use getDailyQueueInfo which includes release logic
-    const { getDailyQueueInfo } = await import('@/lib/fsrs/scheduler');
+    const { getDailyQueueInfo } = await import('../../fsrs/scheduler');
     const queueInfo = await getDailyQueueInfo();
 
     return {
