@@ -244,10 +244,13 @@ export function registerTeacherTools(pi: ExtensionAPI) {
 		}),
 		toolModule: `${TOOL_MODULE}/mdx-lookup`,
 		toolExport: "mdxLookupTool",
-		summarizeResult: (r, p) =>
-			r.type === "mdx-found"
-				? `MDX 词典中找到 ${p.word}（${r.entryCount} 条）`
-				: `MDX 词典中未找到 ${p.word}`,
+		summarizeResult: (r, p) => {
+			if (r.type !== "mdx-found") return `MDX 词典中未找到 ${p.word}`;
+			const lines = r.entries.map(
+				(e: { dict: string; text: string }) => `[${e.dict}] ${e.text.slice(0, 300)}`,
+			);
+			return lines.join('\n');
+		},
 	});
 	// ── vocab-stats ──────────────────────────────────────────────────────
 	wrapTool({
