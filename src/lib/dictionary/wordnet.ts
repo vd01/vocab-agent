@@ -28,9 +28,9 @@ export interface WordNetSemanticRelations {
 // ── WNDB path ────────────────────────────────────────────────────────────
 
 function getDictPath(): string {
-	// wordnet-db exports the dict directory
-	const mod = require('wordnet-db');
-	return mod.path as string;
+	// Use require.resolve to get the real path, avoiding symlink/junction issues
+	const pkgDir = path.dirname(require.resolve('wordnet-db/package.json'));
+	return path.join(pkgDir, 'dict');
 }
 
 // ── File readers ─────────────────────────────────────────────────────────
