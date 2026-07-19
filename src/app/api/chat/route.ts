@@ -86,6 +86,7 @@ function createSSEStream(
 	const encoder = new TextEncoder();
 	let aborted = false;
 	let eventCount = 0;
+	let hasTextContent = false;
 
 	return new ReadableStream({
 		async start(controller) {
@@ -102,6 +103,7 @@ function createSSEStream(
 							if (!ae) break;
 
 							if (ae.type === "text_delta") {
+								hasTextContent = true;
 								controller.enqueue(
 									encoder.encode(
 										formatSSE("text-delta", {
@@ -184,6 +186,19 @@ function createSSEStream(
 							console.log(
 								`[Chat SSE] agent-settled (total events: ${eventCount})`,
 							);
+							if (!hasTextContent) {
+								console.error(
+									`[Chat SSE] ⚠️ Agent settled with NO text output — model may be misconfigured`,
+								);
+								controller.enqueue(
+									encoder.encode(
+										formatSSE("error", {
+											message:
+												"AI 未生成任何回复，可能是模型配置错误。请检查 OPENAI_API_KEY 和 OPENAI_BASE_URL 是否正确设置。",
+										}),
+									),
+								);
+							}
 							controller.enqueue(
 								encoder.encode(formatSSE("agent-settled", {})),
 							);
