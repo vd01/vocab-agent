@@ -24,7 +24,6 @@ function dictLabel(id: string): string {
 	return DICT_LABELS[id] ?? id;
 }
 
-/** Clean HTML leftovers and normalize whitespace. */
 function cleanText(raw: string): string {
 	return raw
 		.replace(/<[^>]*>/g, '')
@@ -34,54 +33,54 @@ function cleanText(raw: string): string {
 		.replace(/&gt;/g, '>')
 		.replace(/&quot;/g, '"')
 		.replace(/&#39;/g, "'")
-		.replace(/\s+/g, ' ')
+		.replace(/\r\n/g, '\n')
+		.replace(/\n{3,}/g, '\n\n')
 		.trim();
-}
-
-/** Split text into segments: numbered definitions and examples. */
-function segmentText(text: string): Array<{ type: 'def' | 'example'; text: string }> {
-	const lines = text.split(/\n(?=\d+\.?\s)/);
-	return lines
-		.map((line) => line.trim())
-		.filter(Boolean)
-		.map((line) => {
-			const isExample = line.includes('—') || line.includes('…');
-			return {
-				type: isExample ? ('example' as const) : ('def' as const),
-				text: line,
-			};
-		});
 }
 
 export default function MdxDefinitionCard({ word, entries }: MdxDefinitionCardProps) {
 	const [activeIdx, setActiveIdx] = useState(0);
-	const activeDict = entries[activeIdx]?.dict ?? '';
 	const activeEntry = entries[activeIdx];
 
 	if (entries.length === 0) {
 		return (
-			<div className="p-3 text-sm text-muted-foreground">
+			<div style={{ padding: 12, fontSize: 14, color: '#888' }}>
 				未找到 &quot;{word}&quot; 的释义
 			</div>
 		);
 	}
 
-	const segments = activeEntry ? segmentText(cleanText(activeEntry.text)) : [];
-
 	return (
-		<div className="my-2 rounded-lg border bg-card text-card-foreground shadow-sm">
-			{/* Header */}
-			<div className="flex items-center gap-1 border-b px-3 py-2">
-				<span className="mr-2 text-sm font-semibold">📖 {word}</span>
+		<div style={{
+			margin: '8px 0',
+			borderRadius: 8,
+			border: '1px solid #e5e7eb',
+			background: '#fff',
+			fontSize: 14,
+			lineHeight: 1.6,
+		}}>
+			{/* Tabs */}
+			<div style={{
+				display: 'flex',
+				gap: 4,
+				padding: '8px 12px',
+				borderBottom: '1px solid #e5e7eb',
+				alignItems: 'center',
+			}}>
+				<span style={{ fontWeight: 600, marginRight: 8 }}>📖 {word}</span>
 				{entries.map((entry, i) => (
 					<button
 						key={entry.dict}
 						onClick={() => setActiveIdx(i)}
-						className={`rounded px-2 py-0.5 text-xs transition-colors ${
-							i === activeIdx
-								? 'bg-primary text-primary-foreground'
-								: 'bg-muted hover:bg-muted-foreground/20'
-						}`}
+						style={{
+							padding: '2px 8px',
+							borderRadius: 4,
+							border: 'none',
+							cursor: 'pointer',
+							fontSize: 12,
+							background: i === activeIdx ? '#3b82f6' : '#f3f4f6',
+							color: i === activeIdx ? '#fff' : '#374151',
+						}}
 					>
 						{dictLabel(entry.dict)}
 					</button>
@@ -89,35 +88,25 @@ export default function MdxDefinitionCard({ word, entries }: MdxDefinitionCardPr
 			</div>
 
 			{/* Body */}
-			<div className="max-h-96 overflow-y-auto px-3 py-2 text-sm leading-relaxed">
-				{segments.length > 0 ? (
-					<ul className="list-none space-y-1.5">
-						{segments.map((seg, i) => (
-							<li
-								key={i}
-								className={`pl-1 ${
-									seg.type === 'example'
-										? 'ml-4 text-muted-foreground italic'
-										: ''
-								}`}
-							>
-								{seg.type === 'def' && (
-									<span className="mr-1 font-medium text-foreground/60">
-										•
-									</span>
-								)}
-								{seg.text}
-							</li>
-						))}
-					</ul>
-				) : (
-					<p className="text-muted-foreground">{cleanText(activeEntry.text)}</p>
-				)}
+			<div style={{
+				maxHeight: 400,
+				overflowY: 'auto',
+				padding: '12px',
+				whiteSpace: 'pre-wrap',
+				wordBreak: 'break-word',
+				fontSize: 13,
+			}}>
+				{activeEntry ? cleanText(activeEntry.text) : '无内容'}
 			</div>
 
 			{/* Footer */}
-			<div className="border-t px-3 py-1 text-xs text-muted-foreground">
-				{dictLabel(activeDict)} · {entries.length} 本词典
+			<div style={{
+				borderTop: '1px solid #e5e7eb',
+				padding: '4px 12px',
+				fontSize: 11,
+				color: '#9ca3af',
+			}}>
+				{dictLabel(activeEntry?.dict ?? '')} · {entries.length} 本词典
 			</div>
 		</div>
 	);
