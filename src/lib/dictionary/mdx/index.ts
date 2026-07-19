@@ -10,7 +10,7 @@
 
 import type { DictSource, DictEntry } from '../types';
 import path from 'path';
-import { existsSync, readdirSync } from 'fs';
+import { existsSync, readdirSync, readFileSync } from 'fs';
 
 // ── Types ────────────────────────────────────────────────────────────────
 
@@ -47,49 +47,57 @@ function withSilentConsole<T>(fn: () => T): T {
 
 // ── Loader ───────────────────────────────────────────────────────────────
 
-/** Load an MDX file using mdict-js. Returns null on failure. */
+/** Load an MDX file using js-mdict. Returns null on failure. */
 async function loadMdxFile(filePath: string): Promise<MdictFile | null> {
 	return withSilentConsole(async () => {
 		try {
-			const module = await import('mdict-js');
-			const Mdict = module.default;
-			const mdict = new Mdict(filePath);
+			const { MDX } = await import('js-mdict');
+			const mdict = new MDX(filePath);
+
+			// Try to load CSS for inline injection
+			let inlineStyle = '';
+			const cssPath = path.join(MDX_DIR, 'oalecd9.css');
+			if (existsSync(cssPath)) {
+				try {
+					inlineStyle = readFileSync(cssPath, 'utf-8');
+				} catch {
+					// CSS not extractable — use raw HTML
+				}
+			}
 
 			return {
 				lookup(word: string) {
 					return withSilentConsole(() => {
 						try {
 							const result = mdict.lookup(word);
-							if (!result) return null;
-							let text = '';
-							let html = '';
-							try {
-								text = (mdict.parse_defination as ((def: string) => string))(result.definition);
-								html = result.definition ?? '';
-							} catch {
-								html = result.definition ?? '';
+							if (!result || !result.definition) return null;
+							const rawDef = result.definition;
+
+							// Inline CSS and strip script tags
+							let html = rawDef;
+							if (inlineStyle) {
+								html = html.replace(
+									/<link[^>]*href="oalecd9\.css"[^>]*\/?>/gi,
+									`<style>${inlineStyle}</style>`,
+								);
+								// Remove JS script references (not needed without .mdd)
+								html = html.replace(
+									/<script[^>]*src="oalecd9\.js"[^>]*><\/script>/gi,
+									'',
+								);
 							}
-							return {
-								definition: result.definition,
-								html: html || result.definition || '',
-								text: text || result.definition || '',
-							};
+
+							// js-mdict doesn't have parse_defination; extract text from HTML
+							const text = rawDef.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+
+							return { definition: rawDef, html, text };
 						} catch {
 							return null;
 						}
 					});
 				},
 				keys() {
-					return withSilentConsole(() => {
-						try {
-							const k = ((mdict as unknown) as Record<string, unknown>).keys as
-								| (() => string[])
-								| undefined;
-							return k?.call(mdict) ?? [];
-						} catch {
-							return [];
-						}
-					});
+					return withSilentConsole(() => []); // js-mdict keys via different API
 				},
 			};
 		} catch {

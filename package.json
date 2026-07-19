@@ -42,7 +42,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "drizzle-orm": "^0.45.2",
-    "mdict-js": "^10.0.1",
+    "js-mdict": "^7.0.0",
     "next": "^16.2.10",
     "react": "19.2.4",
     "react-dom": "19.2.4",
