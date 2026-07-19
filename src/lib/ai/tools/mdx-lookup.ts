@@ -58,10 +58,12 @@ export const mdxLookupTool = defineTool({
 			word: word.toLowerCase(),
 			entries: filtered.map((r) => ({
 				dict: r.dict,
-				html: r.html,
 				text: r.text,
+				// html kept out-of-band for frontend rendering only
 			})),
 			entryCount: filtered.length,
+			// Raw HTML goes here so Pi SDK doesn't log it in details
+			_html: filtered.map((r) => ({ dict: r.dict, html: r.html })),
 		};
 	},
 });
