@@ -50,6 +50,16 @@ export function hasToolRenderer(type: string): boolean {
 	return registry.has(type);
 }
 
+// ── Generative component registry integration ────────────────────────────
+
+import { MdxDefinitionCard } from "./MdxDefinitionCard";
+
+// Register MdxDefinitionCard with the generative DynamicRenderer
+componentRegistry.register(
+	"mdx-found",
+	MdxDefinitionCard as unknown as React.ComponentType<Record<string, unknown>>,
+);
+
 // ── Render function (replaces the old renderToolOutput) ──────────────────
 
 /**
