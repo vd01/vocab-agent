@@ -247,7 +247,7 @@ export function registerTeacherTools(pi: ExtensionAPI) {
 		summarizeResult: (r, p) => {
 			if (r.type !== "mdx-found") return `MDX 词典中未找到 ${p.word}`;
 			const lines = r.entries.map(
-				(e: { dict: string; text: string }) => `[${e.dict}] ${e.text.slice(0, 300)}`,
+				(e: { dict: string; text: string }) => `[${e.dict}] ${e.text}`,
 			);
 			return lines.join('\n');
 		},
