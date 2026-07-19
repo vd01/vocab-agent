@@ -25,11 +25,8 @@ const MDX_DIR = path.join(process.cwd(), 'data', 'mdx');
 
 /** Chinese filename → short canonical ID mapping. */
 const DICT_ID_MAP: Record<string, string> = {
-	'新牛津英汉双解大词典': 'oald',
-	'朗文当代英语词典英汉双解词典': 'ldoce',
-	'韦氏高阶学习词典': 'merriam',
+	'牛津高阶英汉双解词典（第9版）': 'oald',
 };
-
 function deriveDictId(filename: string): string {
 	const base = path.basename(filename, '.mdx');
 	return DICT_ID_MAP[base] ?? base.toLowerCase().replace(/\s+/g, '-');
