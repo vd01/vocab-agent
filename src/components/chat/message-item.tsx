@@ -75,7 +75,7 @@ export function MessageItem({
 				className={`flex gap-3 max-w-3xl w-full ${isUser ? "justify-end" : ""}`}
 			>
 				{!isUser && <AssistantAvatar />}
-				<div className={`min-w-0 ${isUser ? "max-w-[85%]" : "mr-auto"}`}>
+				<div className={`min-w-0 ${isUser ? "max-w-[85%]" : "max-w-[90%]"}`}>
 					{mergedParts.map((part, i) =>
 						renderPart(part, i, isUser, isLastReview),
 					)}
@@ -97,11 +97,13 @@ export function MessageItem({
 				</div>
 			</div>
 			{reviewData && (
-				<div className="max-w-lg w-full mt-1">
-					<ReviewSession
-						words={reviewData.words}
-						queueInfo={reviewData.queueInfo}
-					/>
+				<div className="w-full mt-1 pl-10 sm:pl-10">
+					<div className="max-w-lg w-full">
+						<ReviewSession
+							words={reviewData.words}
+							queueInfo={reviewData.queueInfo}
+						/>
+					</div>
 				</div>
 			)}
 		</div>
@@ -116,42 +118,24 @@ function renderPart(
 	isUser: boolean,
 	isLastReview: boolean,
 ): React.ReactNode {
-	if (part.type === "reasoning-group") {
-		return (
-			<details key={i} className="mt-2">
-				<summary className="text-xs text-muted-foreground cursor-pointer select-none">
-					思考过程（{part.count} 段）
-				</summary>
-				<div className="mt-1 text-xs text-muted-foreground whitespace-pre-wrap border-l-2 border-muted pl-2">
-					{part.text}
-				</div>
-			</details>
-		);
-	}
-
 	if (part.type === "batch-added") {
 		return <BatchAddedWords key={i} items={part.items} />;
 	}
 
 	if (part.type === "text") {
+		const text = part.text?.trim() ?? "";
+		if (!text) return null;
 		return isUser ? (
-			<UserTextBubble key={i} text={part.text} />
+			<UserTextBubble key={i} text={text} />
 		) : (
-			<AssistantTextBubble key={i} text={part.text} />
+			<AssistantTextBubble key={i} text={text} />
 		);
 	}
 
-	if (part.type === "reasoning") {
-		return (
-			<details key={i} className="mt-2">
-				<summary className="text-xs text-muted-foreground cursor-pointer select-none">
-					思考过程
-				</summary>
-				<div className="mt-1 text-xs text-muted-foreground whitespace-pre-wrap border-l-2 border-muted pl-2">
-					{part.text}
-				</div>
-			</details>
-		);
+	if (part.type === "reasoning" || part.type === "reasoning-group") {
+		// Reasoning is intentionally hidden in the chat UI — it is available in the
+		// debug panel if needed. Showing it here creates a redundant small bubble.
+		return null;
 	}
 
 	if (part.type === "tool") {
