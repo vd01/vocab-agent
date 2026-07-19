@@ -2,7 +2,7 @@
  * MdxSource — DictSource adapter for MDX dictionary files.
  *
  * Scans data/mdx/*.mdx, wraps each file as a DictSource.
- * Uses mdict-js (MIT) for parsing.
+ * Uses mdict-js (MIT) for parsing. Cache lives on globalThis to survive HMR.
  *
  * MDX content is lazily returned — not included in merge pipeline.
  * Use the standalone mdx-lookup tool for full HTML definitions.
@@ -35,68 +35,105 @@ function deriveDictId(filename: string): string {
 	return DICT_ID_MAP[base] ?? base.toLowerCase().replace(/\s+/g, '-');
 }
 
+// ── Log noise suppression ────────────────────────────────────────────────
+
+/** Suppress mdict-js internal console.log during ops. */
+function withSilentConsole<T>(fn: () => T): T {
+	const orig = console.log;
+	console.log = () => {};
+	try {
+		return fn();
+	} finally {
+		console.log = orig;
+	}
+}
+
 // ── Loader ───────────────────────────────────────────────────────────────
 
-/**
- * Load an MDX file using mdict-js.
- * Returns null if the file doesn't exist or the module can't be loaded.
- */
+/** Load an MDX file using mdict-js. Returns null on failure. */
 async function loadMdxFile(filePath: string): Promise<MdictFile | null> {
-	try {
-		const module = await import('mdict-js');
-		const Mdict = module.default;
-		const mdict = new Mdict(filePath);
+	return withSilentConsole(async () => {
+		try {
+			const module = await import('mdict-js');
+			const Mdict = module.default;
+			const mdict = new Mdict(filePath);
 
-		return {
-			lookup(word: string) {
-				try {
-					const result = mdict.lookup(word);
-					if (!result) return null;
-					let text = '';
-					let html = '';
-					try {
-						text = (mdict.parse_defination as ((def: string) => string))(result.definition);
-						html = result.definition ?? '';
-					} catch {
-						html = result.definition ?? '';
-					}
-					return { definition: result.definition, html, text };
-				} catch {
-					return null;
-				}
-			},
-			keys() {
-				try {
-					const k = ((mdict as unknown) as Record<string, unknown>).keys as (() => string[]) | undefined;
-					return k?.call(mdict) ?? [];
-				} catch {
-					return [];
-				}
-			},
-		};
-	} catch {
-		return null;
+			return {
+				lookup(word: string) {
+					return withSilentConsole(() => {
+						try {
+							const result = mdict.lookup(word);
+							if (!result) return null;
+							let text = '';
+							let html = '';
+							try {
+								text = (mdict.parse_defination as ((def: string) => string))(result.definition);
+								html = result.definition ?? '';
+							} catch {
+								html = result.definition ?? '';
+							}
+							return {
+								definition: result.definition,
+								html: html || result.definition || '',
+								text: text || result.definition || '',
+							};
+						} catch {
+							return null;
+						}
+					});
+				},
+				keys() {
+					return withSilentConsole(() => {
+						try {
+							const k = ((mdict as unknown) as Record<string, unknown>).keys as
+								| (() => string[])
+								| undefined;
+							return k?.call(mdict) ?? [];
+						} catch {
+							return [];
+						}
+					});
+				},
+			};
+		} catch {
+			return null;
+		}
+	});
+}
+
+// ── HMR-surviving cache (globalThis) ─────────────────────────────────────
+
+const CACHE_KEY = Symbol.for('vocab-agent:mdx-sources');
+
+interface MdxCache {
+	sources: DictSource[] | null;
+	loadPromise: Promise<DictSource[]> | null;
+}
+
+function getCache(): MdxCache {
+	const g = globalThis as Record<symbol, MdxCache>;
+	if (!g[CACHE_KEY]) {
+		g[CACHE_KEY] = { sources: null, loadPromise: null };
 	}
+	return g[CACHE_KEY];
 }
 
 // ── Source factory ───────────────────────────────────────────────────────
 
-let mdxSources: DictSource[] | null = null;
-let mdxLoadPromise: Promise<DictSource[]> | null = null;
-
 /**
  * Scan data/mdx/ for *.mdx files and create a DictSource for each.
- * Concurrent callers share a single initialization promise.
+ * Cache survives HMR reloads via globalThis.
  */
 export async function scanMdxSources(): Promise<DictSource[]> {
-	if (mdxSources !== null) return mdxSources;
-	if (mdxLoadPromise !== null) return mdxLoadPromise;
+	const cache = getCache();
+	if (cache.sources !== null) return cache.sources;
+	if (cache.loadPromise !== null) return cache.loadPromise;
 
-	mdxLoadPromise = (async () => {
+	cache.loadPromise = (async () => {
 		const sources: DictSource[] = [];
 
 		if (!existsSync(MDX_DIR)) {
-			mdxSources = sources;
+			cache.sources = sources;
 			return sources;
 		}
 
@@ -117,11 +154,13 @@ export async function scanMdxSources(): Promise<DictSource[]> {
 					const result = mdict.lookup(word);
 					if (!result) return null;
 
-					const mdxEntries: DictEntry['mdxEntries'] = [{
-						dict: dictId,
-						html: result.html || result.definition || '',
-						text: result.text || result.definition || '',
-					}];
+					const mdxEntries: DictEntry['mdxEntries'] = [
+						{
+							dict: dictId,
+							html: result.html || '',
+							text: result.text || '',
+						},
+					];
 
 					return {
 						word,
@@ -133,17 +172,20 @@ export async function scanMdxSources(): Promise<DictSource[]> {
 			});
 		}
 
-		mdxSources = sources;
+		cache.sources = sources;
+		console.log(`[mdx] Loaded ${sources.length} dictionary(s): ${sources.map(s => s.name).join(', ')}`);
 		return sources;
 	})();
 
-	return mdxLoadPromise;
+	return cache.loadPromise;
 }
 
 /**
  * Look up a word across all registered MDX sources.
  */
-export async function mdxLookupAll(word: string): Promise<Array<{ dict: string; html: string; text: string }>> {
+export async function mdxLookupAll(
+	word: string,
+): Promise<Array<{ dict: string; html: string; text: string }>> {
 	const sources = await scanMdxSources();
 	const results: Array<{ dict: string; html: string; text: string }> = [];
 
