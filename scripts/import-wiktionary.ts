@@ -12,6 +12,7 @@
 import { createClient } from '@libsql/client';
 import { createGunzip } from 'zlib';
 import { createReadStream, existsSync, mkdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from 'fs';
+import * as readline from 'readline';
 import path from 'path';
 
 const DATA_DIR = path.join(process.cwd(), 'data');
