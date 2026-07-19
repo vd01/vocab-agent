@@ -145,13 +145,13 @@ export function usePiChat(options: UsePiChatOptions): UsePiChatReturn {
 
 			// Add user message
 			const userMsg: UIMessage = {
-				id: `user-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+				id: `user-${crypto.randomUUID()}`,
 				role: "user",
 				parts: [{ type: "text", text }],
 			};
 
 			// Reset assistant accumulation
-			assistantIdRef.current = `asst-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+			assistantIdRef.current = `asst-${crypto.randomUUID()}`;
 			reasoningAccumRef.current = "";
 			partsRef.current = [];
 			currentTextIdxRef.current = null;
