@@ -17,12 +17,14 @@ interface WordCardProps {
   onFlip?: () => void;
   fixedHeight?: string;
   fixedWidth?: string;
+  /** When true, the card expands to fit its content instead of using a max-height. */
+  fitContent?: boolean;
   topRightSlot?: React.ReactNode;
   /** Optional ref to the front-face pronunciation button (e.g. for keyboard hotkey). */
   pronounceRef?: Ref<PronounceButtonHandle>;
 }
 
-export function WordCard({ wordId, word, phonetic, audioUrl, definition, examples, groups, flipped: controlledFlipped, onFlip, fixedHeight, fixedWidth, topRightSlot, pronounceRef }: WordCardProps) {
+export function WordCard({ wordId, word, phonetic, audioUrl, definition, examples, groups, flipped: controlledFlipped, onFlip, fixedHeight, fixedWidth, fitContent, topRightSlot, pronounceRef }: WordCardProps) {
   const [internalFlipped, setInternalFlipped] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
 
@@ -82,12 +84,16 @@ export function WordCard({ wordId, word, phonetic, audioUrl, definition, example
       */}
       <div
         className="grid w-full"
-        style={{
-          transformStyle: 'preserve-3d',
-          transition: 'transform 0.3s',
-          transform: isFlipped ? 'rotateY(180deg)' : 'rotateY(0deg)',
-          ...(fixedHeight ? { height: fixedHeight } : { maxHeight: '240px' }),
-        }}
+		style={{
+			transformStyle: 'preserve-3d',
+			transition: 'transform 0.3s',
+			transform: isFlipped ? 'rotateY(180deg)' : 'rotateY(0deg)',
+			...(fitContent
+				? {}
+				: fixedHeight
+					? { height: fixedHeight }
+					: { maxHeight: '240px' }),
+		}}
       >
         {/* Front face */}
         <Card
@@ -124,7 +130,7 @@ export function WordCard({ wordId, word, phonetic, audioUrl, definition, example
             ...(fixedHeight ? { height: fixedHeight } : {}),
           }}
         >
-          <CardContent className="p-3 sm:p-4 overflow-y-auto scrollbar-thin" style={fixedHeight ? { height: fixedHeight } : { maxHeight: '240px' }}>
+			<CardContent className={`p-3 sm:p-4 ${fitContent ? '' : 'overflow-y-auto scrollbar-thin'}`} style={fitContent ? {} : fixedHeight ? { height: fixedHeight } : { maxHeight: '240px' }}>
             <div className="space-y-3">
               <div className="flex items-center gap-2">
                 <h3 className="text-lg font-bold text-foreground">{word}</h3>

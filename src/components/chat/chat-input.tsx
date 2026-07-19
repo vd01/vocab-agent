@@ -195,7 +195,6 @@ export function ChatInput({
         <div className="hidden sm:block">
           <ReviewReminderToggle
             onReviewFromNotification={() => onReview?.()}
-            dueCount={dueCount}
           />
         </div>
         <button

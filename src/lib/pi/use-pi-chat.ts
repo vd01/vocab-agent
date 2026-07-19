@@ -103,8 +103,8 @@ export function usePiChat(options: UsePiChatOptions): UsePiChatReturn {
 		// Build parts in the order they appeared in the stream
 		for (const entry of partsRef.current) {
 			if (entry.kind === "text") {
-				if (entry.text) {
-					parts.push({ type: "text", text: entry.text });
+				if (entry.text?.trim()) {
+					parts.push({ type: "text", text: entry.text.trim() });
 				}
 			} else if (entry.kind === "tool") {
 				parts.push({

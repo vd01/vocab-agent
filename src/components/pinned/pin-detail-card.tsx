@@ -109,8 +109,8 @@ export function PinDetailCard({ pin, onUnpin, onArchive, onUnarchive, isArchived
           >
             <div className="flex items-center justify-between gap-1">
               <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-1.5">
-                  <span className="font-bold text-sm text-foreground truncate">{pin.word}</span>
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="font-bold text-sm text-foreground">{pin.word}</span>
                   {pin.phonetic && (
                     <Badge variant="secondary" className="text-[10px] px-1 py-0 shrink-0">
                       {pin.phonetic}

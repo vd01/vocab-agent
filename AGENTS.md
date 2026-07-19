@@ -15,6 +15,7 @@ Self-evolving English learning AI with dual-agent architecture (Teacher + Develo
 - `npm run lint` — ESLint (next/core-web-vitals + typescript)
 - `npm test` — unit tests (vitest, `src/**/*.test.ts`, 30s timeout)
 - `npm run test:e2e` — E2E tests (requires dev server running at `localhost:3088`, 120s timeout, set `E2E_BASE_URL` to override)
+- `npm run test:playwright` — Playwright E2E tests (`e2e/*.spec.ts`, auto-starts dev server via `playwright.config.ts`)
 - `npm run db:migrate` — run DB migrations (`npx tsx src/lib/db/migrate.ts`)
 - `npm run db:reset` — reset DB (`npx tsx src/lib/db/reset.ts`)
 - `npm run import-ecdict` — import ECDICT dictionary data
@@ -92,7 +93,7 @@ Self-evolving English learning AI with dual-agent architecture (Teacher + Develo
 - **`@libsql/client` not `better-sqlite3`** — native compilation fails; `serverExternalPackages: ['@libsql/client']` in next.config.ts is required.
 - **`component-registry.ts` is auto-generated** — editing it manually will be overwritten next time a component is registered.
 - **`generated/` is gitignored** — agent-generated code (tools, scripts, components) lives here and is not tracked.
-- **E2E tests need a running dev server** at `localhost:3088` (or set `E2E_BASE_URL`).
+- **E2E tests need a running dev server** at `localhost:3088` (or set `E2E_BASE_URL`). Playwright tests auto-start the server via `webServer` in `playwright.config.ts` and use the locally installed Chrome browser (`channel: 'chrome'`) to avoid downloading the Playwright Chromium bundle.
 - **Node.js 20.x** — AI SDK may warn `EBADENGINE` (wants >=22), but it works. Ignore the warning.
 - **WordNet data is loaded lazily** from `wordnet-db` npm package — first lookup takes 2-3 seconds (parsing index/data files), subsequent calls are fast.
 - **Wiktionary REST** goes through `en.wiktionary.org/api/rest_v1` — CC-BY-SA 4.0, attribution required. Cache results locally where possible.

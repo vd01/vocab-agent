@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Teacher Tools — registered via wrapTool() to eliminate boilerplate.
  *
  * Each tool's execute logic lives in src/lib/ai/tools/*.ts.
@@ -12,6 +12,54 @@ import { StringEnum } from "@earendil-works/pi-ai";
 import { wrapTool } from "../tools/wrap-tool";
 
 const TOOL_MODULE = "../../src/lib/ai/tools";
+
+/** Format vocab-lookup result as rich text for the LLM to synthesize a reply.
+ *  The UI no longer renders a WordCard, so the LLM needs the full data.
+ */
+function formatVocabLookupResult(result: any, word: string): string {
+	if (result.type === "not-found") {
+		return `未找到单词 ${word}`;
+	}
+
+	const lines: string[] = [];
+	lines.push(`查询结果：${result.word}`);
+
+	if (result.phonetic) lines.push(`音标：${result.phonetic}`);
+
+	if (result.type === "found") {
+		lines.push(`状态：已在词库中`);
+		if (result.groups?.length) lines.push(`分组：${result.groups.join(", ")}`);
+		if (result.definition) lines.push(`释义：${result.definition}`);
+		if (result.examples) {
+			const examples =
+				typeof result.examples === "string"
+					? result.examples
+					: JSON.stringify(result.examples);
+			lines.push(`例句：${examples}`);
+		}
+	} else if (result.type === "dict-found") {
+		lines.push(`状态：不在词库中`);
+		if (result.translation) lines.push(`中文释义：${result.translation}`);
+		if (result.definitions?.length) {
+			for (const group of result.definitions) {
+				const defs = group.definitions
+					?.map((d: any, i: number) => `${i + 1}. ${d.definition}${d.example ? ` 例：${d.example}` : ""}`)
+					.join("; ");
+				if (defs) lines.push(`${group.partOfSpeech ?? "释义"}：${defs}`);
+			}
+		}
+		if (result.synonyms?.length) lines.push(`同义词：${result.synonyms.join(", ")}`);
+		if (result.antonyms?.length) lines.push(`反义词：${result.antonyms.join(", ")}`);
+	}
+
+	if (result.collins) lines.push(`Collins 星级：${"★".repeat(result.collins)}`);
+	if (result.tag) lines.push(`考试标签：${result.tag}`);
+	if (result.bnc) lines.push(`BNC 词频：${result.bnc}`);
+	if (result.frq) lines.push(`当代词频：${result.frq}`);
+	if (result.exchange) lines.push(`变形：${result.exchange}`);
+
+	return lines.join("\n");
+}
 
 export function registerTeacherTools(pi: ExtensionAPI) {
 	// ── fsrs-review ──────────────────────────────────────────────────────
@@ -77,12 +125,7 @@ export function registerTeacherTools(pi: ExtensionAPI) {
 		}),
 		toolModule: `${TOOL_MODULE}/vocab-lookup`,
 		toolExport: "vocabLookupTool",
-		summarizeResult: (r, p) =>
-			r.type === "found"
-				? `词库中找到 ${p.word}`
-				: r.type === "dict-found"
-					? `词典中找到 ${p.word}（不在词库中）`
-					: `未找到单词 ${p.word}`,
+		summarizeResult: (r, p) => formatVocabLookupResult(r, p.word),
 	});
 
 	// ── add-word ─────────────────────────────────────────────────────────

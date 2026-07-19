@@ -11,13 +11,10 @@ import {
 interface ReviewReminderToggleProps {
 	/** Callback when notification is clicked — typically triggers /review */
 	onReviewFromNotification?: () => void;
-	/** Current due count to display as badge */
-	dueCount?: number;
 }
 
 export function ReviewReminderToggle({
 	onReviewFromNotification,
-	dueCount,
 }: ReviewReminderToggleProps) {
 	const [enabled, setEnabled] = useState(false);
 	const [permissionStatus, setPermissionStatus] = useState<
@@ -208,13 +205,8 @@ export function ReviewReminderToggle({
 						/>
 					</svg>
 				)}
-				{enabled ? "提醒中" : "提醒"}
-				{dueCount !== undefined && dueCount > 0 && (
-					<span className="inline-flex items-center justify-center min-w-[16px] h-4 rounded-full bg-red-500 text-white text-[10px] font-bold px-1">
-						{dueCount > 99 ? "99+" : dueCount}
-					</span>
-				)}
-			</button>
+			{enabled ? "提醒中" : "提醒"}
+		</button>
 
 			{/* Settings gear — only show when enabled */}
 			{enabled && (
