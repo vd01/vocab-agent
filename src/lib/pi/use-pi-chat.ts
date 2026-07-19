@@ -129,11 +129,12 @@ export function usePiChat(options: UsePiChatOptions): UsePiChatReturn {
 	const updateAssistantInMessages = useCallback(() => {
 		const assistantMsg = buildAssistantMessage();
 		setMessages((prev) => {
-			const idx = prev.findIndex((m) => m.id === assistantIdRef.current);
-			if (idx === -1) return [...prev, assistantMsg];
-			const next = [...prev];
-			next[idx] = assistantMsg;
-			return next;
+			// Deduplicate: replace first match, remove any others with same ID
+			const firstIdx = prev.findIndex((m) => m.id === assistantIdRef.current);
+			if (firstIdx === -1) return [...prev, assistantMsg];
+			return prev.map((m, i) =>
+				i === firstIdx ? assistantMsg : m.id === assistantIdRef.current ? null : m,
+			).filter(Boolean) as UIMessage[];
 		});
 	}, [buildAssistantMessage]);
 
@@ -142,6 +143,10 @@ export function usePiChat(options: UsePiChatOptions): UsePiChatReturn {
 		(inputData: { text: string }) => {
 			const text = inputData.text.trim();
 			if (!text) return;
+
+			// Abort any in-progress stream before starting a new one
+			abortRef.current?.abort();
+			abortRef.current = null;
 
 			// Add user message
 			const userMsg: UIMessage = {

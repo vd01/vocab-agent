@@ -28,9 +28,26 @@ export interface WordNetSemanticRelations {
 // ── WNDB path ────────────────────────────────────────────────────────────
 
 function getDictPath(): string {
-	// Use require.resolve to get the real path, avoiding symlink/junction issues
-	const pkgDir = path.dirname(require.resolve('wordnet-db/package.json'));
-	return path.join(pkgDir, 'dict');
+	// Try wordnet-db's exported path first (most reliable when not bundled)
+	try {
+		const mod = require('wordnet-db');
+		if (mod && typeof mod.path === 'string' && fs.existsSync(mod.path)) {
+			return mod.path;
+		}
+	} catch {
+		// wordnet-db not available or path invalid
+	}
+
+	// Fallback: resolve via package.json location
+	try {
+		const pkgDir = path.dirname(require.resolve('wordnet-db/package.json'));
+		const dictPath = path.join(pkgDir, 'dict');
+		if (fs.existsSync(dictPath)) return dictPath;
+	} catch {
+		// require.resolve failed
+	}
+
+	throw new Error('wordnet-db dict directory not found');
 }
 
 // ── File readers ─────────────────────────────────────────────────────────
@@ -258,8 +275,8 @@ export const wordnetSource: DictSource = {
 	name: 'wordnet',
 	available: async () => {
 		try {
-			const mod = require('wordnet-db');
-			return mod && typeof mod.path === 'string';
+			getDictPath(); // throws if dict directory not found
+			return true;
 		} catch {
 			return false;
 		}

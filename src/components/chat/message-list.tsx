@@ -130,7 +130,16 @@ export function MessageList({ messages, isLoading, hasMore, loadingMore, onLoadM
         </div>
       )}
       <div className="flex flex-col">
-        {messages.map((message, i) => {
+        {(() => {
+          // Deduplicate messages by ID to prevent React duplicate key warnings
+          const seen = new Set<string>();
+          const unique = messages.filter((m) => {
+            if (seen.has(m.id)) return false;
+            seen.add(m.id);
+            return true;
+          });
+          return { unique };
+        })().unique.map((message, i, unique) => {
           // Find the last message that contains a review session (due-words)
           const isLastReview = (() => {
             // Check if this message has a due-words tool output (AI SDK v7: type starts with 'tool-')
@@ -140,8 +149,8 @@ export function MessageList({ messages, isLoading, hasMore, loadingMore, onLoadM
             if (!hasReview) return true; // Not a review — pass through (doesn't matter)
 
             // Check if any later message also has a review
-            for (let j = i + 1; j < messages.length; j++) {
-              const laterHasReview = messages[j].parts?.some(
+            for (let j = i + 1; j < unique.length; j++) {
+              const laterHasReview = unique[j].parts?.some(
                 (p: any) => typeof p.type === 'string' && p.type.startsWith('tool-') && p.state === 'output-available' && p.output?.type === 'due-words'
               );
               if (laterHasReview) return false;
@@ -153,7 +162,7 @@ export function MessageList({ messages, isLoading, hasMore, loadingMore, onLoadM
             <MessageItem
               key={message.id}
               message={message}
-              isLastAssistant={message.role === 'assistant' && i === messages.length - 1}
+              isLastAssistant={message.role === 'assistant' && i === unique.length - 1}
               isStreaming={isLoading}
               isLastReview={isLastReview}
             />
