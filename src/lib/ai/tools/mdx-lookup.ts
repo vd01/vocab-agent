@@ -53,17 +53,17 @@ export const mdxLookupTool = defineTool({
 			};
 		}
 
+		// Strip HTML tags from text for clean LLM consumption
+		const stripHtml = (s: string) => s.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+
 		return {
 			type: 'mdx-found',
 			word: word.toLowerCase(),
 			entries: filtered.map((r) => ({
 				dict: r.dict,
-				text: r.text,
-				// html kept out-of-band for frontend rendering only
+				text: stripHtml(r.text || r.html),
 			})),
 			entryCount: filtered.length,
-			// Raw HTML goes here so Pi SDK doesn't log it in details
-			_html: filtered.map((r) => ({ dict: r.dict, html: r.html })),
 		};
 	},
 });
