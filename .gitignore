@@ -67,6 +67,9 @@ restart.bat
 stop.bat
 
 # pi-vocab runtime data (not tracked)
+.pi-vocab/auth.json
+.pi-vocab/models.json
+.pi-vocab/models-store.json
 .pi-vocab/npm/
 .pi-vocab/sessions/
 .pi-vocab/tmp/
@@ -83,3 +86,7 @@ src-tauri/.cargo/
 # temp/debug scripts at project root
 /query-count.ts
 /20260716210531.jpg
+
+# dev server logs
+server.log
+tee
