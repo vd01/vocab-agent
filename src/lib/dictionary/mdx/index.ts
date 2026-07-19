@@ -119,13 +119,13 @@ export async function scanMdxSources(): Promise<DictSource[]> {
 
 					const mdxEntries: DictEntry['mdxEntries'] = [{
 						dict: dictId,
-						html: result.html ?? result.definition ?? '',
-						text: result.text ?? result.definition ?? '',
+						html: result.html || result.definition || '',
+						text: result.text || result.definition || '',
 					}];
 
 					return {
 						word,
-						translation: result.text ? result.text.slice(0, 200) : '',
+						translation: (result.text || result.definition || '').slice(0, 200),
 						mdxEntries,
 						source: `mdx:${dictId}`,
 					};
