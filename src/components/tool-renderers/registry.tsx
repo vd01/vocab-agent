@@ -52,7 +52,7 @@ export function hasToolRenderer(type: string): boolean {
 
 // ── Generative component registry integration ────────────────────────────
 
-import { MdxDefinitionCard } from "./MdxDefinitionCard";
+import MdxDefinitionCard from "./MdxDefinitionCard";
 
 // Register MdxDefinitionCard with the generative DynamicRenderer
 componentRegistry.register(
