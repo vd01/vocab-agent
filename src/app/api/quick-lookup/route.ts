@@ -13,10 +13,10 @@ import { NextRequest } from "next/server";
 /**
  * Quick Lookup API — optimized for the Tauri quick-lookup window.
  *
- * Uses lookupWordFast() which returns offline data (ECDICT + WordNet + MDX)
- * immediately. Online sources (FreeDict + Wiktionary) run in the background
- * to warm the cache for future lookups, but the response is sent immediately
- * with offline data — no waiting for network.
+ * Returns ECDICT data immediately (~10ms). Background sources (WordNet,
+ * FreeDict, Wiktionary, MDX) run asynchronously to warm the cache.
+ * The frontend calls /api/quick-lookup-enrich afterwards to get the
+ * full enriched result.
  */
 export async function GET(req: NextRequest) {
 	const word = req.nextUrl.searchParams.get("word")?.trim().toLowerCase();
@@ -33,9 +33,8 @@ export async function GET(req: NextRequest) {
 		lookupWordFast(word),
 	]);
 
-	// Online enrichment runs in background (lookupWordFast returns it as
-	// the second tuple element) — we ignore it here and let it warm the
-	// cache. Next lookup for the same word will hit the enriched cache.
+	// Background enrichment (lookupWordFast's second tuple element) runs
+	// in the background to warm the cache — we don't await it here.
 
 	// Build response
 	const fsrsStateLabel =

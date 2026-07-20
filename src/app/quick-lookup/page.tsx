@@ -174,19 +174,39 @@ export default function QuickLookupPage() {
 
 		try {
 			const baseUrl = await getBaseUrl();
-			const url = baseUrl
-				? `${baseUrl}/api/quick-lookup?word=${encodeURIComponent(trimmed)}`
-				: `/api/quick-lookup?word=${encodeURIComponent(trimmed)}`;
+			const base = baseUrl
+				? `${baseUrl}/api/quick-lookup`
+				: "/api/quick-lookup";
 
-			const res = await fetch(url, { signal: controller.signal });
-			const data = await res.json();
+			// Phase 1: fast ECDICT-only result (~10ms)
+			const fastRes = await fetch(
+				`${base}?word=${encodeURIComponent(trimmed)}`,
+				{ signal: controller.signal },
+			);
+			const fastData = await fastRes.json();
 
-			// Only update if this is still the latest request
-			if (lookupAbortRef.current === controller) {
-				setResult(data);
+			if (lookupAbortRef.current !== controller) return;
+			setResult(fastData);
+			setLoading(false);
+
+			// Phase 2: enriched result with online sources (background)
+			try {
+				const enrichRes = await fetch(
+					`${base}-enrich?word=${encodeURIComponent(trimmed)}`,
+					{ signal: controller.signal },
+				);
+				const enrichData = await enrichRes.json();
+
+				// Only update if still the same word and no newer request
+				if (lookupAbortRef.current === controller) {
+					setResult((prev) =>
+						prev ? { ...prev, ...enrichData } : prev,
+					);
+				}
+			} catch {
+				// Enrichment failed — fast result is already shown, silently ignore
 			}
 		} catch (err) {
-			// Ignore abort errors — a newer request has taken over
 			if (err instanceof DOMException && err.name === "AbortError") return;
 
 			if (lookupAbortRef.current === controller) {
@@ -212,9 +232,6 @@ export default function QuickLookupPage() {
 					actions: [],
 					allGroups: [],
 				});
-			}
-		} finally {
-			if (lookupAbortRef.current === controller) {
 				setLoading(false);
 			}
 		}
