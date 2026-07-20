@@ -115,14 +115,19 @@ function extractMetadata(
 
 /**
  * Look up a word from Wiktionary REST API.
+ * Fetches definition and summary endpoints in parallel for speed.
  * Returns structured data: definitions by POS, and (in Phase C) etymology/forms/IPA.
  */
 export async function wiktionaryRestLookup(
 	word: string,
 ): Promise<WiktionaryEntry | null> {
-	// Primary: structured definition endpoint
-	const def = await fetchDefinition(word);
+	// Fetch both endpoints in parallel to avoid serial latency
+	const [def, summary] = await Promise.all([
+		fetchDefinition(word),
+		fetchSummary(word),
+	]);
 
+	// Prefer structured definition if available
 	if (def && def.definitions?.length > 0) {
 		const metadata = extractMetadata(def);
 		return {
@@ -136,9 +141,7 @@ export async function wiktionaryRestLookup(
 	}
 
 	// Fallback: summary endpoint (less structured)
-	const summary = await fetchSummary(word);
 	if (summary && summary.extract) {
-		// Convert extract to a single definition entry
 		return {
 			word: summary.title || word,
 			definitions: [
