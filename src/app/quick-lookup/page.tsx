@@ -153,6 +153,8 @@ export default function QuickLookupPage() {
 	const inputRef = useRef<HTMLInputElement>(null);
 	const lookupAbortRef = useRef<AbortController | null>(null);
 	const lastLookupWordRef = useRef<string>("");
+	const lastClipboardRef = useRef<string>("");
+	const userEditedRef = useRef<boolean>(false);
 
 	const [shortcutHint, setShortcutHint] = useState("");
 
@@ -160,6 +162,12 @@ export default function QuickLookupPage() {
 	const resetExpandStates = useCallback(() => {
 		setExpandedMdx(false);
 		setExpandedPv(false);
+	}, []);
+
+	// Track when user manually edits the input
+	const handleInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+		setInput(e.target.value);
+		userEditedRef.current = true;
 	}, []);
 
 	// Read clipboard on window focus
@@ -203,7 +211,12 @@ export default function QuickLookupPage() {
 			const clipboardText = await invoke("read-clipboard");
 			if (typeof clipboardText === "string" && isEnglishWordOrPhrase(clipboardText)) {
 				const word = clipboardText.trim();
-				if (word.toLowerCase() === lastLookupWordRef.current.toLowerCase() && !loading) return;
+				// Skip if clipboard content hasn't changed
+				if (word === lastClipboardRef.current) return;
+				// Skip if user manually edited input and clipboard is same as what they're looking at
+				if (userEditedRef.current && word.toLowerCase() === lastLookupWordRef.current.toLowerCase()) return;
+				lastClipboardRef.current = word;
+				userEditedRef.current = false;
 				setInput(word);
 				doLookup(word);
 			}
@@ -227,6 +240,7 @@ export default function QuickLookupPage() {
 		const controller = new AbortController();
 		lookupAbortRef.current = controller;
 		lastLookupWordRef.current = trimmed;
+		userEditedRef.current = false;
 
 		setLoading(true);
 		setResult(null);
@@ -314,7 +328,7 @@ export default function QuickLookupPage() {
 						ref={inputRef}
 						type="text"
 						value={input}
-						onChange={(e) => setInput(e.target.value)}
+						onChange={handleInputChange}
 						placeholder="输入单词或短语..."
 						className="w-full pl-10 pr-4 py-2.5 bg-muted/50 border border-border rounded-xl
 							text-foreground text-sm placeholder:text-muted-foreground
