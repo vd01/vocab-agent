@@ -46,9 +46,12 @@ class DictRegistry {
 	}
 
 	/**
-	 * Look up a word across all available sources in parallel.
-	 * Returns an array of Partial<DictEntry> in registration order.
-	 * Sources that fail or return null produce null entries.
+	 * Look up a word across all sources in parallel.
+	 * Returns an array of Partial<DictEntry> | null in registration order.
+	 *
+	 * Skips the available() check — sources handle their own availability
+	 * inside lookup() (returning null if unavailable). This avoids an extra
+	 * async round-trip per source that added significant latency.
 	 */
 	async lookupAll(
 		word: string,
@@ -56,13 +59,6 @@ class DictRegistry {
 		const sources = this.sources;
 		const results = await Promise.all(
 			sources.map(async (s) => {
-				let available = false;
-				try {
-					available = await s.available();
-				} catch {
-					return null;
-				}
-				if (!available) return null;
 				try {
 					return await s.lookup(word);
 				} catch {

@@ -44,7 +44,7 @@ const API_BASE = 'https://api.dictionaryapi.dev/api/v2/entries/en';
 export async function freeDictLookup(word: string): Promise<FreeDictEntry | null> {
   try {
     const res = await fetch(`${API_BASE}/${encodeURIComponent(word.toLowerCase())}`, {
-      signal: AbortSignal.timeout(8000), // 8s timeout
+      signal: AbortSignal.timeout(3000), // 3s timeout for quick response
     });
 
     if (!res.ok) return null; // 404 = not found

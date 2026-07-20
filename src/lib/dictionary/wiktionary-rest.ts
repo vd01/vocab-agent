@@ -11,7 +11,7 @@
 
 const USER_AGENT = 'vocab-agent/1.0 (https://github.com/vocab-agent; CC-BY-SA attribution)';
 const API_BASE = 'https://en.wiktionary.org/api/rest_v1';
-const TIMEOUT_MS = 8000;
+const TIMEOUT_MS = 3000;
 const RETRY_DELAY_MS = 1000;
 
 // ── Response types ───────────────────────────────────────────────────────
