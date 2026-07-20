@@ -112,12 +112,14 @@ describe('DictRegistry', () => {
 			expect(results[2]).not.toBeNull();
 		});
 
-		it('skips unavailable sources', async () => {
-			registry.register(makeSource('a', false, mockEntry));
+		it('skips unavailable sources (lookup returns null)', async () => {
+			// lookupAll does NOT call available() — it relies on lookup() returning null
+			// for unavailable sources. So we make the unavailable source's lookup return null.
+			registry.register(makeSource('a', false, null));
 			registry.register(makeSource('b', true, mockEntry));
 			const results = await registry.lookupAll('test');
 			expect(results).toHaveLength(2);
-			expect(results[0]).toBeNull(); // a unavailable
+			expect(results[0]).toBeNull(); // a's lookup returned null
 			expect(results[1]).not.toBeNull();
 		});
 

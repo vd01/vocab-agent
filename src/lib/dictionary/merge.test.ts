@@ -73,8 +73,18 @@ describe('mergeMultiple', () => {
 		expect(result).not.toBeNull();
 		// API wins phonetic
 		expect(result!.phonetic).toBe('/tɛst/');
-		// API wins definitions
-		expect(result!.definitions).toEqual(api.definitions);
+		// API wins definitions (only API's noun group; ECDICT's 'n.' group is also merged
+		// because mergeMultiple COMBINES definitions from all sources by partOfSpeech)
+		expect(result!.definitions).toEqual([
+			{
+				partOfSpeech: 'noun',
+				definitions: [{ definition: 'A procedure for critical evaluation' }],
+			},
+			{
+				partOfSpeech: 'n.',
+				definitions: [{ definition: 'examination' }],
+			},
+		]);
 		// ECDICT fills translation
 		expect(result!.translation).toBe('测试; 测验');
 		// ECDICT fills collins
