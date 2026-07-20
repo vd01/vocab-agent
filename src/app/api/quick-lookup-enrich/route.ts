@@ -2,11 +2,11 @@ import { lookupWord } from "@/lib/dictionary/lookup";
 import { NextRequest } from "next/server";
 
 /**
- * Quick Lookup Enrich API — returns enriched dictionary data only.
+ * Quick Lookup Enrich API - returns enriched dictionary data only.
  *
  * Called by the frontend after the fast ECDICT-only result is shown,
  * to get the full result with WordNet, FreeDict, Wiktionary, MDX data.
- * Only returns dictionary fields — no DB queries (those were already
+ * Only returns dictionary fields - no DB queries (those were already
  * fetched in the initial quick-lookup request).
  */
 export async function GET(req: NextRequest) {
@@ -31,5 +31,13 @@ export async function GET(req: NextRequest) {
 		bnc: dictEntry?.bnc ?? null,
 		exchange: dictEntry?.exchange ?? null,
 		synonyms: dictEntry?.synonyms ?? [],
+		// Per-source enriched fields
+		mdxEntries: dictEntry?.mdxEntries ?? [],
+		synsets: dictEntry?.synsets ?? [],
+		etymology: dictEntry?.etymology ?? null,
+		ipa: dictEntry?.ipa ?? [],
+		forms: dictEntry?.forms ?? [],
+		semanticRelations: dictEntry?.semanticRelations ?? null,
+		source: dictEntry?.source ?? null,
 	});
 }

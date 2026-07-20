@@ -20,6 +20,15 @@ class DictRegistry {
 	}
 
 	/**
+	 * Insert a source at a specific index. Higher index = lower priority.
+	 * Duplicate registrations (by name) are silently ignored.
+	 */
+	insert(index: number, source: DictSource): void {
+		if (this.sources.some((s) => s.name === source.name)) return;
+		this.sources.splice(Math.min(index, this.sources.length), 0, source);
+	}
+
+	/**
 	 * Remove a source by name. No-op if not found.
 	 */
 	unregister(name: string): void {

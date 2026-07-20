@@ -60,7 +60,9 @@ async function loadMdxFile(filePath: string, dictId: string): Promise<DictSource
 
 							return {
 								word,
-								translation: text.slice(0, 500),
+								// Use mdxEntries (dedicated field) to preserve full content
+								// without truncation or colliding with ECDICT's translation
+								mdxEntries: [{ dict: dictId, html: result.definition, text }],
 								source: `mdx:${dictId}`,
 							};
 						} catch {

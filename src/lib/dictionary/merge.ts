@@ -1,9 +1,15 @@
 /**
  * Merge multiple Partial<DictEntry> results into a unified DictEntry.
  *
- * Strategy: iterate sources in registration order (highest priority first).
- * For each field, the first source that provides a non-null / non-empty value
- * wins. Later sources fill only fields left undefined by earlier ones.
+ * Strategy:
+ * - Each source populates its DEDICATED fields (mdxEntries, synsets, etc.)
+ *   so per-source data is preserved, not collapsed into one field.
+ * - Shared text fields (translation, phonetic): first non-empty wins,
+ *   keeping ECDICT's concise Chinese gloss as the primary translation.
+ * - definitions: COMBINE from all sources (deduplicated by definition text)
+ * - synonyms/antonyms: COMBINE from all sources (deduplicated)
+ * - metadata (collins, tag, bnc, etc.): first non-empty wins
+ * - per-source fields (mdxEntries, synsets, etymology, etc.): COMBINE
  */
 
 import type { DictEntry, DefGroup } from './types';
@@ -36,42 +42,80 @@ export function mergeMultiple(results: (Partial<DictEntry> | null)[]): DictEntry
 		source: first.source ?? 'unknown',
 	};
 
-	// Collect source names for the combined .source field
 	const sourceNames: string[] = [first.source ?? 'unknown'];
+
+	// Accumulators for combined fields
+	const allDefGroups: DefGroup[] = [...(first.definitions ?? [])];
+	const synSet = new Set(first.synonyms ?? []);
+	const antSet = new Set(first.antonyms ?? []);
+	const allMdxEntries: NonNullable<DictEntry['mdxEntries']> = [...(first.mdxEntries ?? [])];
+	const allSynsets: NonNullable<DictEntry['synsets']> = [...(first.synsets ?? [])];
+	const allIpa: NonNullable<DictEntry['ipa']> = [...(first.ipa ?? [])];
+	const allForms: NonNullable<DictEntry['forms']> = [...(first.forms ?? [])];
 
 	for (let i = 1; i < valid.length; i++) {
 		const r = valid[i];
 		if (r.source) sourceNames.push(r.source);
 
-		// Only fill fields that are still empty in merged
+		// Shared text fields: first non-empty wins
 		if (!merged.word && r.word) merged.word = r.word;
 		if (!merged.phonetic && r.phonetic) merged.phonetic = r.phonetic;
 		if (!merged.translation && r.translation) merged.translation = r.translation;
-		if (merged.definitions.length === 0 && r.definitions && r.definitions.length > 0) {
-			merged.definitions = r.definitions;
+		if (!merged.origin && r.origin) merged.origin = r.origin;
+		if (!merged.etymology && r.etymology) merged.etymology = r.etymology;
+
+		// Definitions: combine from all sources (deduplicated)
+		if (r.definitions && r.definitions.length > 0) {
+			for (const group of r.definitions) {
+				let existing = allDefGroups.find(
+					(g) => g.partOfSpeech === group.partOfSpeech,
+				);
+				if (!existing) {
+					existing = { partOfSpeech: group.partOfSpeech, definitions: [] };
+					allDefGroups.push(existing);
+				}
+				for (const def of group.definitions) {
+					if (!existing.definitions.some(
+						(d) => d.definition === def.definition,
+					)) {
+						existing.definitions.push(def);
+					}
+				}
+			}
 		}
+
+		// Synonyms/antonyms: combine and deduplicate
+		if (r.synonyms) for (const s of r.synonyms) synSet.add(s);
+		if (r.antonyms) for (const a of r.antonyms) antSet.add(a);
+
+		// Per-source fields: combine
+		if (r.mdxEntries) allMdxEntries.push(...r.mdxEntries);
+		if (r.synsets) allSynsets.push(...r.synsets);
+		if (r.ipa) allIpa.push(...r.ipa);
+		if (r.forms) allForms.push(...r.forms);
+
+		// Semantic relations: first non-empty wins (WordNet only)
+		if (!merged.semanticRelations && r.semanticRelations) {
+			merged.semanticRelations = r.semanticRelations;
+		}
+
+		// Metadata: first non-empty wins (ECDICT only)
 		if (merged.collins == null && r.collins != null) merged.collins = r.collins;
 		if (merged.tag == null && r.tag != null) merged.tag = r.tag;
 		if (merged.bnc == null && r.bnc != null) merged.bnc = r.bnc;
 		if (merged.frq == null && r.frq != null) merged.frq = r.frq;
 		if (merged.exchange == null && r.exchange != null) merged.exchange = r.exchange;
 		if (merged.audioUrl == null && r.audioUrl != null) merged.audioUrl = r.audioUrl;
-		if (merged.synonyms.length === 0 && r.synonyms && r.synonyms.length > 0) {
-			merged.synonyms = r.synonyms;
-		}
-		if (merged.antonyms.length === 0 && r.antonyms && r.antonyms.length > 0) {
-			merged.antonyms = r.antonyms;
-		}
-		if (merged.origin == null && r.origin != null) merged.origin = r.origin;
-		if (merged.etymology == null && r.etymology != null) merged.etymology = r.etymology;
-		if (merged.forms == null && r.forms != null) merged.forms = r.forms;
-		if (merged.ipa == null && r.ipa != null) merged.ipa = r.ipa;
-		if (merged.synsets == null && r.synsets != null) merged.synsets = r.synsets;
-		if (merged.semanticRelations == null && r.semanticRelations != null) merged.semanticRelations = r.semanticRelations;
-		if (merged.mdxEntries == null && r.mdxEntries != null) merged.mdxEntries = r.mdxEntries;
 	}
 
-	// Deduplicate source names
+	merged.definitions = allDefGroups;
+	merged.synonyms = [...synSet].slice(0, 30);
+	merged.antonyms = [...antSet].slice(0, 30);
+	if (allMdxEntries.length > 0) merged.mdxEntries = allMdxEntries;
+	if (allSynsets.length > 0) merged.synsets = allSynsets;
+	if (allIpa.length > 0) merged.ipa = allIpa;
+	if (allForms.length > 0) merged.forms = allForms;
+
 	merged.source = [...new Set(sourceNames)].join('+');
 
 	return merged;

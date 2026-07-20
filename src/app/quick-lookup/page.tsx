@@ -28,6 +28,11 @@ interface LookupResult {
 	synonyms: string[];
 	actions: string[];
 	allGroups: { id: string; name: string }[];
+	// Enriched fields (from Phase 2)
+	mdxEntries?: { dict: string; html: string; text: string }[];
+	synsets?: { pos: string; definition: string; lemmas: string[]; examples: string[] }[];
+	etymology?: string | null;
+	source?: string | null;
 }
 
 interface ActionResult {
@@ -431,19 +436,55 @@ export default function QuickLookupPage() {
 						{/* English Definitions - compact */}
 						{result.definitions && result.definitions.length > 0 && (
 							<div className="space-y-1">
-								{result.definitions.slice(0, 2).map((group, i) => (
+								{result.definitions.slice(0, 3).map((group, i) => (
 									<div key={i} className="text-xs">
 										<span className="text-muted-foreground font-medium">
 											{group.partOfSpeech}{" "}
 										</span>
 										<span className="text-foreground/80">
 											{group.definitions
-												.slice(0, 2)
+												.slice(0, 3)
 												.map((d) => d.definition)
 												.join("; ")}
 										</span>
 									</div>
 								))}
+							</div>
+						)}
+
+						{/* MDX Dictionary Content (OALD9 etc.) */}
+						{result.mdxEntries && result.mdxEntries.length > 0 && (
+							<div className="space-y-1">
+								{result.mdxEntries.map((entry, i) => (
+									<div key={i}>
+										<div className="text-[10px] text-primary font-medium mb-0.5">
+											📖 {entry.dict.toUpperCase()}
+										</div>
+										<div className="text-xs text-foreground/70 leading-relaxed max-h-32 overflow-y-auto">
+											{entry.text.slice(0, 600)}
+											{entry.text.length > 600 ? "..." : ""}
+										</div>
+									</div>
+								))}
+							</div>
+						)}
+
+						{/* Synonyms */}
+						{result.synonyms && result.synonyms.length > 0 && (
+							<div className="flex flex-wrap items-center gap-1">
+								<span className="text-[10px] text-muted-foreground">同义:</span>
+								{result.synonyms.slice(0, 8).map((s) => (
+									<span key={s} className="text-[10px] px-1 py-0.5 rounded bg-muted text-muted-foreground">
+										{s}
+									</span>
+								))}
+							</div>
+						)}
+
+						{/* Source indicator */}
+						{result.source && (
+							<div className="text-[9px] text-muted-foreground/50">
+								来源: {result.source}
 							</div>
 						)}
 
