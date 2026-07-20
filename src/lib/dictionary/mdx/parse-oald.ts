@@ -64,7 +64,20 @@ function extractSensesFromSnGs(parent: Element | DocumentFragment): RawSense[] {
 			cnFromDef = enRaw.slice(cnBoundary).trim();
 		}
 
-		const cn = textOf(snG, 'chn') || cnFromDef;
+		// Chinese translation: prefer <chn> inside <def>, not <chn> inside <subj> or other tags
+		const defEl = snG.querySelector('def');
+		let cn = '';
+		if (defEl) {
+			const defChn = [...defEl.children].find(c => c.tagName?.toLowerCase() === 'chn');
+			cn = defChn?.textContent?.replace(/\s+/g, ' ').trim() ?? '';
+		}
+		// Fallback: if no <chn> in <def>, use cnFromDef from text splitting
+		if (!cn) cn = cnFromDef;
+		// Last resort: any <chn> in snG (but skip ones inside <subj>)
+		if (!cn) {
+			const nonSubjChn = [...snG.querySelectorAll('chn')].find(ch => !ch.closest('subj, unbox, x'));
+			cn = nonSubjChn?.textContent?.replace(/\s+/g, ' ').trim() ?? '';
+		}
 		const cf = textOf(snG, 'cf');
 		let gram = textOf(snG, 'gram');
 		let reg = textOf(snG, 'reg');
@@ -140,7 +153,7 @@ function extractSensesFromSnGs(parent: Element | DocumentFragment): RawSense[] {
 			cf: cf || undefined,
 			en,
 			cn,
-			examples: examples.length > 0 ? examples : undefined,
+			examples: examples.length > 0 ? examples : [],
 			synonym,
 			grammar: gram || undefined,
 			register: reg || undefined,
@@ -295,9 +308,14 @@ export function parseOaldHtml(html: string): MdxSense[] {
 			const rawSenses = extractSensesFromSnGs(part);
 
 			// Fallback: try direct def tags if no sn-gs
+			// Only use <chn> that are direct children of <def> to avoid
+			// picking up example-sentence translations from <x><chn>
 			if (rawSenses.length === 0) {
 				const defs = textAll(part, 'def');
-				const chns = textAll(part, 'chn');
+				const chns = [...part.querySelectorAll('def')].map(defEl => {
+					const directChn = [...defEl.children].find(c => c.tagName?.toLowerCase() === 'chn');
+					return directChn?.textContent?.replace(/\s+/g, ' ').trim() ?? '';
+				});
 				for (let i = 0; i < Math.min(defs.length, 6); i++) {
 					rawSenses.push({ en: defs[i], cn: chns[i] || '', examples: [] });
 				}
@@ -327,19 +345,44 @@ export function parseOaldHtml(html: string): MdxSense[] {
 		const hGs = [...document.querySelectorAll('h-g')];
 		for (const hG of hGs) {
 			const pos = textOf(hG, 'pos');
-			const defs = textAll(hG, 'def');
-			const chns = textAll(hG, 'chn');
 
-			if (defs.length > 0) {
-				const limitedSenses = defs.slice(0, 6).map((en, i) => ({
-					en,
-					cn: chns[i] || '',
+			// Try structured sense extraction first (handles chn correctly)
+			const rawSenses = extractSensesFromSnGs(hG);
+
+			if (rawSenses.length > 0) {
+				const limitedSenses = rawSenses.slice(0, 6).map(rs => ({
+					number: rs.number,
+					cf: rs.cf,
+					en: rs.en,
+					cn: rs.cn,
+					examples: rs.examples,
+					synonym: rs.synonym,
 				}));
 
 				senses.push({
 					pos: pos || '',
 					senses: limitedSenses,
+					idioms: extractIdioms(hG),
 				});
+			} else {
+				// Fallback: only use <chn> that are direct children of <def>
+				const defs = textAll(hG, 'def');
+				const chns = [...hG.querySelectorAll('def')].map(defEl => {
+					const directChn = [...defEl.children].find(c => c.tagName?.toLowerCase() === 'chn');
+					return directChn?.textContent?.replace(/\s+/g, ' ').trim() ?? '';
+				});
+
+				if (defs.length > 0) {
+					const limitedSenses = defs.slice(0, 6).map((en, i) => ({
+						en,
+						cn: chns[i] || '',
+					}));
+
+					senses.push({
+						pos: pos || '',
+						senses: limitedSenses,
+					});
+				}
 			}
 		}
 	}

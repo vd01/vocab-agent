@@ -1,6 +1,7 @@
 import { defineTool } from './types';
 import { z } from 'zod';
 import { lookupWord } from '../../dictionary/lookup';
+import { wordDebugger } from '../../debug/word-debug';
 
 /**
  * Pure dictionary lookup tool — for Teacher Agent.
@@ -13,7 +14,12 @@ export const dictLookupTool = defineTool({
     word: z.string().describe('要查询的单词'),
   }),
   execute: async ({ word }) => {
-    const entry = await lookupWord(word.toLowerCase());
+    const normalized = word.toLowerCase();
+
+    // Debug: start tracking this word
+    wordDebugger.startWord(normalized);
+
+    const entry = await lookupWord(normalized);
 
     if (!entry) {
       return { type: 'not-found', word, message: `词典中未找到单词 "${word}"` };

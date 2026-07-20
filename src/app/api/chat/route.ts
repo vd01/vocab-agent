@@ -18,6 +18,7 @@ import {
 	type AgentSession,
 } from "@/lib/pi/session";
 import { runWithModeContext, setCurrentMode } from "@/lib/pi/mode-context";
+import { wordDebugger } from "@/lib/debug/word-debug";
 
 export const maxDuration = 60;
 
@@ -104,6 +105,12 @@ function createSSEStream(
 
 							if (ae.type === "text_delta") {
 								hasTextContent = true;
+
+								// Debug: accumulate LLM output for tracked words
+								for (const w of wordDebugger.getTrackedWords()) {
+									wordDebugger.recordLLMOutput(w, ae.delta);
+								}
+
 								controller.enqueue(
 									encoder.encode(
 										formatSSE("text-delta", {
@@ -186,6 +193,10 @@ function createSSEStream(
 							console.log(
 								`[Chat SSE] agent-settled (total events: ${eventCount})`,
 							);
+
+							// Debug: flush all tracked word debug sessions to disk
+							wordDebugger.flushAll();
+
 							if (!hasTextContent) {
 								console.error(
 									`[Chat SSE] ⚠️ Agent settled with NO text output — model may be misconfigured`,

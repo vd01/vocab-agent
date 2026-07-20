@@ -4,6 +4,7 @@ import { db } from '../../db';
 import { words, wordGroups, wordGroupMembers } from '../../db/schema';
 import { eq } from 'drizzle-orm';
 import { lookupWord } from '../../dictionary/lookup';
+import { wordDebugger } from '../../debug/word-debug';
 
 export const vocabLookupTool = defineTool({
   description: '查询单词详情。先查用户词库，未找到则自动查词典（ECDICT + 在线词典），返回音标、释义、例句等丰富信息。',
@@ -12,6 +13,9 @@ export const vocabLookupTool = defineTool({
   }),
   execute: async ({ word }) => {
     const normalized = word.toLowerCase();
+
+    // Debug: start tracking this word
+    wordDebugger.startWord(normalized);
 
     // 1. Check user's vocab library first
     const result = await db
@@ -66,6 +70,16 @@ export const vocabLookupTool = defineTool({
         synonyms: dictEntry.synonyms,
         antonyms: dictEntry.antonyms,
         source: dictEntry.source,
+        // MDX (OALD/LDOCE) structured data
+        mdxSenses: dictEntry.mdxSenses,
+        mdxEntries: dictEntry.mdxEntries,
+        // WordNet semantic network
+        synsets: dictEntry.synsets,
+        semanticRelations: dictEntry.semanticRelations,
+        // Wiktionary
+        etymology: dictEntry.etymology,
+        forms: dictEntry.forms,
+        ipa: dictEntry.ipa,
         hint: '该单词不在你的词库中，可以用 add-word 添加',
       };
     }

@@ -33,7 +33,6 @@
     "@base-ui/react": "^1.6.0",
     "@earendil-works/pi-coding-agent": "^0.80.7",
     "@libsql/client": "^0.17.4",
-    "@next/swc-win32-x64-msvc": "^16.2.10",
     "@tauri-apps/api": "^2.11.1",
     "@tauri-apps/plugin-autostart": "^2.5.1",
     "@tauri-apps/plugin-clipboard-manager": "^2.3.2",

@@ -1,6 +1,7 @@
 import { defineTool } from './types';
 import { z } from 'zod';
 import { mdxLookupAll, scanMdxSources } from '../../dictionary/mdx/index';
+import { wordDebugger } from '../../debug/word-debug';
 
 export const mdxLookupTool = defineTool({
 	description:
@@ -10,14 +11,22 @@ export const mdxLookupTool = defineTool({
 		dict: z.string().optional().describe('指定词典 ID（如 oald），留空查所有'),
 	}),
 	execute: async ({ word, dict }) => {
+		const normalized = word.toLowerCase();
+
+		// Debug: start tracking (may already be tracked from vocab-lookup)
+		wordDebugger.startWord(normalized);
+
+		const startMs = Date.now();
 		try {
 			const sources = await scanMdxSources();
 			if (sources.length === 0) {
 				return { type: 'not-found', word, message: '没有安装 MDX 词典。' };
 			}
 
-			const results = await mdxLookupAll(word.toLowerCase());
+			const results = await mdxLookupAll(normalized);
+			const durationMs = Date.now() - startMs;
 			if (results.length === 0) {
+				wordDebugger.recordSource(normalized, 'mdx', null, durationMs);
 				return { type: 'not-found', word, message: `MDX 词典中未找到 "${word}"` };
 			}
 
@@ -29,12 +38,16 @@ export const mdxLookupTool = defineTool({
 				};
 			}
 
-			return {
+			const toolResult = {
 				type: 'mdx-found',
-				word: word.toLowerCase(),
-				entries: filtered.map((r) => ({ dict: r.dict, text: r.text })),
-				entryCount: filtered.length,
-			};
+			word: normalized,
+			entries: filtered.map((r) => ({ dict: r.dict, text: r.text })),
+			entryCount: filtered.length,
+		};
+
+			wordDebugger.recordSource(normalized, 'mdx', toolResult, durationMs);
+
+			return toolResult;
 		} catch (err) {
 			console.error('[mdx-lookup] error:', err);
 			return {

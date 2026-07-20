@@ -66,7 +66,8 @@ export function mergeMultiple(results: (Partial<DictEntry> | null)[]): DictEntry
 		if (!merged.etymology && r.etymology) merged.etymology = r.etymology;
 
 		// Definitions: combine from all sources (deduplicated)
-		if (r.definitions && r.definitions.length > 0) {
+		// Skip Wiktionary definitions — they contain raw HTML and duplicate FreeDict
+		if (r.definitions && r.definitions.length > 0 && r.source !== 'wiktionary') {
 			for (const group of r.definitions) {
 				let existing = allDefGroups.find(
 					(g) => g.partOfSpeech === group.partOfSpeech,

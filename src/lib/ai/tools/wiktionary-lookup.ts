@@ -1,6 +1,7 @@
 import { defineTool } from './types';
 import { z } from 'zod';
 import { wiktionaryLookup } from '../../dictionary/wiktionary';
+import { wordDebugger } from '../../debug/word-debug';
 
 /**
  * Wiktionary lookup tool — for Teacher Agent.
@@ -15,9 +16,17 @@ export const wiktionaryLookupTool = defineTool({
 		word: z.string().describe('要查询的单词'),
 	}),
 	execute: async ({ word }) => {
-		const entry = await wiktionaryLookup(word.toLowerCase());
+		const normalized = word.toLowerCase();
+
+		// Debug: start tracking (may already be tracked from vocab-lookup)
+		wordDebugger.startWord(normalized);
+
+		const startMs = Date.now();
+		const entry = await wiktionaryLookup(normalized);
+		const durationMs = Date.now() - startMs;
 
 		if (!entry) {
+			wordDebugger.recordSource(normalized, 'wiktionary', null, durationMs);
 			return {
 				type: 'not-found',
 				word,
@@ -25,14 +34,18 @@ export const wiktionaryLookupTool = defineTool({
 			};
 		}
 
-		return {
+		const toolResult = {
 			type: 'wiktionary-found',
-			word: entry.word ?? word.toLowerCase(),
+			word: entry.word ?? normalized,
 			definitions: entry.definitions ?? [],
 			etymology: entry.etymology ?? null,
 			forms: entry.forms ?? [],
 			ipa: entry.ipa ?? [],
 			source: entry.source,
 		};
+
+		wordDebugger.recordSource(normalized, 'wiktionary', toolResult, durationMs);
+
+		return toolResult;
 	},
 });

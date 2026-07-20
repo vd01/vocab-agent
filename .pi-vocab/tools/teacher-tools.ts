@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Teacher Tools — registered via wrapTool() to eliminate boilerplate.
  *
  * Each tool's execute logic lives in src/lib/ai/tools/*.ts.
@@ -13,8 +13,18 @@ import { wrapTool } from "../tools/wrap-tool";
 
 const TOOL_MODULE = "../../src/lib/ai/tools";
 
+/** Strip HTML tags from Wiktionary definitions for clean LLM input. */
+function stripHtml(s: string): string {
+	return s
+		.replace(/<[^>]+>/g, '')
+		.replace(/&[a-z]+;/gi, ' ')
+		.replace(/\s+/g, ' ')
+		.trim();
+}
+
 /** Format vocab-lookup result as rich text for the LLM to synthesize a reply.
  *  The UI no longer renders a WordCard, so the LLM needs the full data.
+ *  Includes ALL dictionary sources: ECDICT, FreeDict, MDX (OALD), WordNet, Wiktionary.
  */
 function formatVocabLookupResult(result: any, word: string): string {
 	if (result.type === "not-found") {
@@ -42,8 +52,13 @@ function formatVocabLookupResult(result: any, word: string): string {
 		if (result.translation) lines.push(`中文释义：${result.translation}`);
 		if (result.definitions?.length) {
 			for (const group of result.definitions) {
-				const defs = group.definitions
-					?.map((d: any, i: number) => `${i + 1}. ${d.definition}${d.example ? ` 例：${d.example}` : ""}`)
+				const cleanDefs = group.definitions
+					?.filter((d: any) => {
+						const t = stripHtml(d.definition ?? "");
+						return t.length > 5 && !/^<[^>]+>$/.test(d.definition ?? "");
+					});
+				const defs = cleanDefs
+					?.map((d: any, i: number) => `${i + 1}. ${stripHtml(d.definition)}${d.example ? ` 例：${stripHtml(d.example)}` : ""}`)
 					.join("; ");
 				if (defs) lines.push(`${group.partOfSpeech ?? "释义"}：${defs}`);
 			}
@@ -57,6 +72,75 @@ function formatVocabLookupResult(result: any, word: string): string {
 	if (result.bnc) lines.push(`BNC 词频：${result.bnc}`);
 	if (result.frq) lines.push(`当代词频：${result.frq}`);
 	if (result.exchange) lines.push(`变形：${result.exchange}`);
+
+	// ── MDX 权威词典 (OALD/LDOCE) ──────────────────────────────
+	if (result.mdxSenses?.length > 0) {
+		lines.push("");
+		lines.push("【权威词典 (OALD)】");
+		for (const sense of result.mdxSenses) {
+			const pos = sense.pos ? `${sense.pos} ` : "";
+			const grammar = sense.grammar ? `${sense.grammar} ` : "";
+			lines.push(`${pos}${grammar}`.trim());
+			for (const s of sense.senses?.slice(0, 4) ?? []) {
+				let line = `  ${s.number ? s.number + ". " : ""}${s.en}`;
+				if (s.cn) line += ` 【${s.cn}】`;
+				if (s.examples?.length) line += ` — 例: ${s.examples[0]}`;
+				if (s.synonym) line += ` (SYN: ${s.synonym})`;
+				lines.push(line);
+			}
+			if (sense.idioms?.length) {
+				lines.push("  习语:");
+				for (const idiom of sense.idioms.slice(0, 3)) {
+					lines.push(`    ${idiom.phrase} — ${idiom.en} 【${idiom.cn}】`);
+				}
+			}
+			if (sense.phrasalVerbs?.length) {
+				lines.push("  短语动词:");
+				for (const pv of sense.phrasalVerbs.slice(0, 3)) {
+					lines.push(`    ${pv.phrase} — ${pv.senses.map((s: any) => s.en).join("; ")}`);
+				}
+			}
+			if (sense.derivedForms?.length) {
+				lines.push(`  派生词: ${sense.derivedForms.map((f: any) => `${f.word}${f.pos ? `(${f.pos})` : ""}`).join(", ")}`);
+			}
+		}
+	} else if (result.mdxEntries?.length > 0) {
+		lines.push("");
+		lines.push("【权威词典】");
+		for (const e of result.mdxEntries) {
+			lines.push(`[${e.dict}] ${e.text.slice(0, 1200)}`);
+		}
+	}
+
+	// ── WordNet 语义网络 ──────────────────────────────────────
+	if (result.synsets?.length > 0) {
+		lines.push("");
+		lines.push("【语义网络 (WordNet)】");
+		const posLabel: Record<string, string> = { n: "名词", v: "动词", a: "形容词", r: "副词" };
+		for (const s of result.synsets.slice(0, 4)) {
+			lines.push(`  ${posLabel[s.pos] || s.pos}: ${s.definition}`);
+			if (s.lemmas?.length) lines.push(`    同义词集: ${s.lemmas.join(", ")}`);
+			if (s.examples?.length) lines.push(`    例: ${s.examples.join("; ")}`);
+		}
+	}
+	if (result.semanticRelations) {
+		if (result.semanticRelations.hypernyms?.length)
+			lines.push(`  上位词(更广义): ${result.semanticRelations.hypernyms.join(", ")}`);
+		if (result.semanticRelations.hyponyms?.length)
+			lines.push(`  下位词(更具体): ${result.semanticRelations.hyponyms.join(", ")}`);
+	}
+
+	// ── Wiktionary 词源/词形/IPA ─────────────────────────────
+	if (result.etymology) {
+		lines.push("");
+		lines.push(`【词源 (Wiktionary)】${result.etymology.slice(0, 500)}`);
+	}
+	if (result.forms?.length > 0) {
+		lines.push(`【词形变化】${result.forms.slice(0, 8).map((f: any) => `${f.form}(${f.tags?.join(",") ?? ""})`).join(", ")}`);
+	}
+	if (result.ipa?.length > 0) {
+		lines.push(`【IPA发音】${result.ipa.map((i: any) => `${i.tag ?? ""}${i.ipa}`.trim()).join(" / ")}`);
+	}
 
 	return lines.join("\n");
 }

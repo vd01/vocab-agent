@@ -21,6 +21,7 @@
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { wordDebugger } from "../../src/lib/debug/word-debug";
 
 interface WrapToolOptions {
 	pi: ExtensionAPI;
@@ -78,6 +79,12 @@ export function wrapTool(options: WrapToolOptions) {
 			const text = summarizeResult
 				? summarizeResult(result, params as Record<string, unknown>)
 				: defaultSummarize(result, params as Record<string, unknown>, name);
+
+			// Debug: record the text sent to LLM for word-related tools
+			const word = (params as Record<string, unknown>).word as string | undefined;
+			if (word && wordDebugger.isTracking(word)) {
+				wordDebugger.recordLLMInput(word, name, text);
+			}
 
 			return {
 				content: [{ type: "text" as const, text }],

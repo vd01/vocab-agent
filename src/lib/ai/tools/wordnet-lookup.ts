@@ -1,6 +1,7 @@
 import { defineTool } from './types';
 import { z } from 'zod';
 import { wordnetLookup } from '../../dictionary/wordnet';
+import { wordDebugger } from '../../debug/word-debug';
 
 /**
  * WordNet lookup tool — for Teacher Agent.
@@ -16,9 +17,17 @@ export const wordnetLookupTool = defineTool({
 		word: z.string().describe('要查询的单词'),
 	}),
 	execute: async ({ word }) => {
-		const result = await wordnetLookup(word.toLowerCase());
+		const normalized = word.toLowerCase();
+
+		// Debug: start tracking (may already be tracked from vocab-lookup)
+		wordDebugger.startWord(normalized);
+
+		const startMs = Date.now();
+		const result = await wordnetLookup(normalized);
+		const durationMs = Date.now() - startMs;
 
 		if (!result) {
+			wordDebugger.recordSource(normalized, 'wordnet', null, durationMs);
 			return {
 				type: 'not-found',
 				word,
@@ -26,9 +35,9 @@ export const wordnetLookupTool = defineTool({
 			};
 		}
 
-		return {
+		const toolResult = {
 			type: 'wordnet-found',
-			word: word.toLowerCase(),
+			word: normalized,
 			synsets: result.synsets.map((s) => ({
 				pos: s.pos,
 				definition: s.definition,
@@ -38,5 +47,9 @@ export const wordnetLookupTool = defineTool({
 			semanticRelations: result.relations,
 			synsetCount: result.synsets.length,
 		};
+
+		wordDebugger.recordSource(normalized, 'wordnet', toolResult, durationMs);
+
+		return toolResult;
 	},
 });
