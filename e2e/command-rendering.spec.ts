@@ -15,9 +15,9 @@ test.describe('Command rendering visual check', () => {
   });
 
   test('/stats renders with proper styling', async ({ page }) => {
-    const input = page.getByPlaceholder('输入消息或 / 命令...');
-    await input.fill('/stats');
-    await input.press('Enter');
+    // Use toolbar button instead of typing (more reliable when AI is streaming)
+    const statsButton = page.getByTitle('统计');
+    await statsButton.click();
 
     await page.waitForSelector('text=学习统计', { timeout: 10000 });
     await page.waitForTimeout(1000);

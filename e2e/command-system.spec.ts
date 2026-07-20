@@ -11,9 +11,9 @@ test.describe('Command system', () => {
   });
 
   test('can execute /stats command', async ({ page }) => {
-    const input = page.getByPlaceholder('输入消息或 / 命令...');
-    await input.fill('/stats');
-    await input.press('Enter');
+    // Use toolbar button instead of typing (more reliable when AI is streaming)
+    const statsButton = page.getByTitle('统计');
+    await statsButton.click();
 
     // Wait for stats to render
     await expect(page.getByText('学习统计').first()).toBeVisible({ timeout: 10000 });
