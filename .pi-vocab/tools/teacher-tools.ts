@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Teacher Tools — registered via wrapTool() to eliminate boilerplate.
  *
  * Each tool's execute logic lives in src/lib/ai/tools/*.ts.
@@ -12,6 +12,54 @@ import { StringEnum } from "@earendil-works/pi-ai";
 import { wrapTool } from "../tools/wrap-tool";
 
 const TOOL_MODULE = "../../src/lib/ai/tools";
+
+/** Format vocab-lookup result as rich text for the LLM to synthesize a reply.
+ *  The UI no longer renders a WordCard, so the LLM needs the full data.
+ */
+function formatVocabLookupResult(result: any, word: string): string {
+	if (result.type === "not-found") {
+		return `未找到单词 ${word}`;
+	}
+
+	const lines: string[] = [];
+	lines.push(`查询结果：${result.word}`);
+
+	if (result.phonetic) lines.push(`音标：${result.phonetic}`);
+
+	if (result.type === "found") {
+		lines.push(`状态：已在词库中`);
+		if (result.groups?.length) lines.push(`分组：${result.groups.join(", ")}`);
+		if (result.definition) lines.push(`释义：${result.definition}`);
+		if (result.examples) {
+			const examples =
+				typeof result.examples === "string"
+					? result.examples
+					: JSON.stringify(result.examples);
+			lines.push(`例句：${examples}`);
+		}
+	} else if (result.type === "dict-found") {
+		lines.push(`状态：不在词库中`);
+		if (result.translation) lines.push(`中文释义：${result.translation}`);
+		if (result.definitions?.length) {
+			for (const group of result.definitions) {
+				const defs = group.definitions
+					?.map((d: any, i: number) => `${i + 1}. ${d.definition}${d.example ? ` 例：${d.example}` : ""}`)
+					.join("; ");
+				if (defs) lines.push(`${group.partOfSpeech ?? "释义"}：${defs}`);
+			}
+		}
+		if (result.synonyms?.length) lines.push(`同义词：${result.synonyms.join(", ")}`);
+		if (result.antonyms?.length) lines.push(`反义词：${result.antonyms.join(", ")}`);
+	}
+
+	if (result.collins) lines.push(`Collins 星级：${"★".repeat(result.collins)}`);
+	if (result.tag) lines.push(`考试标签：${result.tag}`);
+	if (result.bnc) lines.push(`BNC 词频：${result.bnc}`);
+	if (result.frq) lines.push(`当代词频：${result.frq}`);
+	if (result.exchange) lines.push(`变形：${result.exchange}`);
+
+	return lines.join("\n");
+}
 
 export function registerTeacherTools(pi: ExtensionAPI) {
 	// ── fsrs-review ──────────────────────────────────────────────────────
@@ -77,12 +125,7 @@ export function registerTeacherTools(pi: ExtensionAPI) {
 		}),
 		toolModule: `${TOOL_MODULE}/vocab-lookup`,
 		toolExport: "vocabLookupTool",
-		summarizeResult: (r, p) =>
-			r.type === "found"
-				? `词库中找到 ${p.word}`
-				: r.type === "dict-found"
-					? `词典中找到 ${p.word}（不在词库中）`
-					: `未找到单词 ${p.word}`,
+		summarizeResult: (r, p) => formatVocabLookupResult(r, p.word),
 	});
 
 	// ── add-word ─────────────────────────────────────────────────────────
@@ -182,6 +225,76 @@ export function registerTeacherTools(pi: ExtensionAPI) {
 				: `词典中未找到 ${p.word}`,
 	});
 
+	// ── wordnet-lookup ───────────────────────────────────────────────────
+	wrapTool({
+		pi,
+		name: "wordnet-lookup",
+		label: "WordNet Lookup",
+		description:
+			"查 WordNet 获取单词的语义分类（synsets）、上下位关系（hypernyms/hyponyms）和词形变化。用于词义层次、同义辨析、词汇扩展。",
+		promptSnippet: "查 WordNet 语义关系",
+		promptGuidelines: [
+			"Use wordnet-lookup when the user asks about word senses, semantic relations (hypernyms/hyponyms), or wants to explore word families.",
+		],
+		parameters: Type.Object({
+			word: Type.String({ description: "要查询的单词" }),
+		}),
+		toolModule: `${TOOL_MODULE}/wordnet-lookup`,
+		toolExport: "wordnetLookupTool",
+		summarizeResult: (r, p) =>
+			r.type === "wordnet-found"
+				? `WordNet 中找到 ${p.word}（${r.synsetCount} 个 synset）`
+				: `WordNet 中未找到 ${p.word}`,
+	});
+
+	// ── wiktionary-lookup ────────────────────────────────────────────────
+	wrapTool({
+		pi,
+		name: "wiktionary-lookup",
+		label: "Wiktionary Lookup",
+		description:
+			"查 Wiktionary 获取详细词源（etymology）、词形变化表（forms）、多地区发音（IPA）和释义。",
+		promptSnippet: "查 Wiktionary 词源和变位",
+		promptGuidelines: [
+			"Use wiktionary-lookup when the user asks about word origins (etymology), inflectional forms (conjugations/declensions), or detailed pronunciation.",
+		],
+		parameters: Type.Object({
+			word: Type.String({ description: "要查询的单词" }),
+		}),
+		toolModule: `${TOOL_MODULE}/wiktionary-lookup`,
+		toolExport: "wiktionaryLookupTool",
+		summarizeResult: (r, p) =>
+			r.type === "wiktionary-found"
+				? `Wiktionary 中找到 ${p.word}`
+				: `Wiktionary 中未找到 ${p.word}`,
+	});
+
+
+	// ── mdx-lookup ──────────────────────────────────────────────────────
+	wrapTool({
+		pi,
+		name: "mdx-lookup",
+		label: "MDX Lookup",
+		description:
+			"查用户安装的 MDX 词典（新牛津英汉双解 oald、朗文当代英汉双解 ldoce、韦氏高阶 merriam），获取完整权威释义。",
+		promptSnippet: "查 MDX 权威词典释义",
+		promptGuidelines: [
+			"Use mdx-lookup when the user needs authoritative dictionary definitions from their installed MDX files (OALD, LDOCE, etc.).",
+		],
+		parameters: Type.Object({
+			word: Type.String({ description: "要查询的单词" }),
+			dict: Type.Optional(Type.String({ description: "指定词典 ID（oald / ldoce / merriam），留空查所有" })),
+		}),
+		toolModule: `${TOOL_MODULE}/mdx-lookup`,
+		toolExport: "mdxLookupTool",
+		summarizeResult: (r, p) => {
+			if (r.type !== "mdx-found") return `MDX 词典中未找到 ${p.word}`;
+			const lines = r.entries.map(
+				(e: { dict: string; text: string }) => `[${e.dict}] ${e.text}`,
+			);
+			return lines.join('\n');
+		},
+	});
 	// ── vocab-stats ──────────────────────────────────────────────────────
 	wrapTool({
 		pi,

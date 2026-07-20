@@ -6,6 +6,8 @@
  * Free, no API key required, no documented rate limits.
  */
 
+import type { DefGroup } from './types';
+
 export interface FreeDictPhonetic {
   text?: string;
   audio?: string;  // MP3 URL for pronunciation
@@ -79,3 +81,73 @@ export async function freeDictLookup(word: string): Promise<FreeDictEntry | null
     return null;
   }
 }
+
+// ── Source adapter ────────────────────────────────────────────────────────
+
+import type { DictSource } from './types';
+
+/** Pick the preferred pronunciation audio URL (US > UK > other). */
+function pickPreferredAudio(audios: string[]): string | null {
+	if (audios.length === 0) return null;
+	return (
+		audios.find((a) => a.includes('-us')) ??
+		audios.find((a) => a.includes('-uk')) ??
+		audios[0]
+	);
+}
+
+/**
+ * DictSource adapter for the Free Dictionary API.
+ */
+export const freeDictSource: DictSource = {
+	name: 'freedict',
+	available: async () => true, // always available (network-dependent)
+	lookup: async (word: string) => {
+		const entry = await freeDictLookup(word);
+		if (!entry) return null;
+
+		const phonetic =
+			entry.phonetic ??
+			entry.phonetics.find((p) => p.text)?.text ??
+			'';
+
+		const audioCandidates = entry.phonetics
+			.map((p) => p.audio)
+			.filter((a): a is string => !!a);
+		const audioUrl = pickPreferredAudio(audioCandidates);
+
+		const definitions: DefGroup[] = (entry.meanings ?? []).map((m) => ({
+			partOfSpeech: m.partOfSpeech,
+			definitions: m.definitions
+				.filter((d) => d.definition)
+				.map((d) => ({
+					definition: d.definition,
+					example: d.example,
+				})),
+		}));
+
+		// Collect + deduplicate synonyms / antonyms
+		const synSet = new Set<string>();
+		const antSet = new Set<string>();
+		for (const m of entry.meanings ?? []) {
+			for (const s of m.synonyms) synSet.add(s);
+			for (const a of m.antonyms) antSet.add(a);
+			for (const d of m.definitions) {
+				for (const s of d.synonyms) synSet.add(s);
+				for (const a of d.antonyms) antSet.add(a);
+			}
+		}
+
+		return {
+			word: entry.word,
+			phonetic,
+			translation: '', // API provides no Chinese
+			definitions,
+			audioUrl,
+			synonyms: [...synSet].slice(0, 20),
+			antonyms: [...antSet].slice(0, 20),
+			origin: entry.origin ?? null,
+			source: 'freedict',
+		};
+	},
+};

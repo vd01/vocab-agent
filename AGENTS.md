@@ -15,6 +15,7 @@ Self-evolving English learning AI with dual-agent architecture (Teacher + Develo
 - `npm run lint` — ESLint (next/core-web-vitals + typescript)
 - `npm test` — unit tests (vitest, `src/**/*.test.ts`, 30s timeout)
 - `npm run test:e2e` — E2E tests (requires dev server running at `localhost:3088`, 120s timeout, set `E2E_BASE_URL` to override)
+- `npm run test:playwright` — Playwright E2E tests (`e2e/*.spec.ts`, auto-starts dev server via `playwright.config.ts`)
 - `npm run db:migrate` — run DB migrations (`npx tsx src/lib/db/migrate.ts`)
 - `npm run db:reset` — reset DB (`npx tsx src/lib/db/reset.ts`)
 - `npm run import-ecdict` — import ECDICT dictionary data
@@ -35,7 +36,7 @@ Self-evolving English learning AI with dual-agent architecture (Teacher + Develo
 **Pi Extension** (`.pi-vocab/extensions/vocab-agent.ts`):
 - Single extension handles dual-agent routing, tool registration, and system prompt injection
 - `before_agent_start` hook reads mode context and switches active tools + system prompt
-- Teacher tools (11): fsrs-review, fsrs-rate, vocab-lookup, add-word, batch-add-words, import-by-tag, extract-words, dict-lookup, vocab-stats, pin-word, unpin-word, group-manage
+- Teacher tools (14): fsrs-review, fsrs-rate, vocab-lookup, add-word, batch-add-words, import-by-tag, extract-words, dict-lookup, vocab-stats, pin-word, unpin-word, group-manage, wordnet-lookup, wiktionary-lookup, mdx-lookup
 - Developer tools (18+): read, write, edit, readSeek_read/edit/grep/search/refs/rename/hover/def/check/write, create-command, register-component, unregister-component, db-query, save-lesson, list-lessons, merge-lessons, test-command, safe-ls
 
 **Command system** (`src/lib/commands/`):
@@ -49,10 +50,16 @@ Self-evolving English learning AI with dual-agent architecture (Teacher + Develo
 
 **World State** (`src/lib/pipeline/world-state.ts`): extracted via parallel extractors, injected into Teacher agent instructions as JSON context
 
+**Dictionary Sources** (`src/lib/dictionary/`):
+- Multi-source architecture: sources implement `DictSource` interface (`types.ts`), registered in priority order via `registry.ts`, merged via `merge.ts`
+- ECDICT (`ecdict.ts`): offline SQLite — Chinese translations, exam tags, collins/BNC/frequency
+- Free Dictionary API (`free-dict-api.ts`): online REST — English definitions, phonetics, audio, etymology
+- WordNet (`wordnet.ts`): offline wordnet-db — synsets, hypernyms/hyponyms, semantic relations
+- Wiktionary (`wiktionary.ts`, `wiktionary-rest.ts`): online REST + optional offline SQLite (`data/wiktionary.db`) — etymology, word forms, IPA
+- MDX (`mdx/index.ts`): user-provided `.mdx` files in `data/mdx/` — authoritative dictionaries (OALD9, LDOCE6)
+- `lookup.ts` re-exports types from `types.ts`; all callers unchanged
+
 **Database**: `@libsql/client` (WASM-based SQLite) + Drizzle ORM. DB file at `data/vocab.db`. Schema in `src/lib/db/schema.ts`. `better-sqlite3` does NOT work in this environment.
-
-**Auth**: middleware (`src/middleware.ts`) checks `vocab-auth` cookie against `AUTH_PASSWORD` env var. All routes except `/login`, `/api/auth`, and static assets require auth.
-
 ## Key paths
 
 | Concern | Path |
@@ -62,14 +69,21 @@ Self-evolving English learning AI with dual-agent architecture (Teacher + Develo
 | Pi Extension | `.pi-vocab/extensions/vocab-agent.ts` |
 | Frontend Hook | `src/lib/pi/use-pi-chat.ts` |
 | System prompts | `src/lib/ai/prompts/teacher-system.ts`, `developer-system.ts` |
-| AI tools | `src/lib/ai/tools/` (15 tool files) |
+| AI tools | `src/lib/ai/tools/` (18 tool files — includes wordnet-lookup, wiktionary-lookup, mdx-lookup) |
 | DB schema | `src/lib/db/schema.ts` |
 | DB connection | `src/lib/db/index.ts` |
 | FSRS scheduler | `src/lib/fsrs/scheduler.ts` |
 | World state | `src/lib/pipeline/world-state.ts` |
 | Command executor | `src/lib/commands/executor.ts` |
 | Component registry | `src/components/generative/component-registry.ts` (auto-generated) |
-| Generated components | `src/components/generated/` |
+| WordNet lookup | `src/lib/dictionary/wordnet.ts` |
+| Wiktionary REST | `src/lib/dictionary/wiktionary-rest.ts` |
+| Wiktionary unified | `src/lib/dictionary/wiktionary.ts` |
+| MDX source | `src/lib/dictionary/mdx/index.ts` |
+| Dictionary types | `src/lib/dictionary/types.ts` (DictEntry, DictSource, DefGroup) |
+| Source registry | `src/lib/dictionary/registry.ts` |
+| Merge logic | `src/lib/dictionary/merge.ts` |
+| Wiktionary import | `scripts/import-wiktionary.ts` |
 | Generated tool scripts | `generated/tools/`, `generated/scripts/` |
 | Auth middleware | `src/middleware.ts` |
 
@@ -79,7 +93,12 @@ Self-evolving English learning AI with dual-agent architecture (Teacher + Develo
 - **`@libsql/client` not `better-sqlite3`** — native compilation fails; `serverExternalPackages: ['@libsql/client']` in next.config.ts is required.
 - **`component-registry.ts` is auto-generated** — editing it manually will be overwritten next time a component is registered.
 - **`generated/` is gitignored** — agent-generated code (tools, scripts, components) lives here and is not tracked.
-- **E2E tests need a running dev server** at `localhost:3088` (or set `E2E_BASE_URL`).
+- **E2E tests need a running dev server** at `localhost:3088` (or set `E2E_BASE_URL`). Playwright tests auto-start the server via `webServer` in `playwright.config.ts` and use the locally installed Chrome browser (`channel: 'chrome'`) to avoid downloading the Playwright Chromium bundle.
 - **Node.js 20.x** — AI SDK may warn `EBADENGINE` (wants >=22), but it works. Ignore the warning.
+- **WordNet data is loaded lazily** from `wordnet-db` npm package — first lookup takes 2-3 seconds (parsing index/data files), subsequent calls are fast.
+- **Wiktionary REST** goes through `en.wiktionary.org/api/rest_v1` — CC-BY-SA 4.0, attribution required. Cache results locally where possible.
+- **Wiktionary offline support** needs `data/wiktionary.db` imported via `npm run import-wiktionary` using a Kaikki JSONL dump (see `scripts/import-wiktionary.ts`).
+- **MDX dictionaries** are user-provided — place `.mdx` files in `data/mdx/` (gitignored). Uses `mdict-js` (MIT). Currently targeted: OALD9 + LDOCE6.
+- **`mdict-js` may not work with Next.js server bundling** — if the dev server crashes with mdict-js import errors, add `'mdict-js'` to `serverExternalPackages` in `next.config.ts`.
 - **Deploy** — `deploy.sh` targets Ubuntu/Debian VPS with Caddy + DuckDNS. Service runs on port 3088, Caddy proxies on 31588.
 - **Path alias** — `@/*` maps to `./src/*` (configured in tsconfig.json and vitest configs).

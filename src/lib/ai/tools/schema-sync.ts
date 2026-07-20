@@ -17,6 +17,9 @@ import { z } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
 
 // Import tool schemas
+import { wordnetLookupTool } from "./wordnet-lookup";
+import { wiktionaryLookupTool } from "./wiktionary-lookup";
+import { mdxLookupTool } from "./mdx-lookup";
 import { fsrsReviewTool, fsrsRateTool } from "./fsrs-review";
 import { addWordTool } from "./add-word";
 import { vocabLookupTool } from "./vocab-lookup";
@@ -47,6 +50,9 @@ const tools: Record<string, ToolWithSchema> = {
 	"add-word": addWordTool as any,
 	"vocab-lookup": vocabLookupTool as any,
 	"dict-lookup": dictLookupTool as any,
+"wordnet-lookup": wordnetLookupTool as any,
+"wiktionary-lookup": wiktionaryLookupTool as any,
+"mdx-lookup": mdxLookupTool as any,
 	"extract-words": extractWordsTool as any,
 	"vocab-stats": vocabStatsTool as any,
 	"pin-word": pinWordTool as any,

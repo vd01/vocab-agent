@@ -108,6 +108,14 @@ export function useCommandInterceptor({
 				};
 				setMessages((prev) => [...prev, assistantMsg]);
 
+				// Scroll to bottom after command result is added
+				setTimeout(() => {
+					const container = document.querySelector('[class*="overflow-y-auto"]') as HTMLElement;
+					if (container) {
+						container.scrollTop = container.scrollHeight;
+					}
+				}, 50);
+
 				// Save command messages to DB
 				setTimeout(() => {
 					fetch("/api/messages", {

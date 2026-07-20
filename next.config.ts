@@ -1,12 +1,13 @@
 import type { NextConfig } from "next";
+import { resolve } from "node:path";
 
 const nextConfig: NextConfig = {
-  serverExternalPackages: ['@libsql/client', '@earendil-works/pi-coding-agent', '@earendil-works/pi-ai'],
+  serverExternalPackages: ['@libsql/client', '@earendil-works/pi-coding-agent', '@earendil-works/pi-ai', 'wordnet-db'],
   devIndicators: false,
   allowedDevOrigins: ['vocab-agent.duckdns.org'],
   productionBrowserSourceMaps: false,
   turbopack: {
-    root: '..',
+    root: resolve(__dirname, '..'),
   },
 };
 

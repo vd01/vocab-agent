@@ -11,6 +11,7 @@ import React, { useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
+
 // ── File block collapsing ──────────────────────────────────────────────────
 
 function collapseFileBlocks(text: string): string {
@@ -47,7 +48,11 @@ function collapseFileBlocks(text: string): string {
 
 const ASSISTANT_COLLAPSE_LINES = 30;
 
-export function AssistantTextBubble({ text }: { text: string }) {
+export function AssistantTextBubble({
+	text,
+}: {
+	text: string;
+}) {
 	const [expanded, setExpanded] = useState(false);
 	const displayText = collapseFileBlocks(text);
 	const lineCount = displayText.split("\n").length;
@@ -55,7 +60,8 @@ export function AssistantTextBubble({ text }: { text: string }) {
 
 	return (
 		<div
-			className="text-sm leading-relaxed text-foreground break-words
+			className="bg-muted/50 border border-border rounded-2xl px-4 py-2.5 w-fit max-w-full
+                    text-sm leading-relaxed text-foreground break-words
                     prose prose-sm max-w-none
                     prose-headings:text-foreground prose-headings:font-semibold
                     prose-p:my-1 prose-p:first:mt-0 prose-p:last:mb-0

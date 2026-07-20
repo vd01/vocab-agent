@@ -103,8 +103,8 @@ export function usePiChat(options: UsePiChatOptions): UsePiChatReturn {
 		// Build parts in the order they appeared in the stream
 		for (const entry of partsRef.current) {
 			if (entry.kind === "text") {
-				if (entry.text) {
-					parts.push({ type: "text", text: entry.text });
+				if (entry.text?.trim()) {
+					parts.push({ type: "text", text: entry.text.trim() });
 				}
 			} else if (entry.kind === "tool") {
 				parts.push({
@@ -129,11 +129,12 @@ export function usePiChat(options: UsePiChatOptions): UsePiChatReturn {
 	const updateAssistantInMessages = useCallback(() => {
 		const assistantMsg = buildAssistantMessage();
 		setMessages((prev) => {
-			const idx = prev.findIndex((m) => m.id === assistantIdRef.current);
-			if (idx === -1) return [...prev, assistantMsg];
-			const next = [...prev];
-			next[idx] = assistantMsg;
-			return next;
+			// Deduplicate: replace first match, remove any others with same ID
+			const firstIdx = prev.findIndex((m) => m.id === assistantIdRef.current);
+			if (firstIdx === -1) return [...prev, assistantMsg];
+			return prev.map((m, i) =>
+				i === firstIdx ? assistantMsg : m.id === assistantIdRef.current ? null : m,
+			).filter(Boolean) as UIMessage[];
 		});
 	}, [buildAssistantMessage]);
 
@@ -143,15 +144,19 @@ export function usePiChat(options: UsePiChatOptions): UsePiChatReturn {
 			const text = inputData.text.trim();
 			if (!text) return;
 
+			// Abort any in-progress stream before starting a new one
+			abortRef.current?.abort();
+			abortRef.current = null;
+
 			// Add user message
 			const userMsg: UIMessage = {
-				id: `user-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+				id: `user-${crypto.randomUUID()}`,
 				role: "user",
 				parts: [{ type: "text", text }],
 			};
 
 			// Reset assistant accumulation
-			assistantIdRef.current = `asst-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+			assistantIdRef.current = `asst-${crypto.randomUUID()}`;
 			reasoningAccumRef.current = "";
 			partsRef.current = [];
 			currentTextIdxRef.current = null;

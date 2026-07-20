@@ -7,11 +7,8 @@
 
 import {
 	createAgentSession,
-	DefaultResourceLoader,
+	ModelRuntime,
 	SessionManager,
-	SettingsManager,
-	AuthStorage,
-	ModelRegistry,
 	type AgentSession,
 	type CreateAgentSessionResult,
 } from "@earendil-works/pi-coding-agent";
@@ -73,22 +70,27 @@ export async function getPiSessionResult(): Promise<CreateAgentSessionResult> {
 
 async function initSession(): Promise<CreateAgentSessionResult> {
 	ensureAgentDir();
-	// jiti @/ aliases are patched via scripts/postinstall-patch-jiti.js
 
 	const cwd = process.cwd();
-
-	// Write models.json with env vars at runtime (not committed to git)
 	const apiKey = process.env.OPENAI_API_KEY ?? "";
 	const baseUrl = process.env.OPENAI_BASE_URL ?? "";
 	const teacherModelId = process.env.TEACHER_MODEL ?? "gpt-4o-mini";
 	const developerModelId = process.env.DEVELOPER_MODEL ?? teacherModelId;
+	const providerId = "openai-compatible";
 
+	if (!apiKey) {
+		console.error(
+			`[Pi SDK] ⚠️ OPENAI_API_KEY is not set — agent will not work. Check .env.local`,
+		);
+	}
+
+	// Write models.json without apiKey — we inject it via ModelRuntime.setRuntimeApiKey()
+	// to avoid $OPENAI_API_KEY being claimed by the built-in "openai" provider
 	const modelsConfig = {
 		providers: {
-			"openai-compatible": {
+			[providerId]: {
 				name: "OpenAI Compatible",
 				baseUrl,
-				apiKey,
 				api: "openai-completions",
 				models: [
 					{
@@ -114,48 +116,56 @@ async function initSession(): Promise<CreateAgentSessionResult> {
 		JSON.stringify(modelsConfig, null, 2),
 	);
 
-	const authStorage = AuthStorage.create(join(VOCAB_AGENT_DIR, "auth.json"));
-	const modelRegistry = ModelRegistry.create(
-		authStorage,
-		join(VOCAB_AGENT_DIR, "models.json"),
-	);
-
-	// Settings: read from .pi-vocab/settings.json
-	const settingsManager = SettingsManager.create(cwd, VOCAB_AGENT_DIR);
-
-	// ResourceLoader: discovers extensions, skills, packages from .pi-vocab/
-	const loader = new DefaultResourceLoader({
-		cwd,
-		agentDir: VOCAB_AGENT_DIR,
-		settingsManager,
+	// Create ModelRuntime, inject API key via setRuntimeApiKey (not auth.json or env var),
+	// then explicitly select our custom provider's model for the session
+	const modelRuntime = await ModelRuntime.create({
+		authPath: join(VOCAB_AGENT_DIR, "auth.json"),
+		modelsPath: join(VOCAB_AGENT_DIR, "models.json"),
 	});
-	await loader.reload();
 
-	// Find the teacher model in the registry
-	const available = await modelRegistry.getAvailable();
-	let model = available.find(
-		(m) => m.id === teacherModelId || m.name === teacherModelId,
+	if (apiKey) {
+		modelRuntime.setRuntimeApiKey(providerId, apiKey);
+		await modelRuntime.refresh();
+	}
+
+	// Find the teacher model in our custom provider
+	const available = modelRuntime.snapshot.available.filter(
+		(m) => m.provider === providerId,
 	);
-
-	// If no exact match, use the first available from our provider
+	let model = available.find((m) => m.id === teacherModelId);
 	if (!model && available.length > 0) {
 		model = available[0];
 		console.log(
-			`[Pi SDK] Model "${teacherModelId}" not found, using "${model.name}"`,
+			`[Pi SDK] Model "${teacherModelId}" not found, using "${model.id}"`,
+		);
+	}
+
+	if (!model) {
+		console.error(
+			`[Pi SDK] ⚠️ No model available from provider "${providerId}" — check OPENAI_API_KEY / OPENAI_BASE_URL`,
 		);
 	}
 
 	const result = await createAgentSession({
-		resourceLoader: loader,
-		authStorage,
-		modelRegistry,
-		settingsManager,
-		sessionManager: SessionManager.inMemory(),
+		cwd,
+		agentDir: VOCAB_AGENT_DIR,
+		modelRuntime,
 		model: model ?? undefined,
-		// In-memory sessions — we persist messages ourselves via /api/messages
+		sessionManager: SessionManager.inMemory(),
 	});
 
 	console.log(`[Pi SDK] Session initialized (agentDir: ${VOCAB_AGENT_DIR})`);
+	if (result.modelFallbackMessage) {
+		console.error(`[Pi SDK] ⚠️ MODEL NOT CONFIGURED: ${result.modelFallbackMessage}`);
+	}
+	const resolvedModel = result.session.agent.state.model;
+	if (!resolvedModel || resolvedModel.id === "unknown") {
+		console.error(
+			`[Pi SDK] ⚠️ NO MODEL AVAILABLE — check OPENAI_API_KEY / OPENAI_BASE_URL in .env.local`,
+		);
+	} else {
+		console.log(`[Pi SDK] Model: ${resolvedModel.provider}/${resolvedModel.id}`);
+	}
 	console.log(
 		`[Pi SDK] Extensions loaded: ${result.extensionsResult.extensions.length}`,
 	);

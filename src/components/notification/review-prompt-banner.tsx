@@ -20,32 +20,7 @@ export function ReviewPromptBanner({ dueCount, newDue, reviewDue, newQueued, onS
   const hasBreakdown = newDue !== undefined && reviewDue !== undefined && (newDue > 0 || reviewDue > 0);
 
   return (
-    <div className="mx-auto max-w-3xl px-3 sm:px-4 py-1.5 sm:py-2">
-      {/* 合并后的统计卡片 - 仅在桌面端显示 */}
-      <div className="hidden sm:grid grid-cols-4 gap-1.5 mb-2">
-        <div className="rounded-lg border border-amber-200/50 bg-amber-50/60 dark:bg-amber-950/30 dark:border-amber-800/50 py-1.5 px-1 flex flex-col items-center">
-          <div className="text-[10px] text-amber-600/70 dark:text-amber-400/70">待复习</div>
-          <div className="text-base font-bold text-amber-700 dark:text-amber-300">{dueCount}</div>
-        </div>
-        {hasBreakdown && (
-          <>
-            <div className="rounded-lg border border-amber-200/50 bg-amber-50/60 dark:bg-amber-950/30 dark:border-amber-800/50 py-1.5 px-1 flex flex-col items-center">
-              <div className="text-[10px] text-amber-600/70 dark:text-amber-400/70">新词</div>
-              <div className="text-base font-bold text-blue-500">{newDue}</div>
-            </div>
-            <div className="rounded-lg border border-amber-200/50 bg-amber-50/60 dark:bg-amber-950/30 dark:border-amber-800/50 py-1.5 px-1 flex flex-col items-center">
-              <div className="text-[10px] text-amber-600/70 dark:text-amber-400/70">复习</div>
-              <div className="text-base font-bold text-amber-500">{reviewDue}</div>
-            </div>
-          </>
-        )}
-        {newQueued && newQueued > 0 && (
-          <div className="rounded-lg border border-amber-200/50 bg-amber-50/60 dark:bg-amber-950/30 dark:border-amber-800/50 py-1.5 px-1 flex flex-col items-center">
-            <div className="text-[10px] text-amber-600/70 dark:text-amber-400/70">排队中</div>
-            <div className="text-base font-bold text-amber-600 dark:text-amber-400">{newQueued}</div>
-          </div>
-        )}
-      </div>
+    <div data-testid="review-prompt-banner" className="mx-auto max-w-3xl px-3 sm:px-4 py-1.5 sm:py-2">
       <div className="flex items-center gap-2 sm:gap-3 rounded-lg sm:rounded-xl border border-amber-200/70 bg-amber-50/80 px-3 sm:px-4 py-2 sm:py-3 dark:border-amber-800/70 dark:bg-amber-950/40">
         <div className="flex-shrink-0 hidden sm:block">
           <span className="inline-flex items-center justify-center h-7 w-7 sm:h-8 sm:w-8 rounded-full bg-amber-100 dark:bg-amber-900">

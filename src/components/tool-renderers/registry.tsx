@@ -50,6 +50,8 @@ export function hasToolRenderer(type: string): boolean {
 	return registry.has(type);
 }
 
+// ── Generative component registry integration ────────────────────────────
+
 // ── Render function (replaces the old renderToolOutput) ──────────────────
 
 /**
@@ -112,24 +114,39 @@ const simpleRenderers: Record<string, (o: any) => React.ReactNode> = {
 		<div className="mt-2 text-xs text-yellow-600">{o.message}</div>
 	),
 	"not-found": (o) => (
-		<div className="mt-2 text-xs text-muted-foreground">{o.message}</div>
+		<div className="mt-2 px-4 py-2.5 rounded-2xl border border-border bg-muted/50 text-sm text-muted-foreground inline-flex items-center gap-2">
+			<svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+				<path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+			</svg>
+			{o.message}
+		</div>
 	),
 	"no-due-words": (o) => (
-		<div className="mt-2 text-sm text-muted-foreground">{o.message}</div>
+		<div className="mt-2 px-4 py-2.5 rounded-2xl border border-border bg-muted/50 text-sm text-muted-foreground">
+			{o.message}
+		</div>
 	),
 	"all-known": (o) => (
-		<div className="mt-2 text-sm text-green-600">{o.message}</div>
+		<div className="mt-2 px-4 py-2.5 rounded-2xl border border-border bg-muted/50 text-sm text-green-600">
+			{o.message}
+		</div>
 	),
 	"no-words": (o) => (
-		<div className="mt-2 text-sm text-muted-foreground">{o.message}</div>
+		<div className="mt-2 px-4 py-2.5 rounded-2xl border border-border bg-muted/50 text-sm text-muted-foreground">
+			{o.message}
+		</div>
 	),
 	"already-pinned": (o) => (
-		<div className="mt-2 text-xs text-muted-foreground">{o.message}</div>
+		<div className="mt-2 px-4 py-2.5 rounded-2xl border border-border bg-muted/50 text-xs text-muted-foreground">
+			{o.message}
+		</div>
 	),
 	"pin-full": (o) => (
-		<div className="mt-2 text-xs text-yellow-600">{o.message}</div>
+		<div className="mt-2 px-4 py-2.5 rounded-2xl border border-border bg-muted/50 text-xs text-yellow-600">
+			{o.message}
+		</div>
 	),
-	full: (o) => <div className="mt-2 text-xs text-yellow-600">{o.message}</div>,
+	full: (o) => <div className="mt-2 px-4 py-2.5 rounded-2xl border border-border bg-muted/50 text-xs text-yellow-600">{o.message}</div>,
 	message: (o) => (
 		<div className="mt-2">
 			<AssistantTextBubble text={o.message} />
@@ -164,24 +181,14 @@ registerToolRenderer("added", ({ output: o }) => (
 	</div>
 ));
 
-registerToolRenderer("found", ({ output: o }) => (
-	<div className="mt-2">
-		<WordCard
-			wordId={o.wordId}
-			word={o.word}
-			phonetic={o.phonetic}
-			audioUrl={o.audioUrl}
-			definition={o.definition}
-			examples={o.examples}
-			groups={o.groups}
-			topRightSlot={<PinButton wordId={o.wordId} word={o.word} />}
-		/>
-	</div>
-));
+// Lookup results are intentionally NOT rendered as cards in chat.
+// The LLM receives the tool result and synthesizes a richer text response.
+registerToolRenderer("found", () => null);
+registerToolRenderer("dict-found", () => null);
 
 // Stale review session (not the latest) — collapsed summary
 registerToolRenderer("due-words", ({ output: o }) => (
-	<div className="mt-2">
+	<div className="mt-2 px-4 py-3 rounded-2xl border border-border bg-muted/50">
 		<div className="text-xs text-muted-foreground mb-1.5">
 			复习（{o.words.length} 个单词）— 已过期
 		</div>
@@ -200,36 +207,21 @@ registerToolRenderer("due-words", ({ output: o }) => (
 	</div>
 ));
 
-// Dictionary lookup result (not in user's library)
+// Dictionary lookup result (not in user's library) — render as a compact card
 registerToolRenderer("dict-found", ({ output: o }) => (
-	<div className="mt-2 space-y-2">
-		<div className="flex items-baseline gap-2">
+	<div className="mt-2 rounded-2xl border border-border bg-muted/50 px-4 py-3 space-y-2 max-w-md">
+		<div className="flex items-baseline gap-2 flex-wrap">
 			<span className="text-base font-bold">{o.word}</span>
 			{o.phonetic && (
-				<span className="text-xs text-muted-foreground">{o.phonetic}</span>
+				<span className="text-sm text-muted-foreground">{o.phonetic}</span>
 			)}
 			<PronounceButton word={o.word} audioUrl={o.audioUrl} size="md" />
 			{o.collins && (
 				<span className="text-xs text-amber-500">{"★".repeat(o.collins)}</span>
 			)}
 		</div>
-		{o.tag && (
-			<div className="flex flex-wrap gap-1">
-				{o.tag
-					.split(/\s+/)
-					.filter(Boolean)
-					.map((t: string) => (
-						<span
-							key={t}
-							className="inline-block text-[10px] px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300"
-						>
-							{t}
-						</span>
-					))}
-			</div>
-		)}
 		{o.translation && (
-			<div className="text-sm">
+			<div className="text-sm text-foreground">
 				{o.translation
 					.split("\n")
 					.filter(Boolean)
@@ -243,16 +235,16 @@ registerToolRenderer("dict-found", ({ output: o }) => (
 				{o.definitions.map((group: any, gi: number) => (
 					<div key={gi}>
 						{group.partOfSpeech && (
-							<span className="text-xs italic text-muted-foreground mr-1">
+							<span className="text-xs font-medium text-muted-foreground mr-1">
 								{group.partOfSpeech}
 							</span>
 						)}
 						{group.definitions?.slice(0, 3).map((d: any, di: number) => (
-							<div key={di} className="text-xs ml-2">
+							<div key={di} className="text-sm">
 								<span className="text-muted-foreground">{di + 1}. </span>
 								{d.definition}
 								{d.example && (
-									<div className="text-muted-foreground italic ml-3">
+									<div className="text-xs text-muted-foreground italic ml-3 mt-0.5">
 										— {d.example}
 									</div>
 								)}
@@ -279,7 +271,9 @@ registerToolRenderer("dict-found", ({ output: o }) => (
 			</div>
 		)}
 		{o.hint && (
-			<div className="text-[10px] text-muted-foreground italic">{o.hint}</div>
+			<div className="text-xs text-muted-foreground italic border-t border-border pt-2">
+				{o.hint}
+			</div>
 		)}
 		{(o.bnc || o.frq) && (
 			<div className="text-[10px] text-muted-foreground">
@@ -344,7 +338,7 @@ registerToolRenderer("unpinned", ({ output: o }) => (
 
 // Stats result
 registerToolRenderer("stats", ({ output: o }) => (
-	<div className="mt-2 space-y-2">
+	<div className="mt-2 px-4 py-3 rounded-2xl border border-border bg-muted/50 space-y-2">
 		<div className="text-sm font-medium flex items-center gap-1.5">
 			<svg
 				className="size-3.5 text-muted-foreground"

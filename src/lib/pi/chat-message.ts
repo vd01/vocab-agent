@@ -76,7 +76,7 @@ export type ChatMessage =
 
 export function createUserMessage(content: string): UserMessage {
 	return {
-		id: `user-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+		id: `user-${crypto.randomUUID()}`,
 		role: "user",
 		content,
 		timestamp: Date.now(),
@@ -88,7 +88,7 @@ export function createAssistantTextMessage(
 	id?: string,
 ): AssistantTextMessage {
 	return {
-		id: id ?? `asst-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+		id: id ?? `asst-${crypto.randomUUID()}`,
 		role: "assistant",
 		type: "text",
 		content,
@@ -100,7 +100,7 @@ export function createAssistantReasoningMessage(
 	content: string,
 ): AssistantReasoningMessage {
 	return {
-		id: `reason-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+		id: `reason-${crypto.randomUUID()}`,
 		role: "assistant",
 		type: "reasoning",
 		content,
@@ -115,7 +115,7 @@ export function createToolResultMessage(
 	isError?: boolean,
 ): ToolResultMessage {
 	return {
-		id: `tool-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+		id: `tool-${crypto.randomUUID()}`,
 		role: "tool-result",
 		toolName,
 		uiType,
