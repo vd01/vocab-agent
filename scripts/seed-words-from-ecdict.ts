@@ -332,18 +332,28 @@ async function seedWords() {
   // Without membership records, group-scoped reviews return 0 words.
   {
     const nowSec2 = Math.floor(Date.now() / 1000);
+    // Ensure default group exists (use existing if name conflict)
     await vocabClient.execute({
       sql: `INSERT OR IGNORE INTO word_groups (id, name, description, is_default, created_at) VALUES (?, ?, ?, ?, ?)`,
       args: ['default-daily', '日常', '默认分组', 1, nowSec2],
     });
-    const assignResult = await vocabClient.execute({
-      sql: `INSERT OR IGNORE INTO word_group_members (id, group_id, word_id, added_at)
-           SELECT 'wgm-' || w.id, 'default-daily', w.id, ?
-           FROM words w`,
-      args: [nowSec2],
-    });
-    if (assignResult.rowsAffected > 0) {
-      console.log(`✅ Assigned ${assignResult.rowsAffected} words to default group "日常"`);
+    // Look up actual group id (may differ if group already existed with a different id)
+    const groupRow = await vocabClient.execute(
+      "SELECT id FROM word_groups WHERE name = '日常' LIMIT 1"
+    );
+    const groupId = groupRow.rows[0]?.id as string;
+    if (!groupId) {
+      console.error('❌ Failed to find/create default group');
+    } else {
+      const assignResult = await vocabClient.execute({
+        sql: `INSERT OR IGNORE INTO word_group_members (id, group_id, word_id, added_at)
+             SELECT 'wgm-' || w.id, ?, w.id, ?
+             FROM words w`,
+        args: [groupId, nowSec2],
+      });
+      if (assignResult.rowsAffected > 0) {
+        console.log(`✅ Assigned ${assignResult.rowsAffected} words to default group "日常"`);
+      }
     }
   }
 
