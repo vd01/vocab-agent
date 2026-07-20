@@ -33,9 +33,43 @@ export interface DictEntry {
 	source: string; // Which source(s) provided data
 	// MDX fields (Phase D)
 	mdxEntries?: { dict: string; html: string; text: string }[];
+	mdxSenses?: MdxSense[];
 	// WordNet fields (Phase A)
 	synsets?: { pos: string; definition: string; lemmas: string[]; examples: string[] }[];
 	semanticRelations?: { hypernyms: string[]; hyponyms: string[] };
+}
+
+/** Structured sense data parsed from MDX HTML (OALD9 etc.). */
+export interface MdxSense {
+	pos: string;
+	grammar?: string; // e.g. "[transitive]", "[uncountable]"
+	register?: string; // e.g. "formal", "informal", "literary"
+	geo?: string; // e.g. "BrE", "NAmE", "especially US"
+	senses: {
+		number?: string; // sense number: "1", "2", etc.
+		cf?: string; // collocation pattern: "~ sb", "~ sth + adv./prep."
+		en: string; // English definition
+		cn: string; // Chinese translation
+		examples?: string[]; // Example sentences
+		synonym?: string; // SYN cross-reference
+	}[];
+	idioms?: {
+		phrase: string; // e.g. "with gay abandon"
+		en: string; // English explanation
+		cn: string; // Chinese translation
+	}[];
+	phrasalVerbs?: {
+		phrase: string; // e.g. "look after sb/sth"
+		senses: {
+			en: string;
+			cn: string;
+			examples?: string[];
+		}[];
+	}[];
+	derivedForms?: {
+		word: string; // e.g. "informational"
+		pos?: string; // e.g. "adjective"
+	}[];
 }
 
 /**

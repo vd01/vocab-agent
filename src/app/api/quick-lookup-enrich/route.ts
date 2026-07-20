@@ -33,6 +33,7 @@ export async function GET(req: NextRequest) {
 		synonyms: dictEntry?.synonyms ?? [],
 		// Per-source enriched fields
 		mdxEntries: dictEntry?.mdxEntries ?? [],
+		mdxSenses: dictEntry?.mdxSenses ?? [],
 		synsets: dictEntry?.synsets ?? [],
 		etymology: dictEntry?.etymology ?? null,
 		ipa: dictEntry?.ipa ?? [],

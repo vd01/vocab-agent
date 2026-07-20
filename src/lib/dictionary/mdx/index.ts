@@ -6,6 +6,7 @@
  */
 
 import type { DictSource, DictEntry } from '../types';
+import { parseOaldHtml } from './parse-oald';
 import path from 'path';
 import { existsSync, readdirSync } from 'fs';
 
@@ -58,11 +59,13 @@ async function loadMdxFile(filePath: string, dictId: string): Promise<DictSource
 								.replace(/\s+/g, ' ')
 								.trim();
 
+							// Parse structured senses from OALD9 HTML
+							const mdxSenses = parseOaldHtml(result.definition);
+
 							return {
 								word,
-								// Use mdxEntries (dedicated field) to preserve full content
-								// without truncation or colliding with ECDICT's translation
 								mdxEntries: [{ dict: dictId, html: result.definition, text }],
+								mdxSenses: mdxSenses.length > 0 ? mdxSenses : undefined,
 								source: `mdx:${dictId}`,
 							};
 						} catch {

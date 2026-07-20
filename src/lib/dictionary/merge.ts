@@ -49,6 +49,7 @@ export function mergeMultiple(results: (Partial<DictEntry> | null)[]): DictEntry
 	const synSet = new Set(first.synonyms ?? []);
 	const antSet = new Set(first.antonyms ?? []);
 	const allMdxEntries: NonNullable<DictEntry['mdxEntries']> = [...(first.mdxEntries ?? [])];
+	const allMdxSenses: NonNullable<DictEntry['mdxSenses']> = [...(first.mdxSenses ?? [])];
 	const allSynsets: NonNullable<DictEntry['synsets']> = [...(first.synsets ?? [])];
 	const allIpa: NonNullable<DictEntry['ipa']> = [...(first.ipa ?? [])];
 	const allForms: NonNullable<DictEntry['forms']> = [...(first.forms ?? [])];
@@ -90,6 +91,7 @@ export function mergeMultiple(results: (Partial<DictEntry> | null)[]): DictEntry
 
 		// Per-source fields: combine
 		if (r.mdxEntries) allMdxEntries.push(...r.mdxEntries);
+		if (r.mdxSenses) allMdxSenses.push(...r.mdxSenses);
 		if (r.synsets) allSynsets.push(...r.synsets);
 		if (r.ipa) allIpa.push(...r.ipa);
 		if (r.forms) allForms.push(...r.forms);
@@ -112,6 +114,7 @@ export function mergeMultiple(results: (Partial<DictEntry> | null)[]): DictEntry
 	merged.synonyms = [...synSet].slice(0, 30);
 	merged.antonyms = [...antSet].slice(0, 30);
 	if (allMdxEntries.length > 0) merged.mdxEntries = allMdxEntries;
+	if (allMdxSenses.length > 0) merged.mdxSenses = allMdxSenses;
 	if (allSynsets.length > 0) merged.synsets = allSynsets;
 	if (allIpa.length > 0) merged.ipa = allIpa;
 	if (allForms.length > 0) merged.forms = allForms;
