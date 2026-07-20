@@ -73,7 +73,8 @@ ${dictInfo}
 - 所有中文内容要简洁精炼，不要啰嗦
 - confusables 如果没有明显易混淆词，可以填空字符串
 - contextSentences 的例句要地道、实用，不要太长
-- 只输出 JSON，不要有其他文字`;
+- 重要：JSON字符串值内不要使用双引号，需要强调时用单引号或「」
+- 只输出纯JSON，不要用反引号包裹，不要有其他文字`;
 
     // Direct API call (replaces AI SDK generateText)
     const apiKey = process.env.OPENAI_API_KEY;
@@ -92,9 +93,13 @@ ${dictInfo}
       },
       body: JSON.stringify({
         model,
-        messages: [{ role: 'user', content: prompt }],
+        messages: [
+          { role: 'system', content: 'You are a JSON generator. Always output valid JSON only, no markdown, no code blocks.' },
+          { role: 'user', content: prompt },
+        ],
         max_tokens: 1000,
         temperature: 0.7,
+        response_format: { type: 'json_object' },
       }),
     });
 
@@ -109,13 +114,24 @@ ${dictInfo}
 
     let richContent;
     try {
-      const cleaned = resultText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+      // Strip markdown code fences and whitespace
+      const cleaned = resultText
+        .replace(/^```(?:json)?\s*/i, '')
+        .replace(/```\s*$/i, '')
+        .trim();
       richContent = JSON.parse(cleaned);
     } catch {
-      richContent = {
-        mnemonic: resultText,
-        raw: true,
-      };
+      // Fallback: try to extract JSON object from the text
+      const jsonMatch = resultText.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        try {
+          richContent = JSON.parse(jsonMatch[0]);
+        } catch {
+          richContent = { mnemonic: resultText, raw: true };
+        }
+      } else {
+        richContent = { mnemonic: resultText, raw: true };
+      }
     }
 
     await db
