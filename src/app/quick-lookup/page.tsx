@@ -77,6 +77,8 @@ export default function QuickLookupPage() {
 	const [showGroupSelector, setShowGroupSelector] = useState(false);
 	const [newGroupName, setNewGroupName] = useState("");
 	const inputRef = useRef<HTMLInputElement>(null);
+	const lookupAbortRef = useRef<AbortController | null>(null);
+	const lastLookupWordRef = useRef<string>("");
 
 	const [shortcutHint, setShortcutHint] = useState("");
 
@@ -132,10 +134,11 @@ export default function QuickLookupPage() {
 				isEnglishWordOrPhrase(clipboardText)
 			) {
 				const word = clipboardText.trim();
+				// Skip if already showing results for this word
+				if (word.toLowerCase() === lastLookupWordRef.current.toLowerCase() && !loading) {
+					return;
+				}
 				setInput(word);
-				setResult(null);
-				setActionMessage(null);
-				setShowGroupSelector(false);
 				doLookup(word);
 			}
 		} catch {
@@ -158,6 +161,12 @@ export default function QuickLookupPage() {
 		const trimmed = word.trim();
 		if (!trimmed) return;
 
+		// Cancel any in-flight request
+		lookupAbortRef.current?.abort();
+		const controller = new AbortController();
+		lookupAbortRef.current = controller;
+		lastLookupWordRef.current = trimmed;
+
 		setLoading(true);
 		setResult(null);
 		setActionMessage(null);
@@ -169,34 +178,45 @@ export default function QuickLookupPage() {
 				? `${baseUrl}/api/quick-lookup?word=${encodeURIComponent(trimmed)}`
 				: `/api/quick-lookup?word=${encodeURIComponent(trimmed)}`;
 
-			const res = await fetch(url);
+			const res = await fetch(url, { signal: controller.signal });
 			const data = await res.json();
-			setResult(data);
-		} catch {
-			setResult({
-				type: "error",
-				word: trimmed,
-				inLibrary: false,
-				wordId: null,
-				groups: [],
-				isPinned: false,
-				fsrsState: null,
-				fsrsStateLabel: null,
-				fsrsDue: null,
-				phonetic: null,
-				audioUrl: null,
-				translation: "查询失败，请检查网络连接",
-				definitions: [],
-				collins: null,
-				tag: null,
-				bnc: null,
-				exchange: null,
-				synonyms: [],
-				actions: [],
-				allGroups: [],
-			});
+
+			// Only update if this is still the latest request
+			if (lookupAbortRef.current === controller) {
+				setResult(data);
+			}
+		} catch (err) {
+			// Ignore abort errors — a newer request has taken over
+			if (err instanceof DOMException && err.name === "AbortError") return;
+
+			if (lookupAbortRef.current === controller) {
+				setResult({
+					type: "error",
+					word: trimmed,
+					inLibrary: false,
+					wordId: null,
+					groups: [],
+					isPinned: false,
+					fsrsState: null,
+					fsrsStateLabel: null,
+					fsrsDue: null,
+					phonetic: null,
+					audioUrl: null,
+					translation: "查询失败，请检查网络连接",
+					definitions: [],
+					collins: null,
+					tag: null,
+					bnc: null,
+					exchange: null,
+					synonyms: [],
+					actions: [],
+					allGroups: [],
+				});
+			}
 		} finally {
-			setLoading(false);
+			if (lookupAbortRef.current === controller) {
+				setLoading(false);
+			}
 		}
 	}, []);
 
