@@ -64,16 +64,23 @@ export function useDueCount() {
 		window.addEventListener("review-word-rated", onWordRated);
 		window.addEventListener("review-session-completed", onSessionCompleted);
 
+		// Refresh when page becomes visible (e.g. returning from Tauri quick-lookup
+		// where words may have been added to the library with new FSRS cards)
+		const onVisibilityChange = () => {
+			if (document.visibilityState === "visible") {
+				fetchDueInfo();
+			}
+		};
+		document.addEventListener("visibilitychange", onVisibilityChange);
+
 		return () => {
 			unsub();
 			clearInterval(dueCountTimer);
 			if (rateRefreshTimerRef.current)
 				clearTimeout(rateRefreshTimerRef.current);
 			window.removeEventListener("review-word-rated", onWordRated);
-			window.removeEventListener(
-				"review-session-completed",
-				onSessionCompleted,
-			);
+			window.removeEventListener("review-session-completed", onSessionCompleted);
+			document.removeEventListener("visibilitychange", onVisibilityChange);
 		};
 	}, []);
 

@@ -70,6 +70,18 @@ export function GroupProvider({ children }: { children: React.ReactNode }) {
     }
   }, [refreshGroups]);
 
+  // Refresh groups when page becomes visible again
+  // (e.g. returning from Tauri quick-lookup window where groups may have been created)
+  useEffect(() => {
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        refreshGroups();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', onVisibilityChange);
+  }, [refreshGroups]);
+
   return (
     <GroupContext.Provider value={{ activeGroup, setActiveGroup, groups, refreshGroups, loading }}>
       {children}

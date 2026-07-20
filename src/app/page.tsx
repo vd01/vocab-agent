@@ -13,7 +13,20 @@ export default function Home() {
 	useEffect(() => {
 		const onPinChange = () => setPinRefreshKey((k) => k + 1);
 		window.addEventListener("pin-change", onPinChange);
-		return () => window.removeEventListener("pin-change", onPinChange);
+
+		// Refresh pinned sidebar when page becomes visible again
+		// (e.g. returning from Tauri quick-lookup window where pins may have changed)
+		const onVisibilityChange = () => {
+			if (document.visibilityState === "visible") {
+				setPinRefreshKey((k) => k + 1);
+			}
+		};
+		document.addEventListener("visibilitychange", onVisibilityChange);
+
+		return () => {
+			window.removeEventListener("pin-change", onPinChange);
+			document.removeEventListener("visibilitychange", onVisibilityChange);
+		};
 	}, []);
 
 	return (
