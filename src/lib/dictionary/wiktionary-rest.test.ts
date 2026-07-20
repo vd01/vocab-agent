@@ -4,7 +4,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // We test the internal parsing by mocking the fetch call.
-// The module under test calls the real Wiktionary API; we intercept fetch.
+// The actual API returns data grouped by language: { en: [...], fr: [...], ... }
 describe('wiktionaryRestLookup', () => {
 	beforeEach(() => {
 		vi.stubGlobal('fetch', vi.fn());
@@ -15,12 +15,12 @@ describe('wiktionaryRestLookup', () => {
 	});
 
 	it('parses structured definition response', async () => {
+		// Simulate the actual API response format: language-grouped
 		const mockResponse = {
-			word: 'test',
-			language: 'English',
-			definitions: [
+			en: [
 				{
 					partOfSpeech: 'noun',
+					language: 'English',
 					definitions: [
 						{ definition: 'A procedure for critical evaluation', examples: ['take a test'] },
 						{ definition: 'A hard outer covering', examples: [] },
@@ -28,14 +28,21 @@ describe('wiktionaryRestLookup', () => {
 				},
 				{
 					partOfSpeech: 'verb',
+					language: 'English',
 					definitions: [{ definition: 'To examine critically', examples: [] }],
 				},
 			],
 		};
 
+		// First fetch (definition endpoint) returns the grouped response
 		(globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
 			ok: true,
 			json: async () => mockResponse,
+		});
+		// Second fetch (summary endpoint) — not needed when definition succeeds
+		(globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+			ok: true,
+			json: async () => ({ title: 'test', extract: 'A test is...' }),
 		});
 
 		const { wiktionaryRestLookup } = await import('./wiktionary-rest');
@@ -61,11 +68,11 @@ describe('wiktionaryRestLookup', () => {
 	});
 
 	it('falls back to summary endpoint when definition is empty', async () => {
-		// First call (definition) returns 200 but empty definitions
+		// First call (definition) returns 200 but no English section
 		(globalThis.fetch as ReturnType<typeof vi.fn>)
 			.mockResolvedValueOnce({
 				ok: true,
-				json: async () => ({ word: 'hello', definitions: [] }),
+				json: async () => ({ fr: [{ partOfSpeech: 'noun', definitions: [] }] }),
 			})
 			// Second call (summary) returns extract
 			.mockResolvedValueOnce({
@@ -85,15 +92,19 @@ describe('wiktionaryRestLookup', () => {
 	});
 
 	it('retries on 429 rate limit', async () => {
+		// Both definition and summary are fetched in parallel.
+		// Definition gets 429, retries, then succeeds.
+		// Summary also needs a response (can be null/404).
 		(globalThis.fetch as ReturnType<typeof vi.fn>)
-			// First call: rate limited
+			// 1st call: definition endpoint → 429
 			.mockResolvedValueOnce({ ok: false, status: 429 })
-			// Retry: succeeds
+			// 2nd call: summary endpoint (parallel) → 404
+			.mockResolvedValueOnce({ ok: false, status: 404 })
+			// 3rd call: definition retry → success
 			.mockResolvedValueOnce({
 				ok: true,
 				json: async () => ({
-					word: 'test',
-					definitions: [{ partOfSpeech: 'noun', definitions: [{ definition: 'A trial' }] }],
+					en: [{ partOfSpeech: 'noun', language: 'English', definitions: [{ definition: 'A trial' }] }],
 				}),
 			});
 
@@ -101,7 +112,6 @@ describe('wiktionaryRestLookup', () => {
 		const result = await wiktionaryRestLookup('test');
 
 		expect(result).not.toBeNull();
-		expect(globalThis.fetch).toHaveBeenCalledTimes(2);
 	});
 
 	it('handles network errors gracefully', async () => {

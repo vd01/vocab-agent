@@ -7,6 +7,10 @@
  * Rate limit: recommended to stay under ~200 req/min.
  * Endpoint: GET /api/rest_v1/page/definition/{word}
  * Fallback: GET /api/rest_v1/page/summary/{word} (simpler but less detail)
+ *
+ * The definition endpoint returns data grouped by language:
+ *   { en: [{ partOfSpeech, language, definitions }], fr: [...], ... }
+ * We extract only the English ("en") section.
  */
 
 const USER_AGENT = 'vocab-agent/1.0 (https://github.com/vocab-agent; CC-BY-SA attribution)';
@@ -22,14 +26,15 @@ interface WiktionaryDefinition {
 	examples?: string[];
 }
 
-interface WiktionaryPageDefinition {
-	word: string;
-	language?: string;
-	definitions: Array<{
-		partOfSpeech: string;
-		definitions: WiktionaryDefinition[];
-	}>;
+/** Per-language section from the definition endpoint. */
+interface WiktionaryLangSection {
+	partOfSpeech: string;
+	language: string;
+	definitions: WiktionaryDefinition[];
 }
+
+/** Full response from /page/definition — keyed by language code. */
+type WiktionaryPageDefinition = Record<string, WiktionaryLangSection[]>;
 
 interface WiktionaryPageSummary {
 	title: string;
@@ -128,12 +133,14 @@ export async function wiktionaryRestLookup(
 	]);
 
 	// Prefer structured definition if available
-	if (def && def.definitions?.length > 0) {
+	// The API returns { en: [...], fr: [...], ... } — extract English section
+	const enSections = def?.en;
+	if (enSections && enSections.length > 0) {
 		const metadata = extractMetadata(def);
 		return {
-			word: def.word || word,
+			word,
 			...metadata,
-			definitions: def.definitions.map((g) => ({
+			definitions: enSections.map((g) => ({
 				partOfSpeech: g.partOfSpeech,
 				definitions: g.definitions || [],
 			})),

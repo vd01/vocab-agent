@@ -493,8 +493,8 @@ export default function QuickLookupPage() {
 							</div>
 						)}
 
-						{/* ── English Definitions (FreeDict, fallback when no MDX) ── */}
-						{!hasMdxSenses && result.definitions && result.definitions.length > 0 && (
+						{/* ── English Definitions (FreeDict + WordNet, shown when no MDX) ── */}
+						{result.definitions && result.definitions.length > 0 && !hasMdxSenses && (
 							<div className="space-y-1.5">
 								{result.definitions.slice(0, 3).map((group, i) => (
 									<div key={i}>
@@ -513,6 +513,25 @@ export default function QuickLookupPage() {
 								))}
 							</div>
 						)}
+
+						{/* ── WordNet Synsets (semantic network) ── */}
+						{result.synsets && result.synsets.length > 0 && (
+							<div className="space-y-1">
+								<div className="text-[11px] text-muted-foreground font-medium">语义网络</div>
+								{result.synsets.slice(0, expandedMdx ? 10 : 4).map((syn, i) => (
+									<div key={i} className="pl-2 border-l-2 border-border/50">
+										<span className="text-[10px] text-muted-foreground mr-1">{syn.pos}.</span>
+										<span className="text-[11px] text-foreground/70">{syn.definition.slice(0, 80)}</span>
+										{syn.lemmas.length > 1 && (
+											<span className="text-[10px] text-muted-foreground ml-1.5">
+												→ {syn.lemmas.filter(l => l.toLowerCase() !== result!.word.toLowerCase()).slice(0, 4).join(", ")}
+											</span>
+										)}
+									</div>
+								))}
+							</div>
+						)}
+
 
 						{/* ── Inflected Forms ── */}
 						{inflectedForms.length > 0 && (
