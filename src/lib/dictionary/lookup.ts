@@ -108,14 +108,16 @@ export async function lookupWordOffline(word: string) {
 }
 
 /**
- * Fast lookup for quick-lookup window — offline sources first, online enrichment async.
+ * Fast lookup for quick-lookup window — ECDICT first, everything else async.
  *
- * Returns a tuple: [offlineEntry, onlineEnrichPromise]
- * - offlineEntry: result from ECDICT + WordNet + MDX (local, <100ms)
- * - onlineEnrichPromise: resolves to fully enriched entry after FreeDict + Wiktionary
+ * Returns a tuple: [fastEntry, backgroundPromise]
+ * - fastEntry: result from ECDICT only (SQLite, ~10ms). Sufficient for
+ *   Chinese translation, phonetic, frequency, exam tags.
+ * - backgroundPromise: resolves after WordNet + MDX + FreeDict + Wiktionary
+ *   complete. Caches the enriched entry for future lookups.
  *
- * The caller can show offlineEntry immediately and optionally update when
- * onlineEnrichPromise resolves.
+ * The caller should use fastEntry immediately and ignore backgroundPromise
+ * (it only serves to warm the cache).
  */
 export async function lookupWordFast(
 	word: string,
@@ -125,33 +127,30 @@ export async function lookupWordFast(
 	const cached = cacheGet(normalized);
 	if (cached) return [cached, Promise.resolve(cached)];
 
-	await ensureMdxRegistered();
+	// Phase 1: ECDICT only — SQLite direct query, ~10ms
+	const ecdictResult = await ecdictSource.lookup(normalized);
+	const fastEntry = mergeMultiple([ecdictResult]);
 
-	// Phase 1: offline sources (fast, <100ms)
-	const offlineResults = await Promise.all([
-		ecdictSource.lookup(normalized),
-		wordnetSource.lookup(normalized),
-		...registry
-			.getSources()
-			.filter((s) => s.name.startsWith('mdx:'))
-			.map((s) => s.lookup(normalized)),
-	]);
-	const offlineEntry = mergeMultiple(offlineResults);
+	// Phase 2: all other sources in background — WordNet (slow first load),
+	// MDX, FreeDict, Wiktionary — none block the response
+	const backgroundPromise = (async (): Promise<DictEntry | null> => {
+		await ensureMdxRegistered();
 
-	// Phase 2: online sources (slow, 3-8s each) — runs in background
-	const onlinePromise = (async (): Promise<DictEntry | null> => {
-		const onlineResults = await Promise.all([
+		const otherResults = await Promise.all([
+			wordnetSource.lookup(normalized),
+			...registry
+				.getSources()
+				.filter((s) => s.name.startsWith('mdx:'))
+				.map((s) => s.lookup(normalized)),
 			freeDictSource.lookup(normalized),
 			wiktionarySource.lookup(normalized),
 		]);
-		const allResults = [
-			...offlineResults,
-			...onlineResults,
-		];
+
+		const allResults = [ecdictResult, ...otherResults];
 		const fullEntry = mergeMultiple(allResults);
 		if (fullEntry) cacheSet(normalized, fullEntry);
 		return fullEntry;
 	})();
 
-	return [offlineEntry, onlinePromise];
+	return [fastEntry, backgroundPromise];
 }

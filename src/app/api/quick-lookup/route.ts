@@ -14,9 +14,9 @@ import { NextRequest } from "next/server";
  * Quick Lookup API — optimized for the Tauri quick-lookup window.
  *
  * Uses lookupWordFast() which returns offline data (ECDICT + WordNet + MDX)
- * immediately, then waits up to 3s for online enrichment (FreeDict + Wiktionary).
- * This reduces response time from ~16s to <200ms for cached/offline words,
- * and to <3.5s for words needing online data.
+ * immediately. Online sources (FreeDict + Wiktionary) run in the background
+ * to warm the cache for future lookups, but the response is sent immediately
+ * with offline data — no waiting for network.
  */
 export async function GET(req: NextRequest) {
 	const word = req.nextUrl.searchParams.get("word")?.trim().toLowerCase();
@@ -28,22 +28,14 @@ export async function GET(req: NextRequest) {
 	}
 
 	// Run DB queries and dictionary lookup in parallel
-	const [dbData, [offlineDict, onlineDictPromise]] = await Promise.all([
+	const [dbData, [dictEntry]] = await Promise.all([
 		fetchLibraryData(word),
 		lookupWordFast(word),
 	]);
 
-	// Wait up to 3s for online enrichment
-	let dictEntry = offlineDict;
-	try {
-		const onlineResult = await Promise.race([
-			onlineDictPromise,
-			new Promise<null>((resolve) => setTimeout(() => resolve(null), 3000)),
-		]);
-		if (onlineResult) dictEntry = onlineResult;
-	} catch {
-		// Online enrichment failed, use offline data
-	}
+	// Online enrichment runs in background (lookupWordFast returns it as
+	// the second tuple element) — we ignore it here and let it warm the
+	// cache. Next lookup for the same word will hit the enriched cache.
 
 	// Build response
 	const fsrsStateLabel =
