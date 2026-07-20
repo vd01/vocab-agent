@@ -160,7 +160,7 @@ for (const [type, renderFn] of Object.entries(simpleRenderers)) {
 
 // Word card renderers
 registerToolRenderer("added", ({ output: o }) => (
-	<div className="mt-2 space-y-2">
+	<div className="mt-2 space-y-2 max-w-lg w-full">
 		<div className="text-xs text-green-600">{o.message}</div>
 		<WordCard
 			wordId={o.wordId}
@@ -300,7 +300,7 @@ registerToolRenderer("batch-added", ({ output: o }) => (
 
 // Pinned word
 registerToolRenderer("pinned", ({ output: o }) => (
-	<div className="mt-2 space-y-2">
+	<div className="mt-2 space-y-2 max-w-lg w-full">
 		<div className="text-xs text-primary flex items-center gap-1.5">
 			<PinChangeNotifier />
 			<svg
