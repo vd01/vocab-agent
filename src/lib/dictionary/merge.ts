@@ -58,9 +58,19 @@ export function mergeMultiple(results: (Partial<DictEntry> | null)[]): DictEntry
 		const r = valid[i];
 		if (r.source) sourceNames.push(r.source);
 
-		// Shared text fields: first non-empty wins
+		// Shared text fields: quality-aware priority
 		if (!merged.word && r.word) merged.word = r.word;
-		if (!merged.phonetic && r.phonetic) merged.phonetic = r.phonetic;
+
+		// Phonetic: prefer IPA format (starts with /) over ECDICT ASCII approximations
+		if (r.phonetic) {
+			if (!merged.phonetic) {
+				merged.phonetic = r.phonetic;
+			} else if (r.phonetic.startsWith('/') && !merged.phonetic.startsWith('/')) {
+				// Upgrade from ASCII phonetic to proper IPA
+				merged.phonetic = r.phonetic;
+			}
+		}
+
 		if (!merged.translation && r.translation) merged.translation = r.translation;
 		if (!merged.origin && r.origin) merged.origin = r.origin;
 		if (!merged.etymology && r.etymology) merged.etymology = r.etymology;
@@ -119,6 +129,14 @@ export function mergeMultiple(results: (Partial<DictEntry> | null)[]): DictEntry
 	if (allSynsets.length > 0) merged.synsets = allSynsets;
 	if (allIpa.length > 0) merged.ipa = allIpa;
 	if (allForms.length > 0) merged.forms = allForms;
+
+	// Upgrade phonetic from IPA array if current phonetic is not IPA format
+	if (allIpa.length > 0 && merged.phonetic && !merged.phonetic.startsWith('/')) {
+		const firstIpa = allIpa.find((i: any) => i.ipa?.startsWith('/'));
+		if (firstIpa?.ipa) {
+			merged.phonetic = firstIpa.ipa;
+		}
+	}
 
 	merged.source = [...new Set(sourceNames)].join('+');
 

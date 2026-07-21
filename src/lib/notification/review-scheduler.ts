@@ -1,3 +1,5 @@
+import { cachedFetch } from '@/lib/fetch-cache';
+
 /**
  * ReviewScheduler — handles periodic polling for due words and
  * triggering notifications or in-app prompts.
@@ -108,9 +110,7 @@ export class ReviewScheduler {
   }
 
   private async fetchDueCount(): Promise<number> {
-    const res = await fetch('/api/review-due');
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
+    const data = await cachedFetch<{ due?: number }>('/api/review-due');
     return data.due ?? 0;
   }
 

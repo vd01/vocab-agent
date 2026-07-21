@@ -85,6 +85,7 @@ export async function lookupWord(word: string) {
 		// Record cached result for debugging if tracking
 		if (wordDebugger.isTracking(normalized)) {
 			wordDebugger.recordSource(normalized, 'cache', cached, 0);
+			wordDebugger.recordMerged(normalized, cached);
 		}
 		return cached;
 	}
@@ -162,6 +163,7 @@ export async function lookupWordFast(
 	if (cached) {
 		if (wordDebugger.isTracking(normalized)) {
 			wordDebugger.recordSource(normalized, 'cache', cached, 0);
+			wordDebugger.recordMerged(normalized, cached);
 		}
 		return [cached, Promise.resolve(cached)];
 	}
@@ -217,4 +219,13 @@ export async function lookupWordFast(
 	})();
 
 	return [fastEntry, backgroundPromise];
+}
+
+/**
+ * Clear the in-memory lookup cache.
+ * Useful when source data or merge logic has changed.
+ */
+export function clearLookupCache(): void {
+	cache.clear();
+	console.log('[lookup] Cache cleared');
 }

@@ -9,6 +9,7 @@
  */
 
 import { ReviewScheduler, type SchedulerConfig, DEFAULT_SCHEDULER_CONFIG } from './review-scheduler';
+import { cachedFetch } from '@/lib/fetch-cache';
 
 export type NotificationChangeCallback = (
   enabled: boolean,
@@ -42,20 +43,17 @@ class NotificationManager {
   async init() {
     if (this.initialized) return;
     try {
-      const res = await fetch('/api/settings?prefix=notification.');
-      if (res.ok) {
-        const data = await res.json();
-        const saved = data.settings ?? {};
-        this.config = {
-          enabled: saved['notification.enabled'] === 'true',
-          intervalMinutes: parseInt(saved['notification.intervalMinutes'] ?? '30', 10) || 30,
-          quietHoursStart: parseInt(saved['notification.quietHoursStart'] ?? '22', 10),
-          quietHoursEnd: parseInt(saved['notification.quietHoursEnd'] ?? '7', 10),
-        };
-        this.scheduler.updateConfig(this.config);
-        if (this.config.enabled) {
-          this.scheduler.start();
-        }
+      const data = await cachedFetch<{ settings: Record<string, string> }>('/api/settings?prefix=notification.');
+      const saved = data.settings ?? {};
+      this.config = {
+        enabled: saved['notification.enabled'] === 'true',
+        intervalMinutes: parseInt(saved['notification.intervalMinutes'] ?? '30', 10) || 30,
+        quietHoursStart: parseInt(saved['notification.quietHoursStart'] ?? '22', 10),
+        quietHoursEnd: parseInt(saved['notification.quietHoursEnd'] ?? '7', 10),
+      };
+      this.scheduler.updateConfig(this.config);
+      if (this.config.enabled) {
+        this.scheduler.start();
       }
     } catch (err) {
       console.error('[NotificationManager] Init failed:', err);

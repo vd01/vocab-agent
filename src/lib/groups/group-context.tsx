@@ -1,6 +1,7 @@
 'use client';
 
 import { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
+import { cachedFetch, invalidateCache } from '@/lib/fetch-cache';
 
 export interface GroupInfo {
   id: string;
@@ -50,11 +51,8 @@ export function GroupProvider({ children }: { children: React.ReactNode }) {
 
   const refreshGroups = useCallback(async () => {
     try {
-      const res = await fetch('/api/groups');
-      if (res.ok) {
-        const data = await res.json();
-        setGroups(data.groups || []);
-      }
+      const data = await cachedFetch<{ groups: GroupInfo[] }>('/api/groups');
+      setGroups(data.groups || []);
     } catch (err) {
       console.error('[GroupProvider] Failed to fetch groups:', err);
     } finally {
@@ -70,12 +68,16 @@ export function GroupProvider({ children }: { children: React.ReactNode }) {
     }
   }, [refreshGroups]);
 
-  // Refresh groups when page becomes visible again
-  // (e.g. returning from Tauri quick-lookup window where groups may have been created)
+  // Refresh groups when returning from another window with 10s cooldown
   useEffect(() => {
+    let lastRefresh = 0;
     const onVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
-        refreshGroups();
+        const now = Date.now();
+        if (now - lastRefresh > 10_000) {
+          lastRefresh = now;
+          refreshGroups();
+        }
       }
     };
     document.addEventListener('visibilitychange', onVisibilityChange);

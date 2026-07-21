@@ -26,7 +26,35 @@ export async function GET(
 
     if (p.richContent) {
       try {
-        const content = JSON.parse(p.richContent);
+        let content = JSON.parse(p.richContent);
+        // Fix legacy raw:true entries where mnemonic contains the full JSON string
+        if (content?.raw && typeof content.mnemonic === 'string') {
+          try {
+            const inner = JSON.parse(content.mnemonic);
+            if (typeof inner === 'object' && inner.mnemonic) {
+              content = inner;
+              // Update DB with fixed content
+              db.update(pinnedWords)
+                .set({ richContent: JSON.stringify(content) })
+                .where(eq(pinnedWords.id, pinId))
+                .catch(() => {});
+            }
+          } catch {
+            try {
+              const fixed = content.mnemonic
+                .replace(/[\u201c\u201d]/g, '"')
+                .replace(/[\u2018\u2019]/g, "'");
+              const inner = JSON.parse(fixed);
+              if (typeof inner === 'object' && inner.mnemonic) {
+                content = inner;
+                db.update(pinnedWords)
+                  .set({ richContent: JSON.stringify(content) })
+                  .where(eq(pinnedWords.id, pinId))
+                  .catch(() => {});
+              }
+            } catch {}
+          }
+        }
         // Debug: record cached result
         wordDebugger.startWord(p.word);
         wordDebugger.recordSource(p.word, 'richContent-cache', content, 0);
@@ -52,7 +80,7 @@ export async function GET(
     try {
       const enriched = await Promise.race([
         backgroundPromise,
-        new Promise<null>((resolve) => setTimeout(() => resolve(null), 2500)),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 8000)),
       ]);
       if (enriched) dictData = enriched;
     } catch {
@@ -76,7 +104,10 @@ ${dictInfo}
   "cultureNote": "文化小贴士，1句话",
   "memoryTip": "一句话记忆诀窍"
 }
-要求：简洁精炼，每字段不超过120字（contextSentences每条不超过80字），JSON值内用单引号或「」代替双引号`;
+要求：
+1. 必须输出合法JSON，所有key和value必须用双引号""，不能用单引号或「」
+2. contextSentences中每条例句格式：英文句子（中文翻译），必须包含中文
+3. 简洁精炼，每字段不超过120字（contextSentences每条不超过80字）`;
 
     // Debug: record LLM input
     wordDebugger.recordLLMInput(p.word, 'pin-detail', prompt);
@@ -123,22 +154,80 @@ ${dictInfo}
     let richContent;
     try {
       // Strip markdown code fences and whitespace
-      const cleaned = resultText
+      let cleaned = resultText
         .replace(/^```(?:json)?\s*/i, '')
         .replace(/```\s*$/i, '')
         .trim();
       richContent = JSON.parse(cleaned);
     } catch {
-      // Fallback: try to extract JSON object from the text
-      const jsonMatch = resultText.match(/\{[\s\S]*\}/);
+      // Fallback: try progressive JSON repair
+      // Since we use response_format:json_object, the LLM should output valid JSON.
+      // If it fails, it's usually because of CJK quotes inside string values.
+      // Strategy: extract the outermost { }, then try targeted fixes.
+      const raw = resultText
+        .replace(/^```(?:json)?\s*/i, '')
+        .replace(/```\s*$/i, '')
+        .trim();
+
+      const jsonMatch = raw.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
+        const jsonStr = jsonMatch[0];
+        // Try 1: Replace 「」 with "" (these are never valid JSON syntax)
         try {
-          richContent = JSON.parse(jsonMatch[0]);
-        } catch {
-          richContent = { mnemonic: resultText, raw: true };
+          richContent = JSON.parse(jsonStr.replace(/[「」]/g, '"'));
+        } catch {}
+
+        // Try 2: Replace CJK quotes \u201c\u201d with escaped quotes inside strings
+        // The key insight: \u201c/\u201d inside JSON string values need to become
+        // escaped \" not raw ", because raw " would break the JSON structure.
+        if (!richContent) {
+          try {
+            // Replace CJK quotes with escaped double quotes
+            const fixed = jsonStr
+              .replace(/\u201c/g, '\\"')
+              .replace(/\u201d/g, '\\"');
+            richContent = JSON.parse(fixed);
+          } catch {}
         }
-      } else {
-        richContent = { mnemonic: resultText, raw: true };
+
+        // Try 3: Replace CJK quotes with single quotes (less destructive)
+        if (!richContent) {
+          try {
+            const fixed = jsonStr
+              .replace(/\u201c/g, "'")
+              .replace(/\u201d/g, "'");
+            richContent = JSON.parse(fixed);
+          } catch {}
+        }
+
+        // Try 4: Single-quote keys/values (some LLMs use 'key': 'value')
+        if (!richContent) {
+          try {
+            const fixed = jsonStr
+              .replace(/'([^']*)'\s*:/g, '"$1":')
+              .replace(/:\s*'([^']*)'/g, ': "$1"')
+              .replace(/\[\s*'([^']*)'\s*\]/g, '["$1"]');
+            richContent = JSON.parse(fixed);
+          } catch {}
+        }
+
+        // Try 5: Combined — CJK quotes to single quotes + single-quote fix
+        if (!richContent) {
+          try {
+            const fixed = jsonStr
+              .replace(/\u201c/g, "'")
+              .replace(/\u201d/g, "'")
+              .replace(/'([^']*)'\s*:/g, '"$1":')
+              .replace(/:\s*'([^']*)'/g, ': "$1"')
+              .replace(/\[\s*'([^']*)'\s*\]/g, '["$1"]');
+            richContent = JSON.parse(fixed);
+          } catch {}
+        }
+      }
+
+      // Final fallback: store as raw text
+      if (!richContent) {
+        richContent = { mnemonic: resultText.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim(), raw: true };
       }
     }
 
@@ -217,7 +306,13 @@ function buildLLMContext(word: string, d: any): string {
       const register = sense.register ? `(${sense.register}) ` : '';
       const geo = sense.geo ? `[${sense.geo}] ` : '';
       senseLines.push(`${pos}${grammar}${register}${geo}`.trim());
-      for (const s of sense.senses?.slice(0, 4) ?? []) {
+      // Sort senses: prefer those with examples
+      const sortedSenses = [...(sense.senses || [])].sort((a, b) => {
+        const aHasEx = (a.examples?.length || 0) > 0 ? 0 : 1;
+        const bHasEx = (b.examples?.length || 0) > 0 ? 0 : 1;
+        return aHasEx - bHasEx;
+      });
+      for (const s of sortedSenses.slice(0, 6) ?? []) {
         let line = `  ${s.number ? s.number + '. ' : ''}${s.en}`;
         if (s.cn) line += ` 【${s.cn}】`;
         if (s.examples?.length) line += ` — 例: ${s.examples[0]}`;
@@ -233,12 +328,12 @@ function buildLLMContext(word: string, d: any): string {
       if (sense.phrasalVerbs?.length) {
         senseLines.push('  短语动词:');
         for (const pv of sense.phrasalVerbs.slice(0, 3)) {
-          const pvSenses = pv.senses.map(s => s.en).join('; ');
+          const pvSenses = pv.senses.map((s: any) => s.en).join('; ');
           senseLines.push(`    ${pv.phrase} — ${pvSenses}`);
         }
       }
       if (sense.derivedForms?.length) {
-        senseLines.push(`  派生词: ${sense.derivedForms.map(f => `${f.word}${f.pos ? `(${f.pos})` : ''}`).join(', ')}`);
+        senseLines.push(`  派生词: ${sense.derivedForms.map((f: any) => `${f.word}${f.pos ? `(${f.pos})` : ''}`).join(', ')}`);
       }
     }
     sections.push(`【权威词典 (OALD)】\n${senseLines.join('\n')}`);
@@ -255,9 +350,22 @@ function buildLLMContext(word: string, d: any): string {
     const wnLines: string[] = [];
     for (const s of d.synsets.slice(0, 4)) {
       const posLabel: Record<string, string> = { n: '名词', v: '动词', a: '形容词', r: '副词' };
-      wnLines.push(`  ${posLabel[s.pos] || s.pos}: ${s.definition}`);
+      // Truncate WordNet definitions that contain quoted examples inline
+      // e.g. "open to two or more interpretations; or ..."an equivocal statement";..."
+      let def = s.definition || '';
+      // If definition contains semicolons and quoted text, truncate at first semicolon
+      if (def.length > 100 && def.includes(';')) {
+        def = def.split(';')[0] + '; ...';
+      }
+      // Cap definition length
+      if (def.length > 150) def = def.slice(0, 147) + '...';
+      wnLines.push(`  ${posLabel[s.pos] || s.pos}: ${def}`);
       if (s.lemmas?.length) wnLines.push(`    同义词集: ${s.lemmas.join(', ')}`);
-      if (s.examples?.length) wnLines.push(`    例: ${s.examples.join('; ')}`);
+      if (s.examples?.length) {
+        // Truncate WordNet examples that are concatenated with semicolons
+        const exText = s.examples.join('; ');
+        wnLines.push(`    例: ${exText.length > 120 ? exText.slice(0, 117) + '...' : exText}`);
+      }
     }
     if (d.semanticRelations) {
       if (d.semanticRelations.hypernyms?.length)
@@ -270,7 +378,7 @@ function buildLLMContext(word: string, d: any): string {
 
   // ── 词源 (Wiktionary) ────────────────────────────────────
   if (d.etymology) {
-    sections.push(`【词源 (Wiktionary)】\n${d.etymology.slice(0, 500)}`);
+    sections.push(`【词源 (Wiktionary)】\n${d.etymology.replace(/<[^>]+>/g, '').slice(0, 500)}`);
   }
 
   // ── 词形变化 (Wiktionary) ────────────────────────────────

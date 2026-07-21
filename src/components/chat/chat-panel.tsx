@@ -10,6 +10,7 @@
 "use client";
 
 import { usePiChat } from "@/lib/pi/use-pi-chat";
+import { cachedFetch } from "@/lib/fetch-cache";
 import { MessageList } from "./message-list";
 import { ChatInput } from "./chat-input";
 import { DebugPanel, notifyDebugPanel } from "@/components/debug/debug-panel";
@@ -41,8 +42,7 @@ export function ChatPanel() {
 	const [hasMore, setHasMore] = useState(true);
 
 	useEffect(() => {
-		fetch("/api/messages?limit=20")
-			.then((r) => r.json())
+		cachedFetch<{ messages?: UIMessage[]; hasMore?: boolean }>('/api/messages?limit=20')
 			.then((data) => {
 				setInitialMessages(data.messages?.reverse() || []);
 				setHasMore(data.hasMore ?? false);

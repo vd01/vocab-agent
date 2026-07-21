@@ -65,6 +65,28 @@ export function PinDetailCard({ pin, onUnpin, onArchive, onUnarchive, isArchived
       const res = await fetch(`/api/pins/${pin.id}/detail`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
+      // Fix legacy raw:true entries where mnemonic contains the full JSON string
+      if (data.richContent?.raw && typeof data.richContent.mnemonic === 'string') {
+        try {
+          const parsed = JSON.parse(data.richContent.mnemonic);
+          if (typeof parsed === 'object' && parsed.mnemonic) {
+            data.richContent = parsed;
+          }
+        } catch {
+          // Try fixing CJK quotes then re-parse
+          try {
+            const fixed = data.richContent.mnemonic
+              .replace(/[\u201c\u201d]/g, '"')
+              .replace(/[\u2018\u2019]/g, "'");
+            const parsed = JSON.parse(fixed);
+            if (typeof parsed === 'object' && parsed.mnemonic) {
+              data.richContent = parsed;
+            }
+          } catch {
+            // Can't fix, keep as-is
+          }
+        }
+      }
       if (data.cached) {
         setLoading(false);
       }

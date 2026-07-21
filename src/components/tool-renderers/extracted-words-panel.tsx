@@ -6,6 +6,7 @@
  */
 
 import React, { useState, useEffect } from "react";
+import { cachedFetch } from "@/lib/fetch-cache";
 
 interface ExtractedWord {
 	word: string;
@@ -34,8 +35,7 @@ export function ExtractedWordsPanel({
 
 	useEffect(() => {
 		if (groupsLoaded) return;
-		fetch("/api/groups")
-			.then((r) => r.json())
+		cachedFetch<{ groups: any[] }>('/api/groups')
 			.then((data) => {
 				setGroups(data.groups ?? []);
 				setGroupsLoaded(true);

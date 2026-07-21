@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { NotificationManager } from "@/lib/notification/notification-manager";
+import { cachedFetch } from "@/lib/fetch-cache";
 import {
 	ReviewScheduler,
 	type SchedulerConfig,
@@ -42,8 +43,7 @@ export function ReviewReminderToggle({
 			setPermissionStatus(ReviewScheduler.getPermissionStatus());
 
 			// Load daily limits from settings API
-			fetch("/api/settings?prefix=review.")
-				.then((r) => r.json())
+			cachedFetch<{ settings: Record<string, string> }>('/api/settings?prefix=review.')
 				.then((data) => {
 					const s = data.settings ?? {};
 					setDailyNewLimit(

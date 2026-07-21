@@ -6,16 +6,45 @@
  *
  * Rate limit: recommended to stay under ~200 req/min.
  * Endpoint: GET /api/rest_v1/page/definition/{word}
- * Fallback: GET /api/rest_v1/page/summary/{word} (simpler but less detail)
+ * Fallback: GET /w/rest.php/v1/page/{word} (wikitext source with etymology/IPA)
  *
- * The definition endpoint returns data grouped by language:
- *   { en: [{ partOfSpeech, language, definitions }], fr: [...], ... }
- * We extract only the English ("en") section.
+ * Proxy: Configures undici's global dispatcher from HTTPS_PROXY/https_proxy
+ * on first use, so all Node.js native fetch calls respect the proxy.
  */
+
+// ── Proxy Setup (once, global) ───────────────────────────────────────────
+
+let proxyConfigured = false;
+
+function ensureProxyConfigured(): void {
+	if (proxyConfigured) return;
+	proxyConfigured = true;
+
+	const proxyUrl = process.env.HTTPS_PROXY || process.env.https_proxy;
+	if (!proxyUrl) return;
+
+	try {
+		// Dynamic import is sync-safe inside a try/catch at module level;
+		// but we use require for synchronous initialization.
+		const { ProxyAgent, setGlobalDispatcher } = require('undici');
+		const dispatcher = new ProxyAgent({ uri: proxyUrl });
+		setGlobalDispatcher(dispatcher);
+		console.log(`[Proxy] Global dispatcher configured: ${proxyUrl}`);
+	} catch (e) {
+		// undici may not be available in all runtimes; warn and proceed
+		console.warn('[Proxy] Failed to configure proxy:', (e as Error).message);
+	}
+}
+
+// Configure proxy eagerly on module load
+ensureProxyConfigured();
+
+// ── Constants ────────────────────────────────────────────────────────────
 
 const USER_AGENT = 'vocab-agent/1.0 (https://github.com/vocab-agent; CC-BY-SA attribution)';
 const API_BASE = 'https://en.wiktionary.org/api/rest_v1';
-const TIMEOUT_MS = 3000;
+const WIKITEXT_API_BASE = 'https://en.wiktionary.org/w/rest.php/v1';
+const TIMEOUT_MS = 8000;
 const RETRY_DELAY_MS = 1000;
 
 // ── Response types ───────────────────────────────────────────────────────
@@ -26,20 +55,19 @@ interface WiktionaryDefinition {
 	examples?: string[];
 }
 
-/** Per-language section from the definition endpoint. */
 interface WiktionaryLangSection {
 	partOfSpeech: string;
 	language: string;
 	definitions: WiktionaryDefinition[];
 }
 
-/** Full response from /page/definition — keyed by language code. */
 type WiktionaryPageDefinition = Record<string, WiktionaryLangSection[]>;
 
-interface WiktionaryPageSummary {
+interface WiktionaryWikitextPage {
+	id: number;
+	key: string;
 	title: string;
-	extract: string; // Plain text summary
-	lang?: string;
+	source?: string;
 }
 
 export interface WiktionaryEntry {
@@ -52,11 +80,8 @@ export interface WiktionaryEntry {
 
 // ── Internal ─────────────────────────────────────────────────────────────
 
-/**
- * Fetch from the Wiktionary REST API with timeout and optional retry.
- */
-async function wiktionaryFetch<T>(path: string, retry = true): Promise<T | null> {
-	const url = `${API_BASE}${path}`;
+async function wiktionaryFetch<T>(baseUrl: string, urlPath: string, retry = true): Promise<T | null> {
+	const url = `${baseUrl}${urlPath}`;
 	try {
 		const res = await fetch(url, {
 			headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' },
@@ -64,9 +89,8 @@ async function wiktionaryFetch<T>(path: string, retry = true): Promise<T | null>
 		});
 
 		if (res.status === 429 && retry) {
-			// Rate limited — wait and retry once
 			await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
-			return wiktionaryFetch<T>(path, false);
+			return wiktionaryFetch<T>(baseUrl, urlPath, false);
 		}
 
 		if (!res.ok) return null;
@@ -76,67 +100,99 @@ async function wiktionaryFetch<T>(path: string, retry = true): Promise<T | null>
 	}
 }
 
-/**
- * Fetch structured definitions from REST v1 page/definition endpoint.
- * Returns structured definitions grouped by part of speech.
- */
 async function fetchDefinition(
 	word: string,
 ): Promise<WiktionaryPageDefinition | null> {
 	return wiktionaryFetch<WiktionaryPageDefinition>(
+		API_BASE,
 		`/page/definition/${encodeURIComponent(word)}`,
 	);
 }
 
-/**
- * Fetch page summary (simpler API with extract field).
- * Used as fallback when definition endpoint returns nothing useful.
- */
-async function fetchSummary(
+async function fetchWikitextSource(
 	word: string,
-): Promise<WiktionaryPageSummary | null> {
-	return wiktionaryFetch<WiktionaryPageSummary>(
-		`/page/summary/${encodeURIComponent(word)}`,
+): Promise<WiktionaryWikitextPage | null> {
+	return wiktionaryFetch<WiktionaryWikitextPage>(
+		WIKITEXT_API_BASE,
+		`/page/${encodeURIComponent(word)}`,
 	);
 }
 
 /**
- * Try to extract etymology and IPA from the structured data.
- * The REST v1 definition endpoint includes limited metadata;
- * full etymology/forms typically require wikitext parsing (Phase C offline dump).
+ * Strip wikitext markup to produce readable plain text.
  */
-function extractMetadata(
-	def: WiktionaryPageDefinition | null,
-): { etymology?: string; ipa?: string } {
-	if (!def) return {};
+function stripWikitext(wt: string): string {
+	return wt
+		// Pre-process: remove nested ref templates like <ref:{{R:...}}> that break matching
+		.replace(/<ref:\{\{[^}]*\}\}>/g, '')
+		// {{etymon|...|etydate=...}}: extract etydate if present
+		.replace(/\{\{etymon\|[^}]*etydate=([^|}]+)[^}]*\}\}/g, '($1)')
+		// Named templates with display text (2+ pipe args): extract last meaningful arg
+		.replace(/\{\{(m|bor|bor\+|inh|inh\+|der|der\+|cog|cog\+|l|link|w|wp|R:[^|]*|PIE[^|]*|cite[^|]*)\|[^}]*\|([^|}]+)(?:\|[^}]*)?\}\}/g, '$2')
+		.replace(/\{\{gl\|([^|}]+)\|([^|}]*)\}\}/g, '$1($2)')
+		.replace(/\{\{root\|[^}]*\}\}/g, '')                       // {{root|...}})
+		.replace(/\{\{[a-zA-Z+:]*\.\.\.[^}]*\}\}/g, '')                // {{...|t=}} broken templates
+		.replace(/\{\{[a-zA-Z+:]+\|[^}]*\}\}/g, '')                       // All remaining templates
+		.replace(/\[\[([^|\]]+\|)?([^\]]+)\]\]/g, '$2')              // [[link]] or [[target|display]]
+		.replace(/'''([^']+)'''/g, '$1')                              // Bold
+		.replace(/''([^']+)''/g, '$1')                                // Italic
+		.replace(/<[^>]+>/g, '')                                       // HTML tags
+		.replace(/&[a-z]+;/gi, ' ')                                   // HTML entities
+		.replace(/\|[a-zA-Z]+=/g, ' ')                                   // Named params like |notext=1, |passage=
+		.replace(/\s+/g, ' ')
+		.trim();
+}
 
-	// Wiktionary REST v1 definition API does not currently expose etymology
-	// or IPA in a structured field. These come from Phase C (Kaikki dump).
-	// For now, the summary.extract may contain a brief etymology mention.
-	return {};
+/**
+ * Extract etymology and IPA from raw wikitext source.
+ */
+function extractFromWikitext(
+	wikitext: string,
+): { etymology?: string; ipa?: string; forms?: Array<{ form: string; tags: string[] }> } {
+	const result: { etymology?: string; ipa?: string; forms?: Array<{ form: string; tags: string[] }> } = {};
+
+	const etymMatch = wikitext.match(/===+Etymology\s*\d*===+\s*([\s\S]*?)(?====|$)/i);
+	if (etymMatch) {
+		const raw = etymMatch[1].trim();
+		const firstPara = raw.split(/\n===/)[0];
+		result.etymology = stripWikitext(firstPara).slice(0, 500);
+	}
+
+	const ipaMatch = wikitext.match(/\{\{IPA\|([^}]+)\}\}/);
+	if (ipaMatch) {
+		const parts = ipaMatch[1].split('|').filter(p => p.startsWith('/'));
+		if (parts.length > 0) {
+			result.ipa = parts[0];
+		}
+	}
+
+	if (!result.ipa) {
+		const pronMatch = wikitext.match(/\{\{enPR\|([^}]+)\}\}/);
+		if (pronMatch) {
+			result.ipa = pronMatch[1];
+		}
+	}
+
+	return result;
 }
 
 // ── Public API ───────────────────────────────────────────────────────────
 
-/**
- * Look up a word from Wiktionary REST API.
- * Fetches definition and summary endpoints in parallel for speed.
- * Returns structured data: definitions by POS, and (in Phase C) etymology/forms/IPA.
- */
 export async function wiktionaryRestLookup(
 	word: string,
 ): Promise<WiktionaryEntry | null> {
-	// Fetch both endpoints in parallel to avoid serial latency
-	const [def, summary] = await Promise.all([
+	const [def, wikitextPage] = await Promise.all([
 		fetchDefinition(word),
-		fetchSummary(word),
+		fetchWikitextSource(word),
 	]);
 
-	// Prefer structured definition if available
-	// The API returns { en: [...], fr: [...], ... } — extract English section
+	let metadata: { etymology?: string; ipa?: string; forms?: Array<{ form: string; tags: string[] }> } = {};
+	if (wikitextPage?.source) {
+		metadata = extractFromWikitext(wikitextPage.source);
+	}
+
 	const enSections = def?.en;
 	if (enSections && enSections.length > 0) {
-		const metadata = extractMetadata(def);
 		return {
 			word,
 			...metadata,
@@ -147,16 +203,11 @@ export async function wiktionaryRestLookup(
 		};
 	}
 
-	// Fallback: summary endpoint (less structured)
-	if (summary && summary.extract) {
+	if (metadata.etymology || metadata.ipa) {
 		return {
-			word: summary.title || word,
-			definitions: [
-				{
-					partOfSpeech: '',
-					definitions: [{ definition: summary.extract }],
-				},
-			],
+			word,
+			...metadata,
+			definitions: [],
 		};
 	}
 

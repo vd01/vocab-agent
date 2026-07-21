@@ -14,11 +14,16 @@ export default function Home() {
 		const onPinChange = () => setPinRefreshKey((k) => k + 1);
 		window.addEventListener("pin-change", onPinChange);
 
-		// Refresh pinned sidebar when page becomes visible again
-		// (e.g. returning from Tauri quick-lookup window where pins may have changed)
+		// Refresh when returning from another window (e.g. Tauri quick-lookup)
+		// but with a 10s cooldown to avoid redundant refreshes on normal tab switching
+		let lastRefresh = 0;
 		const onVisibilityChange = () => {
 			if (document.visibilityState === "visible") {
-				setPinRefreshKey((k) => k + 1);
+				const now = Date.now();
+				if (now - lastRefresh > 10_000) {
+					lastRefresh = now;
+					setPinRefreshKey((k) => k + 1);
+				}
 			}
 		};
 		document.addEventListener("visibilitychange", onVisibilityChange);
